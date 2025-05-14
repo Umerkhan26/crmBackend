@@ -1,5 +1,5 @@
 import { DataTypes, Model, Optional } from "sequelize";
-import db from "../../db";  // Ensure your Sequelize instance is imported correctly
+import db from "../../db"; // Ensure your Sequelize instance is imported correctly
 
 // Define the attributes for the Order model
 export interface OrderAttributes {
@@ -7,9 +7,9 @@ export interface OrderAttributes {
   agent: string;
   campaign_id: number;
   state: string;
-  priority_level: "High" | "Medium" | "Low" | "Gold Agent";
+  priority_level: "High" | "Medium" | "Low" | "Gold Agent" | "Onhold";
   age_range: string;
-  lead_requested: boolean;
+  lead_requested: number;
   fb_link?: string;
   notes?: string;
   area_to_use?: string;
@@ -28,7 +28,8 @@ export interface OrderAttributes {
 }
 
 // Define attributes required when creating an order (optional fields)
-export interface OrderCreationAttributes extends Optional<OrderAttributes, "id" | "created_at" | "updated_at"> {}
+export interface OrderCreationAttributes
+  extends Optional<OrderAttributes, "id" | "created_at" | "updated_at"> {}
 
 const initOrderModel = () => {
   return db.define<Model<OrderAttributes, OrderCreationAttributes>>(
@@ -60,7 +61,7 @@ const initOrderModel = () => {
         allowNull: false,
       },
       lead_requested: {
-        type: DataTypes.BOOLEAN,
+        type: DataTypes.INTEGER,
         allowNull: false,
       },
       fb_link: {

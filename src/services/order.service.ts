@@ -9,7 +9,7 @@ export interface CreateOrderDTO {
   state: string;
   priority_level: "High" | "Medium" | "Low" | "Gold Agent";
   age_range: string;
-  lead_requested: boolean;
+  lead_requested: number;
   fb_link?: string;
   notes?: string;
   area_to_use?: string;

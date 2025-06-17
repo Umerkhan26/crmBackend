@@ -19,7 +19,7 @@ router.post(
 
 // Get all notifications for a specific user
 router.get(
-  "/:userId",
+  "/getNotificationById:userId",
   verifyToken,
   getUserNotificationsController
 );

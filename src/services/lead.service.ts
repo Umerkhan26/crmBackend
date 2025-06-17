@@ -3,17 +3,27 @@ import Lead, {
   LeadCreationAttributes,
 } from "../models/lead.model";
 import { getPagination, getPagingData } from "../utils/paginate";
+import { logActivity } from "./activity.service";
+import { sendNotification } from "./notification.service";
 
 interface PaginationParams {
   page?: number;
   limit?: number;
 }
+
 // Create Lead
 export const createLead = async (
-  data: LeadCreationAttributes
+  data: LeadCreationAttributes,
+  userId?: number
 ): Promise<LeadAttributes> => {
   try {
     const lead = await Lead.create(data);
+
+    if (userId) {
+      await logActivity(userId, "create", `Lead created with ID ${lead.id}`);
+      await sendNotification(userId, `New lead created with ID ${lead.id}`);
+    }
+
     return lead.get();
   } catch (error: any) {
     throw new Error(`Error creating lead: ${error.message}`);
@@ -21,8 +31,10 @@ export const createLead = async (
 };
 
 // Get All Leads
-
-export const getAllLeads = async ({ page = 1, limit = 10 }: PaginationParams) => {
+export const getAllLeads = async ({
+  page = 1,
+  limit = 10,
+}: PaginationParams) => {
   try {
     const { offset, limit: pageLimit } = getPagination({ page, limit });
 
@@ -54,7 +66,8 @@ export const getLeadsByCampaign = async (
 // Update Lead
 export const updateLead = async (
   id: number,
-  updatedData: Partial<LeadCreationAttributes>
+  updatedData: Partial<LeadCreationAttributes>,
+  userId?: number
 ): Promise<LeadAttributes> => {
   try {
     const lead = await Lead.findByPk(id);
@@ -63,6 +76,12 @@ export const updateLead = async (
     }
 
     await lead.update(updatedData);
+
+    if (userId) {
+      await logActivity(userId, "update", `Lead updated with ID ${lead.id}`);
+      await sendNotification(userId, `Lead updated with ID ${lead.id}`);
+    }
+
     return lead.get();
   } catch (error: any) {
     throw new Error(`Error updating lead: ${error.message}`);
@@ -70,7 +89,7 @@ export const updateLead = async (
 };
 
 // Delete Lead
-export const deleteLead = async (id: number): Promise<void> => {
+export const deleteLead = async (id: number, userId?: number): Promise<void> => {
   try {
     const lead = await Lead.findByPk(id);
     if (!lead) {
@@ -78,6 +97,11 @@ export const deleteLead = async (id: number): Promise<void> => {
     }
 
     await lead.destroy();
+
+    if (userId) {
+      await logActivity(userId, "delete", `Lead deleted with ID ${id}`);
+      await sendNotification(userId, `Lead deleted with ID ${id}`);
+    }
   } catch (error: any) {
     throw new Error(`Error deleting lead: ${error.message}`);
   }

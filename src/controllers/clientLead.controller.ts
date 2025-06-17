@@ -19,7 +19,6 @@ export const createClientLeadController = async (
     const userId = req.user?.id;
     const { order_id, campaign, leadData } = req.body;
 
-    // Validate campaign object and required fields
     if (!order_id || !campaign || !campaign.id || !leadData) {
       return res.status(400).json({
         success: false,
@@ -29,12 +28,15 @@ export const createClientLeadController = async (
 
     const campaign_id = campaign.id;
 
-    const lead = await createClientLead({
-      order_id,
-      campaign_id,
-      leadData,
-      created_by: userId,
-    });
+    const lead = await createClientLead(
+      {
+        order_id,
+        campaign_id,
+        leadData,
+        created_by: userId,
+      },
+      userId // ✅ pass userId for logging/notifications
+    );
 
     return res.status(201).json({
       success: true,
@@ -48,6 +50,7 @@ export const createClientLeadController = async (
     });
   }
 };
+
 
 // Get all client leads
 export const getAllClientLeadsController = async (
@@ -124,20 +127,21 @@ export const getClientLead = async (
 
 // Update client lead
 export const updateClientLead = async (
-  req: Request,
+  req: CustomRequest,
   res: Response
 ): Promise<any> => {
   try {
     const { id } = req.params;
+    const userId = req.user?.id;
+
     if (!id || isNaN(Number(id))) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Invalid lead ID parameter" });
+      return res.status(400).json({ success: false, message: "Invalid lead ID parameter" });
     }
 
     const updateData = req.body;
 
-    const updatedLead = await updateClientLeadById(Number(id), updateData);
+    const updatedLead = await updateClientLeadById(Number(id), updateData, userId);
+
     return res.status(200).json({
       success: true,
       message: "Client lead updated",
@@ -148,39 +152,40 @@ export const updateClientLead = async (
   }
 };
 
+
 // Delete client lead
 export const deleteClientLead = async (
-  req: Request,
+  req: CustomRequest,
   res: Response
 ): Promise<any> => {
   try {
     const { id } = req.params;
+    const userId = req.user?.id;
+
     if (!id || isNaN(Number(id))) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Invalid lead ID parameter" });
+      return res.status(400).json({ success: false, message: "Invalid lead ID parameter" });
     }
 
-    const result = await deleteClientLeadById(Number(id));
+    const result = await deleteClientLeadById(Number(id), userId);
+
     return res.status(200).json({ success: true, message: result.message });
   } catch (error: any) {
     return res.status(500).json({ success: false, message: error.message });
   }
 };
 
-// Accept or Reject client lead
+
 export const updateClientLeadStatusController = async (
-  req: Request,
+  req: CustomRequest,
   res: Response
 ): Promise<any> => {
   try {
     const { id } = req.params;
     const { status } = req.body;
+    const userId = req.user?.id;
 
     if (!id || isNaN(Number(id))) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Invalid lead ID parameter" });
+      return res.status(400).json({ success: false, message: "Invalid lead ID parameter" });
     }
 
     if (!status || !["accepted", "rejected"].includes(status)) {
@@ -190,7 +195,7 @@ export const updateClientLeadStatusController = async (
       });
     }
 
-    const result = await updateClientLeadStatus(Number(id), status as "accepted" | "rejected");
+    const result = await updateClientLeadStatus(Number(id), status, userId);
 
     return res.status(200).json({
       success: true,

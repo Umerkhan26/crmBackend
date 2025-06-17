@@ -22,7 +22,6 @@ export const createOrderController = async (req: CustomRequest, res: Response): 
     });
   }
 
-  // Validate assign_to_client format
   if (
     orderData.assign_to_client &&
     (!orderData.assign_to_client.id || !orderData.assign_to_client.name)
@@ -33,7 +32,6 @@ export const createOrderController = async (req: CustomRequest, res: Response): 
     });
   }
 
-  // Validate assign_to_vendor format
   if (
     orderData.assign_to_vendor &&
     (!orderData.assign_to_vendor.id || !orderData.assign_to_vendor.name)
@@ -97,7 +95,6 @@ export const updateOrderByIdController = async (req: CustomRequest, res: Respons
     });
   }
 
-  // Validate assign_to_client format
   if (
     updatedData.assign_to_client &&
     (!updatedData.assign_to_client.id || !updatedData.assign_to_client.name)
@@ -108,7 +105,6 @@ export const updateOrderByIdController = async (req: CustomRequest, res: Respons
     });
   }
 
-  // Validate assign_to_vendor format
   if (
     updatedData.assign_to_vendor &&
     (!updatedData.assign_to_vendor.id || !updatedData.assign_to_vendor.name)
@@ -130,7 +126,7 @@ export const updateOrderByIdController = async (req: CustomRequest, res: Respons
 
     return res.status(200).json({
       success: true,
-      message: "Order updated successfully",
+      message: `Order updated successfully for campaign ""N/A"}"`,
       data: updatedOrder,
     });
   } catch (error: any) {
@@ -144,9 +140,17 @@ export const updateOrderByIdController = async (req: CustomRequest, res: Respons
 // Delete Order by ID
 export const deleteOrderByIdController = async (req: CustomRequest, res: Response): Promise<any> => {
   const { id } = req.params;
+  const userId = req.user?.id;
+
+  if (!userId) {
+    return res.status(401).json({
+      success: false,
+      message: "User ID not found in request",
+    });
+  }
 
   try {
-    const isDeleted = await deleteOrderById(Number(id));
+    const isDeleted = await deleteOrderById(Number(id), userId);
     if (!isDeleted) {
       return res.status(404).json({
         success: false,
@@ -173,10 +177,9 @@ export const getAllOrdersController = async (req: CustomRequest, res: Response):
 
   try {
     const orders = await getAllOrders(page, limit);
-
     return res.status(200).json({
       success: true,
-      ...orders, // includes data, totalItems, totalPages, currentPage etc. from getPagingData
+      ...orders, // data, totalPages, totalItems, currentPage, etc.
     });
   } catch (error: any) {
     return res.status(400).json({
@@ -186,11 +189,11 @@ export const getAllOrdersController = async (req: CustomRequest, res: Response):
   }
 };
 
-
 // Block or Unblock Order by ID
 export const setOrderBlockStatusController = async (req: CustomRequest, res: Response): Promise<any> => {
   const { id } = req.params;
-  const { block } = req.body; // expects { block: true } to block or { block: false } to unblock
+  const { block } = req.body;
+  const userId = req.user?.id;
 
   if (typeof block !== 'boolean') {
     return res.status(400).json({
@@ -199,8 +202,15 @@ export const setOrderBlockStatusController = async (req: CustomRequest, res: Res
     });
   }
 
+  if (!userId) {
+    return res.status(401).json({
+      success: false,
+      message: "User ID not found in request",
+    });
+  }
+
   try {
-    const updatedOrder = await setOrderBlockStatus(Number(id), block);
+    const updatedOrder = await setOrderBlockStatus(Number(id), block, userId);
     if (!updatedOrder) {
       return res.status(404).json({
         success: false,

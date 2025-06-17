@@ -4,6 +4,8 @@ import Campaign from "../models/campaign.model";
 import { getPagination, getPagingData } from "../utils/paginate";
 import ClientLead from "../models/clientLead.model"; // 👈 Import this
 import { Sequelize } from "sequelize";
+import { sendNotification } from "./notification.service";
+import { logActivity } from "./activity.service";
 
 export interface CreateOrderDTO {
   agent: string;
@@ -27,7 +29,7 @@ export interface CreateOrderDTO {
 }
 
 // Function to create an order
-export const createOrder = async ( 
+export const createOrder = async (
   orderData: CreateOrderDTO,
   createdBy: number
 ): Promise<any> => {
@@ -53,14 +55,12 @@ export const createOrder = async (
       assign_to_vendor: orderData.assign_to_vendor,
     });
 
-    // Fetch the newly created order with campaign details
+    // 🔔 Send Notification & 📝 Log Activity
+    await sendNotification(createdBy, `New order created for campaign "${campaign.campaignName}"`);
+    await logActivity(createdBy, "Order Created", `Order ID: ${order.id}`);
+
     const orderWithCampaign = await Order.findByPk(order.id, {
-      include: [
-        {
-          model: Campaign,
-          as: 'campaign',
-        },
-      ],
+      include: [{ model: Campaign, as: "campaign" }],
     });
 
     return orderWithCampaign?.toJSON();
@@ -111,14 +111,19 @@ export const updateOrderById = async (
       created_by: updatedBy,
     });
 
+    // 🔔 Notify and 📝 Log
+    await sendNotification(updatedBy, `Order ID ${id} updated.`);
+    await logActivity(updatedBy, "Order Updated", `Order ID: ${id}`);
+
     return order.toJSON() as OrderAttributes;
   } catch (error: any) {
     throw new Error(error.message || "Failed to update order");
   }
 };
 
+
 // Function to delete an order by ID
-export const deleteOrderById = async (id: number): Promise<boolean> => {
+export const deleteOrderById = async (id: number, deletedBy: number): Promise<boolean> => {
   try {
     const order = await Order.findByPk(id);
     if (!order) {
@@ -126,39 +131,16 @@ export const deleteOrderById = async (id: number): Promise<boolean> => {
     }
 
     await order.destroy();
+
+    // 🔔 Notify and 📝 Log
+    await sendNotification(deletedBy, `Order ID ${id} has been deleted.`);
+    await logActivity(deletedBy, "Order Deleted", `Order ID: ${id}`);
+
     return true;
   } catch (error: any) {
     throw new Error(error.message || "Failed to delete order");
   }
 };
-// export const getAllOrders = async (
-//   page: number = 1,
-//   limit: number = 10
-// ): Promise<ReturnType<typeof getPagingData>> => {
-//   try {
-//     const { offset, limit: pageLimit } = getPagination({ page, limit });
-
-//     const result = await Order.findAndCountAll({
-//       offset,
-//       limit: pageLimit,
-//       include: [
-//         {
-//           model: Campaign,
-//           as: "campaign",
-//         },
-//       ],
-//       order: [["created_at", "DESC"]], // optional: sort by date
-//     });
-
-//     return getPagingData(result, page, pageLimit);
-//   } catch (error: any) {
-//     throw new Error(error.message || "Failed to fetch paginated orders");
-//   }
-// };
-
-
-
-
 
 
 export const getAllOrders = async (
@@ -226,18 +208,23 @@ export const getAllOrders = async (
   }
 };
 
-
-// Unified function to set block status
 export const setOrderBlockStatus = async (
   id: number,
-  blockStatus: boolean
+  blockStatus: boolean,
+  userId: number
 ): Promise<OrderAttributes | null> => {
   try {
     const order = await Order.findByPk(id);
     if (!order) {
       throw new Error("Order not found");
     }
+
     await order.update({ is_blocked: blockStatus });
+
+    // 🔔 Notify and 📝 Log
+    await sendNotification(userId, `Order ID ${id} has been ${blockStatus ? "blocked" : "unblocked"}.`);
+    await logActivity(userId, "Order Block Status Changed", `Order ID: ${id}`);
+
     return order.toJSON() as OrderAttributes;
   } catch (error: any) {
     throw new Error(error.message || "Failed to update block status");

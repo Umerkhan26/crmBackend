@@ -4,6 +4,6 @@ import { getAllActivities, getActivitiesByUserId } from "../controllers/activity
 const router = Router();
 
 router.get("/getAllActivities", getAllActivities);
-router.get("/getActivitybyId/:id", getActivitiesByUserId);
+router.get("/getActivitybyId/:userId", getActivitiesByUserId);
 
 export default router;

@@ -30,3 +30,20 @@ export const getActivitiesByUserId = async (req: Request, res: Response):Promise
     res.status(500).json({ error: "Failed to fetch activity logs for user." });
   }
 };
+
+export const deleteActivityById = async (req: Request, res: Response):Promise<any> => {
+    const { id } = req.params;
+  
+    try {
+      const deleted = await ActivityLog.destroy({ where: { id } });
+  
+      if (deleted === 0) {
+        return res.status(404).json({ message: "Activity log not found." });
+      }
+  
+      res.status(200).json({ message: "Activity log deleted successfully." });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete activity log." });
+    }
+  };
+  

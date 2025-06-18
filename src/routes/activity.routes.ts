@@ -1,9 +1,10 @@
 import { Router } from "express";
-import { getAllActivities, getActivitiesByUserId } from "../controllers/activity.controller";
+import { getAllActivities, getActivitiesByUserId, deleteActivityById } from "../controllers/activity.controller";
 
 const router = Router();
 
 router.get("/getAllActivities", getAllActivities);
 router.get("/getActivitybyId/:userId", getActivitiesByUserId);
+router.delete("/activity/:id", deleteActivityById); // ✅ delete route
 
 export default router;

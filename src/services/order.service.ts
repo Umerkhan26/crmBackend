@@ -6,6 +6,11 @@ import ClientLead from "../models/clientLead.model"; // 👈 Import this
 import { Sequelize } from "sequelize";
 import { sendNotification } from "./notification.service";
 import { logActivity } from "./activity.service";
+import { checkEmailPermission } from "./email.service";
+import { getCompiledTemplate } from "./template.service";
+import { emailQueue } from "../queue/emailQueue";
+import { getSmtpConfig } from "../utils/getSmtpConfig";
+import User from "../models/user.model";
 
 export interface CreateOrderDTO {
   agent: string;
@@ -55,9 +60,37 @@ export const createOrder = async (
       assign_to_vendor: orderData.assign_to_vendor,
     });
 
-    // 🔔 Send Notification & 📝 Log Activity
+    // 🔔 Notify & Log
     await sendNotification(createdBy, `New order created for campaign "${campaign.campaignName}"`);
     await logActivity(createdBy, "Order Created", `Order ID: ${order.id}`);
+
+    // ✅ Email functionality
+    const user = await User.findByPk(createdBy);
+
+    if (user) {
+      const canSendEmail = await checkEmailPermission("order:create", user.userrole || "client");
+
+      if (canSendEmail) {
+        const smtpConfig = await getSmtpConfig(createdBy);
+
+        const { subject, body } = await getCompiledTemplate("order:create", {
+          agent: order.agent,
+          campaign: campaign.campaignName,
+          state: order.state,
+          priority: order.priority_level,
+          lead_requested: order.lead_requested,
+          user: `${user.firstname} ${user.lastname}`,
+        });
+
+        await emailQueue.add("order:create", {
+          to: user.email,
+          subject,
+          body,
+          smtpConfig,
+          serviceName: "order:create",
+        });
+      }
+    }
 
     const orderWithCampaign = await Order.findByPk(order.id, {
       include: [{ model: Campaign, as: "campaign" }],
@@ -68,6 +101,8 @@ export const createOrder = async (
     throw new Error(error.message || "Failed to create order");
   }
 };
+
+
 
 
 export const getOrderById = async (

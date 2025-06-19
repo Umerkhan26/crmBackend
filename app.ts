@@ -4,6 +4,8 @@ import dotenv from "dotenv";
 import path from "path";
 import fs from "fs";
 import { syncPermissionsToDB } from "./src/utils/syncPermissions";
+import { syncEmailPermissionsToDB } from "./src/utils/syncEmailPermissions"; // ✅ Import email permissions sync
+
 import db from "./db"; // Sequelize instance
 import "./src/models/associations"; // 🔥 This ensures associations are defined
 
@@ -52,11 +54,14 @@ const loadRoutes = (app: Application) => {
 // Initialize app
 const startServer = async () => {
   try {
-    await db.sync({ alter: true }); // 🟢 Ensures all models including join tables are created
+    await db.sync({ alter: true }); // 🟢 Sync all models
     console.log("Database synced.");
 
-    await syncPermissionsToDB(); // ✅ Now sync permissions safely
+    await syncPermissionsToDB(); // ✅ Sync standard permissions
     console.log("Permissions synced to database.");
+
+    await syncEmailPermissionsToDB(); // ✅ Sync email-specific permissions
+    console.log("Email permissions synced to database.");
 
     loadRoutes(app);
     console.log("App initialized.");

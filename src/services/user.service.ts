@@ -6,11 +6,16 @@ import { logActivity } from "./activity.service";
 import { sendNotification } from "./notification.service";
 import Role from "../models/role.model";
 import { getPagination, getPagingData } from "../utils/paginate";
+import { getSmtpConfig } from "../utils/getSmtpConfig";
+import { checkEmailPermission } from "./email.service";
+import { getCompiledTemplate } from "./template.service";
+import { emailQueue } from "../queue/emailQueue"; // or wherever your queue is defined
 
 interface PaginationParams {
   page?: number;
   limit?: number;
 }
+
 
 export const createUser = async (
   userData: Partial<UserAttributes>
@@ -32,7 +37,7 @@ export const createUser = async (
   const newUserData: UserAttributes = {
     ...userData,
     roleId,
-    status: "active", // ✅ Set default status to active
+    status: "active",
     token: userData.token || "",
     created_at: new Date(),
     updated_at: new Date(),
@@ -45,8 +50,30 @@ export const createUser = async (
     throw new Error("User ID not found after creation");
   }
 
+  // ✅ Log activity + notification
   await logActivity(user.id, "Registration", "User registered successfully");
   await sendNotification(user.id, "Welcome! Your account has been successfully created.");
+
+  // ✅ Check permission to send email on 'user:create'
+  const canSendEmail = await checkEmailPermission("user:create", user.userrole || "client");
+
+  if (canSendEmail) {
+    const smtpConfig = await getSmtpConfig(user.id);
+
+    const { subject, body } = await getCompiledTemplate("user:create", {
+      firstname: user.firstname || "",
+      lastname: user.lastname || "",
+      email: user.email,
+    });
+
+    await emailQueue.add("user:create", {
+      to: user.email,
+      subject,
+      body,
+      smtpConfig,
+      serviceName: "user:create",
+    });
+  }
 
   const userWithRole = await User.findByPk(user.id, {
     include: [
@@ -60,6 +87,7 @@ export const createUser = async (
 
   return userWithRole;
 };
+
 
 export const loginUser = async (userData: {
   email: string;

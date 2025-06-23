@@ -85,7 +85,7 @@
         allowNull: false,
       },
       lead_requested: {
-        type: DataTypes.BOOLEAN,
+        type: DataTypes.INTEGER,
         allowNull: false,
       },
       fb_link: {

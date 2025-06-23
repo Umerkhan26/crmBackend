@@ -17,3 +17,11 @@ export const updateEmailPermissionByService = async (
   await permission.save();
   return permission;
 };
+
+
+export const getAllEmailPermissionsWithRoles = async () => {
+    return await EmailPermission.findAll({
+      order: [["serviceName", "ASC"]],
+      attributes: ["id", "serviceName", "canSend", "allowedRoles"],
+    });
+  };

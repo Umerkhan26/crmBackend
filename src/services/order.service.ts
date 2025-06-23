@@ -2,7 +2,7 @@ import { OrderAttributes } from "../models/order.model";
 import Order from "../models/order.model";
 import Campaign from "../models/campaign.model";
 import { getPagination, getPagingData } from "../utils/paginate";
-import ClientLead from "../models/clientLead.model"; // 👈 Import this
+import ClientLead from "../models/clientLead.model";
 import { Sequelize } from "sequelize";
 import { sendNotification } from "./notification.service";
 import { logActivity } from "./activity.service";
@@ -33,7 +33,6 @@ export interface CreateOrderDTO {
   };
 }
 
-// Function to create an order
 export const createOrder = async (
   orderData: CreateOrderDTO,
   createdBy: number
@@ -41,6 +40,7 @@ export const createOrder = async (
   try {
     const campaign = await Campaign.findByPk(orderData.campaign_id);
     if (!campaign) {
+      console.error("❌ Campaign not found:", orderData.campaign_id);
       throw new Error("Campaign not found");
     }
 
@@ -60,18 +60,24 @@ export const createOrder = async (
       assign_to_vendor: orderData.assign_to_vendor,
     });
 
-    // 🔔 Notify & Log
+    console.log("✅ Order created:", order.id);
+
     await sendNotification(createdBy, `New order created for campaign "${campaign.campaignName}"`);
     await logActivity(createdBy, "Order Created", `Order ID: ${order.id}`);
 
     // ✅ Email functionality
     const user = await User.findByPk(createdBy);
+    if (!user) {
+      console.warn("⚠️ User not found for ID:", createdBy);
+    } else {
+      console.log("👤 Email check for user:", user.email, "Role:", user.userrole);
 
-    if (user) {
       const canSendEmail = await checkEmailPermission("order:create", user.userrole || "client");
+      console.log("📩 Email permission check:", canSendEmail);
 
       if (canSendEmail) {
         const smtpConfig = await getSmtpConfig(createdBy);
+        console.log("📨 SMTP config loaded:", smtpConfig);
 
         const { subject, body } = await getCompiledTemplate("order:create", {
           agent: order.agent,
@@ -82,6 +88,9 @@ export const createOrder = async (
           user: `${user.firstname} ${user.lastname}`,
         });
 
+        console.log("✉️ Compiled Email Subject:", subject);
+        console.log("📄 Compiled Email Body:", body);
+
         await emailQueue.add("order:create", {
           to: user.email,
           subject,
@@ -89,6 +98,10 @@ export const createOrder = async (
           smtpConfig,
           serviceName: "order:create",
         });
+
+        console.log("✅ Email queued to:", user.email);
+      } else {
+        console.log("❌ Email not allowed for role:", user.userrole);
       }
     }
 
@@ -98,6 +111,7 @@ export const createOrder = async (
 
     return orderWithCampaign?.toJSON();
   } catch (error: any) {
+    console.error("❌ Error in createOrder:", error.message || error);
     throw new Error(error.message || "Failed to create order");
   }
 };

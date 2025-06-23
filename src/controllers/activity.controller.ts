@@ -30,7 +30,7 @@ export const getActivitiesByUserId = async (req: Request, res: Response):Promise
     res.status(500).json({ error: "Failed to fetch activity logs for user." });
   }
 };
-
+0
 export const deleteActivityById = async (req: Request, res: Response):Promise<any> => {
     const { id } = req.params;
   

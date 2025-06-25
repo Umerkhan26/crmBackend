@@ -62,17 +62,32 @@ export const createOrder = async (
 
     console.log("✅ Order created:", order.id);
 
-    await sendNotification(createdBy, `New order created for campaign "${campaign.campaignName}"`);
-    await logActivity(createdBy, "Order Created", `Order ID: ${order.id}`);
+    await sendNotification(
+      createdBy,
+      `New order created for campaign "${campaign.campaignName}"`
+    );
+    await logActivity(
+      createdBy,
+      "Order Created",
+      `Order Created With ID: ${order.id}`
+    );
 
     // ✅ Email functionality
     const user = await User.findByPk(createdBy);
     if (!user) {
       console.warn("⚠️ User not found for ID:", createdBy);
     } else {
-      console.log("👤 Email check for user:", user.email, "Role:", user.userrole);
+      console.log(
+        "👤 Email check for user:",
+        user.email,
+        "Role:",
+        user.userrole
+      );
 
-      const canSendEmail = await checkEmailPermission("order:create", user.userrole || "client");
+      const canSendEmail = await checkEmailPermission(
+        "order:create",
+        user.userrole || "client"
+      );
       console.log("📩 Email permission check:", canSendEmail);
 
       if (canSendEmail) {
@@ -116,12 +131,9 @@ export const createOrder = async (
   }
 };
 
-
-
-
 export const getOrderById = async (
   id: number
-): Promise<OrderAttributes & { campaign?: any } | null> => {
+): Promise<(OrderAttributes & { campaign?: any }) | null> => {
   try {
     const order = await Order.findByPk(id, {
       include: [
@@ -162,7 +174,11 @@ export const updateOrderById = async (
 
     // 🔔 Notify and 📝 Log
     await sendNotification(updatedBy, `Order ID ${id} updated.`);
-    await logActivity(updatedBy, "Order Updated", `Order ID: ${id}`);
+    await logActivity(
+      updatedBy,
+      "Order Updated",
+      `Order Updated With ID: ${id}`
+    );
 
     return order.toJSON() as OrderAttributes;
   } catch (error: any) {
@@ -170,9 +186,11 @@ export const updateOrderById = async (
   }
 };
 
-
 // Function to delete an order by ID
-export const deleteOrderById = async (id: number, deletedBy: number): Promise<boolean> => {
+export const deleteOrderById = async (
+  id: number,
+  deletedBy: number
+): Promise<boolean> => {
   try {
     const order = await Order.findByPk(id);
     if (!order) {
@@ -183,14 +201,17 @@ export const deleteOrderById = async (id: number, deletedBy: number): Promise<bo
 
     // 🔔 Notify and 📝 Log
     await sendNotification(deletedBy, `Order ID ${id} has been deleted.`);
-    await logActivity(deletedBy, "Order Deleted", `Order ID: ${id}`);
+    await logActivity(
+      deletedBy,
+      "Order Deleted",
+      `Order Deleted With ID: ${id}`
+    );
 
     return true;
   } catch (error: any) {
     throw new Error(error.message || "Failed to delete order");
   }
 };
-
 
 export const getAllOrders = async (
   page: number = 1,
@@ -239,7 +260,10 @@ export const getAllOrders = async (
     const rowsWithRemainingLeads = result.rows.map((order) => {
       const orderJson = order.toJSON() as OrderAttributes & { campaign?: any };
       const usedLeads = leadCountMap[order.id] || 0;
-      const remainingLeads = Math.max(0, (orderJson.lead_requested || 0) - usedLeads);
+      const remainingLeads = Math.max(
+        0,
+        (orderJson.lead_requested || 0) - usedLeads
+      );
 
       return {
         ...orderJson,
@@ -271,7 +295,10 @@ export const setOrderBlockStatus = async (
     await order.update({ is_blocked: blockStatus });
 
     // 🔔 Notify and 📝 Log
-    await sendNotification(userId, `Order ID ${id} has been ${blockStatus ? "blocked" : "unblocked"}.`);
+    await sendNotification(
+      userId,
+      `Order ID ${id} has been ${blockStatus ? "blocked" : "unblocked"}.`
+    );
     await logActivity(userId, "Order Block Status Changed", `Order ID: ${id}`);
 
     return order.toJSON() as OrderAttributes;

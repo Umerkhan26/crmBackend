@@ -12,8 +12,9 @@ export const importClientLeadsFromFile = async (fileBuffer: Buffer, createdBy: n
     try {
       const lead = mapClientLeadRow(row);
 
-      if (!lead.order_id || !lead.campaign_id || !lead.leadData) {
-        throw new Error("Missing required fields");
+      // ✅ Only require leadData, not order_id or campaign_id
+      if (!lead.leadData || typeof lead.leadData !== "object") {
+        throw new Error("Missing or invalid 'Lead Data'");
       }
 
       validLeads.push({

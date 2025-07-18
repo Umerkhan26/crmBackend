@@ -56,8 +56,9 @@ export const getAllCampaigns = async (
   try {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
+    const search = (req.query.search as string) || "";
 
-    const campaignsResult = await CampaignService.getAllCampaigns({ page, limit });
+    const campaignsResult = await CampaignService.getAllCampaigns({ page, limit, search });
 
     if (!campaignsResult || campaignsResult.data.length === 0) {
       return res.status(404).json({ message: "No campaigns found" });

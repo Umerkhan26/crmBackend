@@ -2,6 +2,7 @@ import Role from "../models/role.model";
 import Permission from "../models/permission.model";
 import RolePermission from "../models/rolePermission.model";
 import { getPagination, getPagingData } from "../utils/paginate";
+import { buildSearchFilter } from "../utils/filterQuery";
 
 // Service to create a role and associate permissions
 export const createRole = async (roleData: {
@@ -77,15 +78,19 @@ export const createRole = async (roleData: {
 interface PaginationParams {
   page?: number;
   limit?: number;
+  search?: string;
 }
-
 export const getAllRolesWithPermissions = async ({
   page = 1,
   limit = 10,
+  search = "",
 }: PaginationParams) => {
   const { offset } = getPagination({ page, limit });
 
+  const whereClause = buildSearchFilter(search, ["name"]); // ✅ search by role name
+
   const result = await Role.findAndCountAll({
+    where: whereClause,
     offset,
     limit,
     include: [

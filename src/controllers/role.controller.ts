@@ -20,11 +20,11 @@ export const createRoleController = async (
 
 export const getRolesController = async (req: Request, res: Response): Promise<any> => {
   try {
-    // Extract page and limit from query params and convert to number
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
+    const search = (req.query.search as string) || ""; // ✅ added search
 
-    const paginatedRoles = await getAllRolesWithPermissions({ page, limit });
+    const paginatedRoles = await getAllRolesWithPermissions({ page, limit, search });
 
     return res.status(200).json({
       success: true,
@@ -39,6 +39,7 @@ export const getRolesController = async (req: Request, res: Response): Promise<a
     });
   }
 };
+
 
 // export const updateRolePermissionsController = async (req: Request, res: Response):Promise<any> => {
 //   try {

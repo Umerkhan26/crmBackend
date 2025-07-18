@@ -3,6 +3,7 @@ import {
   CampaignAttributes,
   CampaignCreationAttributes,
 } from "../models/campaign.model";
+import { buildSearchFilter } from "../utils/filterQuery";
 import { getPagination, getPagingData } from "../utils/paginate";
 import { logActivity } from "./activity.service";
 import { sendNotification } from "./notification.service";
@@ -48,11 +49,19 @@ export const createCampaign = async (
 export const getAllCampaigns = async ({
   page = 1,
   limit = 10,
-}: PaginationParams) => {
+  search = "",
+}: {
+  page: number;
+  limit: number;
+  search?: string;
+}) => {
   try {
     const { offset, limit: pageLimit } = getPagination({ page, limit });
 
+    const searchFilter = buildSearchFilter(search, ["campaignName"]);
+
     const result = await Campaign.findAndCountAll({
+      where: searchFilter,
       offset,
       limit: pageLimit,
     });

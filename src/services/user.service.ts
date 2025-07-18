@@ -10,6 +10,7 @@ import { getSmtpConfig } from "../utils/getSmtpConfig";
 import { checkEmailPermission } from "./email.service";
 import { getCompiledTemplate } from "./template.service";
 import { emailQueue } from "../queue/emailQueue"; // or wherever your queue is defined
+import { buildSearchFilter } from "../utils/filterQuery";
 
 interface PaginationParams {
   page?: number;
@@ -165,10 +166,19 @@ export const getUserById = async (userId: number): Promise<any> => {
 };
 
 
-export const getAllUsers = async ({ page = 1, limit = 10 }: PaginationParams): Promise<any> => {
+// services/user.service.ts
+
+export const getAllUsers = async ({
+  page = 1,
+  limit = 10,
+  search = "",
+}: PaginationParams & { search?: string }): Promise<any> => {
   const { offset, limit: pageLimit } = getPagination({ page, limit });
 
+  const whereClause = buildSearchFilter(search, ["firstname", "lastname", "email"]);
+
   const data = await User.findAndCountAll({
+    where: whereClause,
     offset,
     limit: pageLimit,
     include: [

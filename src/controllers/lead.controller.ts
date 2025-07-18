@@ -22,17 +22,23 @@ export const getAllLeads = async (req: Request, res: Response): Promise<any> => 
   try {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
+    const search = req.query.search as string;
 
-    const leads = await LeadService.getAllLeads({ page, limit });
+    const filters: any = {};
+    if (req.query.status) filters.status = req.query.status;
+    if (req.query.campaign_id) filters.campaign_id = Number(req.query.campaign_id);
+
+    const leads = await LeadService.getAllLeads({ page, limit, search, filters });
 
     return res.status(200).json({
       message: "Leads fetched successfully",
-      ...leads, // includes totalItems, data, totalPages, currentPage
+      ...leads,
     });
   } catch (error: any) {
     return res.status(500).json({ message: error.message });
   }
 };
+
 
 // Get Leads by Campaign
 export const getLeadsByCampaign = async (req: Request, res: Response): Promise<any> => {

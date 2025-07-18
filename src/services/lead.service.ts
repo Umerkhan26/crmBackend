@@ -2,6 +2,7 @@ import Lead, {
   LeadAttributes,
   LeadCreationAttributes,
 } from "../models/lead.model";
+import { buildSearchFilter } from "../utils/filterQuery";
 import { getPagination, getPagingData } from "../utils/paginate";
 import { logActivity } from "./activity.service";
 import { sendNotification } from "./notification.service";
@@ -10,7 +11,10 @@ interface PaginationParams {
   page?: number;
   limit?: number;
 }
-
+interface LeadQueryParams extends PaginationParams {
+  filters?: Record<string, any>;
+  search?: string;
+}
 // Create Lead
 export const createLead = async (
   data: LeadCreationAttributes,
@@ -34,13 +38,27 @@ export const createLead = async (
 export const getAllLeads = async ({
   page = 1,
   limit = 10,
-}: PaginationParams) => {
+  filters = {},
+  search = "",
+}: LeadQueryParams) => {
   try {
     const { offset, limit: pageLimit } = getPagination({ page, limit });
+
+    // Use fields that are searchable for leads
+    const searchableFields = ["full_name", "email", "phone", "source"];
+
+    const searchFilter = buildSearchFilter(search, searchableFields);
+
+    const whereCondition = {
+      ...filters,
+      ...searchFilter,
+    };
 
     const data = await Lead.findAndCountAll({
       offset,
       limit: pageLimit,
+      where: whereCondition,
+      order: [["created_at", "DESC"]],
     });
 
     return getPagingData(data, page, pageLimit);

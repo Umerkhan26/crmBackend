@@ -11,6 +11,7 @@ import { getCompiledTemplate } from "./template.service";
 import { emailQueue } from "../queue/emailQueue";
 import { getSmtpConfig } from "../utils/getSmtpConfig";
 import User from "../models/user.model";
+import { buildSearchFilter } from "../utils/filterQuery";
 
 export interface CreateOrderDTO {
   agent: string;
@@ -63,7 +64,7 @@ export const createOrder = async (
     console.log("✅ Order created:", order.id);
 
     await sendNotification(
-      createdBy,
+      createdBy,                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      
       `New order created for campaign "${campaign.campaignName}"`
     );
     await logActivity(
@@ -215,13 +216,18 @@ export const deleteOrderById = async (
 
 export const getAllOrders = async (
   page: number = 1,
-  limit: number = 10
+  limit: number = 10,
+  search: string = ""
 ): Promise<ReturnType<typeof getPagingData>> => {
   try {
     const { offset, limit: pageLimit } = getPagination({ page, limit });
 
-    // Fetch orders
+    const searchFilter = buildSearchFilter(search, ["order_ref", "status"]); // Add searchable fields from Order table
+
     const result = await Order.findAndCountAll({
+      where: {
+        ...searchFilter,
+      },
       offset,
       limit: pageLimit,
       include: [
@@ -235,7 +241,6 @@ export const getAllOrders = async (
 
     const orderIds = result.rows.map((order) => order.id);
 
-    // Fetch lead counts grouped by order_id
     const leadCounts = await ClientLead.findAll({
       attributes: [
         "order_id",
@@ -248,15 +253,13 @@ export const getAllOrders = async (
       raw: true,
     });
 
-    // Convert to map
     const leadCountMap = leadCounts.reduce((acc, curr) => {
       const orderId = curr.order_id as number;
-      const leadCount = parseInt((curr as any).leadCount); // ✅ Fix 2: Cast to any
+      const leadCount = parseInt((curr as any).leadCount);
       acc[orderId] = leadCount;
       return acc;
     }, {} as Record<number, number>);
 
-    // Append remainingLeads to each order
     const rowsWithRemainingLeads = result.rows.map((order) => {
       const orderJson = order.toJSON() as OrderAttributes & { campaign?: any };
       const usedLeads = leadCountMap[order.id] || 0;
@@ -280,6 +283,7 @@ export const getAllOrders = async (
     throw new Error(error.message || "Failed to fetch paginated orders");
   }
 };
+
 
 export const setOrderBlockStatus = async (
   id: number,

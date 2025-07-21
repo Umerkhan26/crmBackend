@@ -58,7 +58,7 @@ export const getAllLeads = async ({
       offset,
       limit: pageLimit,
       where: whereCondition,
-      order: [["created_at", "DESC"]],
+      order: [["createdAt", "DESC"]],
     });
 
     return getPagingData(data, page, pageLimit);
@@ -107,7 +107,10 @@ export const updateLead = async (
 };
 
 // Delete Lead
-export const deleteLead = async (id: number, userId?: number): Promise<void> => {
+export const deleteLead = async (
+  id: number,
+  userId?: number
+): Promise<void> => {
   try {
     const lead = await Lead.findByPk(id);
     if (!lead) {

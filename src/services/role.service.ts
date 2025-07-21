@@ -87,9 +87,13 @@ export const getAllRolesWithPermissions = async ({
 }: PaginationParams) => {
   const { offset } = getPagination({ page, limit });
 
-  const whereClause = buildSearchFilter(search, ["name"]); // ✅ search by role name
+  const whereClause = buildSearchFilter(search, ["name"]);
 
-  const result = await Role.findAndCountAll({
+  // Count roles based only on name (not affected by permission joins)
+  const totalItems = await Role.count({ where: whereClause });
+
+  // Fetch paginated roles with permissions
+  const data = await Role.findAll({
     where: whereClause,
     offset,
     limit,
@@ -101,9 +105,15 @@ export const getAllRolesWithPermissions = async ({
     ],
   });
 
-  return getPagingData(result, page, limit);
-};
+  const totalPages = Math.ceil(totalItems / limit);
 
+  return {
+    totalItems,
+    totalPages,
+    currentPage: page,
+    data,
+  };
+};
 
 export const updateRolePermissions = async (
   roleId: number,

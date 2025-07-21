@@ -18,7 +18,10 @@ export const createLead = async (req: Request, res: Response): Promise<any> => {
 };
 
 // Get All Leads
-export const getAllLeads = async (req: Request, res: Response): Promise<any> => {
+export const getAllLeads = async (
+  req: Request,
+  res: Response
+): Promise<any> => {
   try {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
@@ -26,28 +29,39 @@ export const getAllLeads = async (req: Request, res: Response): Promise<any> => 
 
     const filters: any = {};
     if (req.query.status) filters.status = req.query.status;
-    if (req.query.campaign_id) filters.campaign_id = Number(req.query.campaign_id);
+    if (req.query.campaign_id)
+      filters.campaign_id = Number(req.query.campaign_id);
 
-    const leads = await LeadService.getAllLeads({ page, limit, search, filters });
+    const leads = await LeadService.getAllLeads({
+      page,
+      limit,
+      search,
+      filters,
+    });
 
     return res.status(200).json({
       message: "Leads fetched successfully",
       ...leads,
     });
   } catch (error: any) {
+    console.error("Error in getAllLeads:", error);
     return res.status(500).json({ message: error.message });
   }
 };
 
-
 // Get Leads by Campaign
-export const getLeadsByCampaign = async (req: Request, res: Response): Promise<any> => {
+export const getLeadsByCampaign = async (
+  req: Request,
+  res: Response
+): Promise<any> => {
   try {
     const { campaignName } = req.params;
     const leads = await LeadService.getLeadsByCampaign(campaignName);
 
     if (leads.length === 0) {
-      return res.status(404).json({ message: "No leads found for this campaign" });
+      return res
+        .status(404)
+        .json({ message: "No leads found for this campaign" });
     }
 
     return res.status(200).json(leads);
@@ -67,7 +81,9 @@ export const updateLead = async (req: Request, res: Response): Promise<any> => {
     }
 
     const updatedLead = await LeadService.updateLead(leadId, updatedData);
-    return res.status(200).json({ message: "Lead updated successfully", lead: updatedLead });
+    return res
+      .status(200)
+      .json({ message: "Lead updated successfully", lead: updatedLead });
   } catch (error: any) {
     return res.status(500).json({ message: error.message });
   }

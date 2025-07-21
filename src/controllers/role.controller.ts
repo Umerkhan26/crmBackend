@@ -18,13 +18,20 @@ export const createRoleController = async (
   }
 };
 
-export const getRolesController = async (req: Request, res: Response): Promise<any> => {
+export const getRolesController = async (
+  req: Request,
+  res: Response
+): Promise<any> => {
   try {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
     const search = (req.query.search as string) || ""; // ✅ added search
 
-    const paginatedRoles = await getAllRolesWithPermissions({ page, limit, search });
+    const paginatedRoles = await getAllRolesWithPermissions({
+      page,
+      limit,
+      search,
+    });
 
     return res.status(200).json({
       success: true,
@@ -39,19 +46,6 @@ export const getRolesController = async (req: Request, res: Response): Promise<a
     });
   }
 };
-
-
-// export const updateRolePermissionsController = async (req: Request, res: Response):Promise<any> => {
-//   try {
-//     const roleId = parseInt(req.params.id);
-//     const permissions = req.body.permissions;  // array of permission IDs
-
-//     const updated = await updateRolePermissions(roleId, permissions);
-//     return res.status(200).json({ message: "Role permissions updated", roles: updated });
-//   } catch (error: any) {
-//     return res.status(500).json({ message: error.message });
-//   }
-// };
 
 // controllers/role.controller.ts
 export const updateRolePermissionsController = async (

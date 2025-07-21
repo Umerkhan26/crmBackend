@@ -16,7 +16,7 @@ router.post(
 
 // Get All Leads
 router.get(
-  "/leads",
+  "/getleads",
   verifyToken,
   checkPermission(PERMISSIONS.LEAD_GET_ALL),
   LeadController.getAllLeads

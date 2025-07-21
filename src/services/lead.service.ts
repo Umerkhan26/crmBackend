@@ -45,7 +45,7 @@ export const getAllLeads = async ({
     const { offset, limit: pageLimit } = getPagination({ page, limit });
 
     // Use fields that are searchable for leads
-    const searchableFields = ["leadData", "email", "phone", "source"];
+    const searchableFields = ["leadData"];
 
     const searchFilter = buildSearchFilter(search, searchableFields);
 

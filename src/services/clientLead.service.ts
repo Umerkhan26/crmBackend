@@ -43,7 +43,6 @@ export const getClientLeadById = async (id: number) => {
   return lead;
 };
 
-// ✅ Get all leads with pagination
 export const getAllClientLeads = async (page = 1, limit = 10) => {
   const { offset } = getPagination({ page, limit });
 

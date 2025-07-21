@@ -171,12 +171,16 @@ export const deleteOrderByIdController = async (req: CustomRequest, res: Respons
 };
 
 // Get All Orders
-export const getAllOrdersController = async (req: CustomRequest, res: Response): Promise<any> => {
+export const getAllOrdersController = async (
+  req: CustomRequest,
+  res: Response
+): Promise<any> => {
   const page = parseInt(req.query.page as string) || 1;
   const limit = parseInt(req.query.limit as string) || 10;
+  const search = (req.query.search as string) || ""; // ✅ Include search param
 
   try {
-    const orders = await getAllOrders(page, limit);
+    const orders = await getAllOrders(page, limit, search); // ✅ Pass search to service
     return res.status(200).json({
       success: true,
       ...orders, // data, totalPages, totalItems, currentPage, etc.

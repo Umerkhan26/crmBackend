@@ -18,19 +18,16 @@ export const createLead = async (req: Request, res: Response): Promise<any> => {
 };
 
 // Get All Leads
-export const getAllLeads = async (
-  req: Request,
-  res: Response
-): Promise<any> => {
+export const getAllLeads = async (req: Request, res: Response): Promise<any> => {
   try {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
-    const search = req.query.search as string;
+    const search = (req.query.search as string) || ""; // Ensure default empty string
 
+    // Collect filters (extendable for more keys)
     const filters: any = {};
     if (req.query.status) filters.status = req.query.status;
-    if (req.query.campaign_id)
-      filters.campaign_id = Number(req.query.campaign_id);
+    if (req.query.campaign_id) filters.campaign_id = Number(req.query.campaign_id);
 
     const leads = await LeadService.getAllLeads({
       page,
@@ -40,12 +37,16 @@ export const getAllLeads = async (
     });
 
     return res.status(200).json({
+      success: true,
       message: "Leads fetched successfully",
       ...leads,
     });
   } catch (error: any) {
     console.error("Error in getAllLeads:", error);
-    return res.status(500).json({ message: error.message });
+    return res.status(500).json({
+      success: false,
+      message: error.message || "An error occurred while fetching leads",
+    });
   }
 };
 

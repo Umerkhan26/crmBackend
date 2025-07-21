@@ -1,3 +1,4 @@
+import { Op, Sequelize } from "sequelize";
 import Lead, {
   LeadAttributes,
   LeadCreationAttributes,
@@ -44,20 +45,21 @@ export const getAllLeads = async ({
   try {
     const { offset, limit: pageLimit } = getPagination({ page, limit });
 
-    // Use fields that are searchable for leads
-    const searchableFields = ["leadData"];
-
-    const searchFilter = buildSearchFilter(search, searchableFields);
-
     const whereCondition = {
       ...filters,
-      ...searchFilter,
     };
+
+    const searchCondition = search
+      ? Sequelize.literal(`lead_data->>'name' ILIKE '%${search}%'`)
+      : undefined;
 
     const data = await Lead.findAndCountAll({
       offset,
       limit: pageLimit,
-      where: whereCondition,
+      where: {
+        ...whereCondition,
+        ...(searchCondition && { [Op.and]: searchCondition }),
+      },
       order: [["createdAt", "DESC"]],
     });
 
@@ -66,7 +68,6 @@ export const getAllLeads = async ({
     throw new Error(`Error fetching leads: ${error.message}`);
   }
 };
-
 // Get Leads by Campaign
 export const getLeadsByCampaign = async (
   campaignName: string

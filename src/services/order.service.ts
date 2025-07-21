@@ -222,7 +222,7 @@ export const getAllOrders = async (
   try {
     const { offset, limit: pageLimit } = getPagination({ page, limit });
 
-    const searchFilter = buildSearchFilter(search, ["order_ref", "status"]); // Add searchable fields from Order table
+    const searchFilter = buildSearchFilter(search, ["agent"]); // Add searchable fields from Order table
 
     const result = await Order.findAndCountAll({
       where: {

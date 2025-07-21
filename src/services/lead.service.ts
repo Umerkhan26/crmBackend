@@ -36,38 +36,90 @@ export const createLead = async (
 };
 
 // Get All Leads
+// export const getAllLeads = async ({
+//   page = 1,
+//   limit = 10,
+//   filters = {},
+//   search = "",
+// }: LeadQueryParams) => {
+//   try {
+//     const { offset, limit: pageLimit } = getPagination({ page, limit });
+
+//     const whereCondition = {
+//       ...filters,
+//     };
+
+//     const searchCondition = search
+//       ? Sequelize.literal(`lead_data->>'name' ILIKE '%${search}%'`)
+//       : undefined;
+
+//     const data = await Lead.findAndCountAll({
+//       offset,
+//       limit: pageLimit,
+//       where: {
+//         ...whereCondition,
+//         ...(searchCondition && { [Op.and]: searchCondition }),
+//       },
+//       order: [["createdAt", "DESC"]],
+//     });
+
+//     return getPagingData(data, page, pageLimit);
+//   } catch (error: any) {
+//     throw new Error(`Error fetching leads: ${error.message}`);
+//   }
+// };
+
 export const getAllLeads = async ({
   page = 1,
   limit = 10,
   filters = {},
   search = "",
-}: LeadQueryParams) => {
+}: any) => {
   try {
     const { offset, limit: pageLimit } = getPagination({ page, limit });
 
-    const whereCondition = {
-      ...filters,
-    };
+    const whereCondition: any = { ...filters };
 
+    // Build search condition
     const searchCondition = search
-      ? Sequelize.literal(`lead_data->>'name' ILIKE '%${search}%'`)
-      : undefined;
+      ? {
+          [Op.or]: [
+            Sequelize.literal(
+              `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.first_name')) LIKE '%${search}%'`
+            ),
+            Sequelize.literal(
+              `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.last_name')) LIKE '%${search}%'`
+            ),
+            Sequelize.literal(
+              `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.agent_name')) LIKE '%${search}%'`
+            ),
+            Sequelize.literal(
+              `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.phone_number')) LIKE '%${search}%'`
+            ),
+            Sequelize.literal(
+              `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.state')) LIKE '%${search}%'`
+            ),
+          ],
+        }
+      : {};
 
     const data = await Lead.findAndCountAll({
       offset,
       limit: pageLimit,
       where: {
         ...whereCondition,
-        ...(searchCondition && { [Op.and]: searchCondition }),
+        ...(search ? { [Op.and]: searchCondition } : {}),
       },
       order: [["createdAt", "DESC"]],
     });
 
     return getPagingData(data, page, pageLimit);
   } catch (error: any) {
+    console.error("Error in getAllLeads:", error.stack);
     throw new Error(`Error fetching leads: ${error.message}`);
   }
 };
+
 // Get Leads by Campaign
 export const getLeadsByCampaign = async (
   campaignName: string

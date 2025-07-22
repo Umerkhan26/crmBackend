@@ -202,6 +202,40 @@ export const deleteLead = async (
 
 
 
+// export const assignLeadToUser = async (
+//   leadId: number,
+//   userIdToAssign: number,
+//   assignedByUserId?: number
+// ): Promise<LeadAttributes> => {
+//   try {
+//     const lead = await Lead.findByPk(leadId);
+//     if (!lead) {
+//       throw new Error("Lead not found");
+//     }
+
+//     // Use the correct field: assigneeId
+//     await lead.update({ assigneeId: userIdToAssign });
+
+//     if (assignedByUserId) {
+//       await logActivity(
+//         assignedByUserId,
+//         "assign",
+//         `Lead ID ${leadId} assigned to user ID ${userIdToAssign}`
+//       );
+
+//       await sendNotification(
+//         userIdToAssign,
+//         `You have been assigned a new lead (ID: ${leadId})`
+//       );
+//     }
+
+//     return lead.get();
+//   } catch (error: any) {
+//     throw new Error(`Error assigning lead: ${error.message}`);
+//   }
+// };
+
+
 export const assignLeadToUser = async (
   leadId: number,
   userIdToAssign: number,
@@ -213,9 +247,15 @@ export const assignLeadToUser = async (
       throw new Error("Lead not found");
     }
 
-    // Use the correct field: assigneeId
+    // ✅ Prevent reassigning if already assigned to the same user
+    if (lead.assigneeId === userIdToAssign) {
+      throw new Error(`Lead ID ${leadId} is already assigned to user ID ${userIdToAssign}`);
+    }
+
+    // ✅ Proceed with assignment
     await lead.update({ assigneeId: userIdToAssign });
 
+    // ✅ Optional logging and notification
     if (assignedByUserId) {
       await logActivity(
         assignedByUserId,
@@ -242,7 +282,7 @@ export const getAllLeadsWithAssignee = async () => {
         {
           model: User,
           as: "assignee",
-          attributes: ["id", "username", "email"],
+          attributes: ["id", "firstname", "email"],
           required: true, // ensures only leads with an assignee are returned
         },
       ],
@@ -285,7 +325,7 @@ export const getUnassignedLeads = async () => {
       {
         model: User,
         as: "assignee",
-        attributes: ["id", "username", "email"],
+        attributes: ["id", "firstname ", "email"],
         required: false,
       },
     ],

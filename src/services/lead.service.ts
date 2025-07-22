@@ -126,7 +126,7 @@ export const getAllLeads = async ({
         {
           model: User,
           as: "assignee",
-          attributes: ["id", "name", "email", "role"], // Add other fields if needed
+          attributes: ["id", "firstname", "email", "role"], // Add other fields if needed
         },
       ],
       order: [["createdAt", "DESC"]],
@@ -235,26 +235,25 @@ export const assignLeadToUser = async (
   }
 };
 
-export const getLeadWithAssignee = async (leadId: number) => {  
-  
+export const getAllLeadsWithAssignee = async () => {
   try {
-    const lead = await Lead.findByPk(leadId, {
+    const leads = await Lead.findAll({
       include: [
         {
           model: User,
-          as: "assignee", // must match the alias from association
-          attributes: ["id", "username", "email"], // select only necessary fields
+          as: "assignee",
+          attributes: ["id", "username", "email"],
+          required: true, // ensures only leads with an assignee are returned
         },
       ],
     });
 
-    if (!lead) throw new Error("Lead not found");
-
-    return lead;
+    return leads;
   } catch (error: any) {
-    throw new Error(`Error fetching lead with assignee: ${error.message}`);
+    throw new Error(`Error fetching leads with assignees: ${error.message}`);
   }
 };
+
 
 export const getAssignmentCounts = async (leadId: number) => {
   // Fetch the lead to get the assigned user
@@ -273,20 +272,25 @@ export const getAssignmentCounts = async (leadId: number) => {
   };
 };
 
-// Get all users not assigned to the given lead
-export const getUnassignedUsersToLead = async (leadId: number) => {
-  const lead = await Lead.findByPk(leadId);
+// Get all leads with no assignee
 
-  const assignedUserId = lead?.assigneeId;
-
-  const unassignedUsers = await User.findAll({
+export const getUnassignedLeads = async () => {
+  const unassignedLeads = await Lead.findAll({
     where: {
-      id: {
-        [Op.notIn]: assignedUserId ? [assignedUserId] : [],
+      assigneeId: {
+        [Op.is]: null,
       },
-    },
-    attributes: ["id", "username", "email", "role"],
+    } as any, // 👈 type assertion to bypass TS conflict
+    include: [
+      {
+        model: User,
+        as: "assignee",
+        attributes: ["id", "username", "email"],
+        required: false,
+      },
+    ],
   });
 
-  return unassignedUsers;
+  return unassignedLeads;
 };
+

@@ -164,12 +164,10 @@ export const assignUserToLead = async (req: Request, res: Response): Promise<any
   }
 };
 
-
-export const getLeadWithAssignee = async (req: Request, res: Response) => {
+export const getAllLeadsWithAssignee = async (req: Request, res: Response) => {
   try {
-    const leadId = parseInt(req.params.id, 10);
-    const lead = await LeadService.getLeadWithAssignee(leadId);
-    res.status(200).json({ success: true, data: lead });
+    const leads = await LeadService.getAllLeadsWithAssignee();
+    res.status(200).json({ success: true, data: leads });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -185,12 +183,11 @@ export const getAssignmentStats = async (req: Request, res: Response) => {
   }
 };
 
-export const getUnassignedUsers = async (req: Request, res: Response) => {
+export const getUnassignedLeads = async (req: Request, res: Response) => {
   try {
-    const { leadId } = req.params;
-    const users = await LeadService.getUnassignedUsersToLead(Number(leadId));
-    res.status(200).json(users);
-  } catch (error) {
-    res.status(500).json({ error: "Failed to fetch unassigned users" });
+    const leads = await LeadService.getUnassignedLeads();
+    res.status(200).json({ success: true, data: leads });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
   }
 };

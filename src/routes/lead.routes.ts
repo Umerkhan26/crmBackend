@@ -62,15 +62,15 @@ router.post(
 
 // ✅ Get assigned users to a lead
 router.get(
-  "/:id/with-assignee",
+  "/getLeadsWithAssignee",
   verifyToken,
   checkPermission(PERMISSIONS.LEAD_VIEW_ASSIGNED_USERS),
-  LeadController.getLeadWithAssignee
+  LeadController.getAllLeadsWithAssignee
 );
 
 // ✅ Get assignment stats (assigned & unassigned counts)
 router.get(
-  "/:leadId/assignment-stats",
+  "/getAllCounts:leadId/assignment-stats",
   verifyToken,
   checkPermission(PERMISSIONS.LEAD_VIEW_ASSIGNMENT_STATS),
   LeadController.getAssignmentStats
@@ -78,10 +78,10 @@ router.get(
 
 // ✅ Get all unassigned users for a lead
 router.get(
-  "/:leadId/unassigned-users",
+  "/getLeadsWithUnassigned",
   verifyToken,
   checkPermission(PERMISSIONS.LEAD_VIEW_UNASSIGNED_USERS),
-  LeadController.getUnassignedUsers
+  LeadController.getUnassignedLeads
 );
 
 export default router;

@@ -37,6 +37,60 @@ export const createLead = async (
 };
 
 
+// export const getAllLeads = async ({
+//   page = 1,
+//   limit = 10,
+//   filters = {},
+//   search = "",
+// }: any) => {
+//   try {
+//     const { offset, limit: pageLimit } = getPagination({ page, limit });
+
+//     const whereCondition: any = { ...filters };
+
+//     // Build search condition
+//     const searchCondition = search
+//       ? {
+//           [Op.or]: [
+//             Sequelize.literal(
+//               `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.first_name')) LIKE '%${search}%'`
+//             ),
+//             Sequelize.literal(
+//               `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.last_name')) LIKE '%${search}%'`
+//             ),
+//             Sequelize.literal(
+//               `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.agent_name')) LIKE '%${search}%'`
+//             ),
+//             Sequelize.literal(
+//               `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.phone_number')) LIKE '%${search}%'`
+//             ),
+//             Sequelize.literal(
+//               `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.state')) LIKE '%${search}%'`
+//             ),
+//           ],
+//         }
+//       : {};
+
+//     const data = await Lead.findAndCountAll({
+//       offset,
+//       limit: pageLimit,
+//       where: {
+//         ...whereCondition,
+//         ...(search ? { [Op.and]: searchCondition } : {}),
+//       },
+//       order: [["createdAt", "DESC"]],
+//     });
+
+//     return getPagingData(data, page, pageLimit);
+//   } catch (error: any) {
+//     console.error("Error in getAllLeads:", error.stack);
+//     throw new Error(`Error fetching leads: ${error.message}`);
+//   }
+// };
+
+// Get Leads by Campaign
+
+
 export const getAllLeads = async ({
   page = 1,
   limit = 10,
@@ -48,25 +102,15 @@ export const getAllLeads = async ({
 
     const whereCondition: any = { ...filters };
 
-    // Build search condition
+    // Search condition on leadData JSON fields
     const searchCondition = search
       ? {
           [Op.or]: [
-            Sequelize.literal(
-              `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.first_name')) LIKE '%${search}%'`
-            ),
-            Sequelize.literal(
-              `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.last_name')) LIKE '%${search}%'`
-            ),
-            Sequelize.literal(
-              `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.agent_name')) LIKE '%${search}%'`
-            ),
-            Sequelize.literal(
-              `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.phone_number')) LIKE '%${search}%'`
-            ),
-            Sequelize.literal(
-              `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.state')) LIKE '%${search}%'`
-            ),
+            Sequelize.literal(`JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.first_name')) LIKE '%${search}%'`),
+            Sequelize.literal(`JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.last_name')) LIKE '%${search}%'`),
+            Sequelize.literal(`JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.agent_name')) LIKE '%${search}%'`),
+            Sequelize.literal(`JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.phone_number')) LIKE '%${search}%'`),
+            Sequelize.literal(`JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.state')) LIKE '%${search}%'`),
           ],
         }
       : {};
@@ -78,6 +122,13 @@ export const getAllLeads = async ({
         ...whereCondition,
         ...(search ? { [Op.and]: searchCondition } : {}),
       },
+      include: [
+        {
+          model: User,
+          as: "assignee",
+          attributes: ["id", "name", "email", "role"], // Add other fields if needed
+        },
+      ],
       order: [["createdAt", "DESC"]],
     });
 
@@ -88,7 +139,7 @@ export const getAllLeads = async ({
   }
 };
 
-// Get Leads by Campaign
+
 export const getLeadsByCampaign = async (
   campaignName: string
 ): Promise<LeadAttributes[]> => {
@@ -184,7 +235,8 @@ export const assignLeadToUser = async (
   }
 };
 
-export const getLeadWithAssignee = async (leadId: number) => {
+export const getLeadWithAssignee = async (leadId: number) => {  
+  
   try {
     const lead = await Lead.findByPk(leadId, {
       include: [

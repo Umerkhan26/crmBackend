@@ -56,10 +56,5 @@ Lead.init(
   }
 );
 
-// Associations (optional but usually done in a separate associate function)
-// Lead.belongsTo(User, {
-//   foreignKey: "assigneeId",
-//   as: "assignee",
-// });
 
 export default Lead;

@@ -105,3 +105,58 @@ export const deleteLead = async (req: Request, res: Response): Promise<any> => {
     return res.status(500).json({ message: error.message });
   }
 };
+export const assignUserToLead = async (req: Request, res: Response): Promise<any> => {
+  try {
+    const leadId = parseInt(req.params.leadId, 10);
+    const userId = parseInt(req.body.userId, 10);
+    const assignedByUserId = req.user?.id; // assuming user info is set by verifyToken middleware
+
+    if (isNaN(leadId) || isNaN(userId)) {
+      return res.status(400).json({ message: "Invalid lead ID or user ID." });
+    }
+
+    const updatedLead = await LeadService.assignLeadToUser(leadId, userId, assignedByUserId);
+
+    return res.status(200).json({
+      success: true,
+      message: `User ID ${userId} has been assigned to lead ID ${leadId}.`,
+      lead: updatedLead,
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      message: error.message || "An error occurred while assigning user to lead.",
+    });
+  }
+};
+
+
+export const getLeadWithAssignee = async (req: Request, res: Response) => {
+  try {
+    const leadId = parseInt(req.params.id, 10);
+    const lead = await LeadService.getLeadWithAssignee(leadId);
+    res.status(200).json({ success: true, data: lead });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const getAssignmentStats = async (req: Request, res: Response) => {
+  try {
+    const { leadId } = req.params;
+    const stats = await LeadService.getAssignmentCounts(Number(leadId));
+    res.status(200).json(stats);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to get assignment stats" });
+  }
+};
+
+export const getUnassignedUsers = async (req: Request, res: Response) => {
+  try {
+    const { leadId } = req.params;
+    const users = await LeadService.getUnassignedUsersToLead(Number(leadId));
+    res.status(200).json(users);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to fetch unassigned users" });
+  }
+};

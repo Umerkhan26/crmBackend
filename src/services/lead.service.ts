@@ -7,6 +7,7 @@ import { buildSearchFilter } from "../utils/filterQuery";
 import { getPagination, getPagingData } from "../utils/paginate";
 import { logActivity } from "./activity.service";
 import { sendNotification } from "./notification.service";
+import User from "../models/user.model";
 
 interface PaginationParams {
   page?: number;
@@ -35,39 +36,6 @@ export const createLead = async (
   }
 };
 
-// Get All Leads
-// export const getAllLeads = async ({
-//   page = 1,
-//   limit = 10,
-//   filters = {},
-//   search = "",
-// }: LeadQueryParams) => {
-//   try {
-//     const { offset, limit: pageLimit } = getPagination({ page, limit });
-
-//     const whereCondition = {
-//       ...filters,
-//     };
-
-//     const searchCondition = search
-//       ? Sequelize.literal(`lead_data->>'name' ILIKE '%${search}%'`)
-//       : undefined;
-
-//     const data = await Lead.findAndCountAll({
-//       offset,
-//       limit: pageLimit,
-//       where: {
-//         ...whereCondition,
-//         ...(searchCondition && { [Op.and]: searchCondition }),
-//       },
-//       order: [["createdAt", "DESC"]],
-//     });
-
-//     return getPagingData(data, page, pageLimit);
-//   } catch (error: any) {
-//     throw new Error(`Error fetching leads: ${error.message}`);
-//   }
-// };
 
 export const getAllLeads = async ({
   page = 1,
@@ -179,4 +147,94 @@ export const deleteLead = async (
   } catch (error: any) {
     throw new Error(`Error deleting lead: ${error.message}`);
   }
+};
+
+
+
+export const assignLeadToUser = async (
+  leadId: number,
+  userIdToAssign: number,
+  assignedByUserId?: number
+): Promise<LeadAttributes> => {
+  try {
+    const lead = await Lead.findByPk(leadId);
+    if (!lead) {
+      throw new Error("Lead not found");
+    }
+
+    // Use the correct field: assigneeId
+    await lead.update({ assigneeId: userIdToAssign });
+
+    if (assignedByUserId) {
+      await logActivity(
+        assignedByUserId,
+        "assign",
+        `Lead ID ${leadId} assigned to user ID ${userIdToAssign}`
+      );
+
+      await sendNotification(
+        userIdToAssign,
+        `You have been assigned a new lead (ID: ${leadId})`
+      );
+    }
+
+    return lead.get();
+  } catch (error: any) {
+    throw new Error(`Error assigning lead: ${error.message}`);
+  }
+};
+
+export const getLeadWithAssignee = async (leadId: number) => {
+  try {
+    const lead = await Lead.findByPk(leadId, {
+      include: [
+        {
+          model: User,
+          as: "assignee", // must match the alias from association
+          attributes: ["id", "username", "email"], // select only necessary fields
+        },
+      ],
+    });
+
+    if (!lead) throw new Error("Lead not found");
+
+    return lead;
+  } catch (error: any) {
+    throw new Error(`Error fetching lead with assignee: ${error.message}`);
+  }
+};
+
+export const getAssignmentCounts = async (leadId: number) => {
+  // Fetch the lead to get the assigned user
+  const lead = await Lead.findByPk(leadId);
+
+  // Get all users
+  const totalUsers = await User.count();
+
+  // Count if the lead has a user assigned
+  const assignedCount = lead?.assigneeId ? 1 : 0;
+  const unassignedCount = totalUsers - assignedCount;
+
+  return {
+    assignedCount,
+    unassignedCount,
+  };
+};
+
+// Get all users not assigned to the given lead
+export const getUnassignedUsersToLead = async (leadId: number) => {
+  const lead = await Lead.findByPk(leadId);
+
+  const assignedUserId = lead?.assigneeId;
+
+  const unassignedUsers = await User.findAll({
+    where: {
+      id: {
+        [Op.notIn]: assignedUserId ? [assignedUserId] : [],
+      },
+    },
+    attributes: ["id", "username", "email", "role"],
+  });
+
+  return unassignedUsers;
 };

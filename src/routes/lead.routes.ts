@@ -46,4 +46,42 @@ router.delete(
   LeadController.deleteLead
 );
 
+
+router.post(
+  "/assign/:leadId",
+  verifyToken,
+  checkPermission(PERMISSIONS.LEAD_ASSIGN_USER),
+  LeadController.assignUserToLead
+);
+router.post(
+  "/assign/:leadId",
+  verifyToken,
+  checkPermission(PERMISSIONS.LEAD_ASSIGN_USER),
+  LeadController.assignUserToLead
+);
+
+// ✅ Get assigned users to a lead
+router.get(
+  "/:id/with-assignee",
+  verifyToken,
+  checkPermission(PERMISSIONS.LEAD_VIEW_ASSIGNED_USERS),
+  LeadController.getLeadWithAssignee
+);
+
+// ✅ Get assignment stats (assigned & unassigned counts)
+router.get(
+  "/:leadId/assignment-stats",
+  verifyToken,
+  checkPermission(PERMISSIONS.LEAD_VIEW_ASSIGNMENT_STATS),
+  LeadController.getAssignmentStats
+);
+
+// ✅ Get all unassigned users for a lead
+router.get(
+  "/:leadId/unassigned-users",
+  verifyToken,
+  checkPermission(PERMISSIONS.LEAD_VIEW_UNASSIGNED_USERS),
+  LeadController.getUnassignedUsers
+);
+
 export default router;

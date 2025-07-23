@@ -7,7 +7,7 @@ interface PermissionAttributes {
   name: string; // permission like "edit_campaign"
   resourceType?: string | null; // e.g., 'campaign', 'order'
   resourceId?: number | null;   // e.g., specific campaign ID
-  userId: number; // <-- ✅ Required
+  userId?: number; // <-- ✅ Required
 
 }
 

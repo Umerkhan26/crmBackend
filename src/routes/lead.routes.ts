@@ -69,12 +69,15 @@ router.get(
 );
 
 // ✅ Get assignment stats (assigned & unassigned counts)
+
+
 router.get(
-  "/getAllCounts:leadId/assignment-stats",
+  "/assignment-stats",
   verifyToken,
   checkPermission(PERMISSIONS.LEAD_VIEW_ASSIGNMENT_STATS),
   LeadController.getAssignmentStats
 );
+
 
 // ✅ Get all unassigned users for a lead
 router.get(

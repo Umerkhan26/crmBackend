@@ -43,6 +43,7 @@ export const createUser = async (
     created_at: new Date(),
     updated_at: new Date(),
     userImage: userData.userImage || null,
+
   };
 
   const user = await User.create(newUserData);

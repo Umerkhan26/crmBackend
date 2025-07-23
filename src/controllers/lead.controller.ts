@@ -175,8 +175,7 @@ export const getAllLeadsWithAssignee = async (req: Request, res: Response) => {
 
 export const getAssignmentStats = async (req: Request, res: Response) => {
   try {
-    const { leadId } = req.params;
-    const stats = await LeadService.getAssignmentCounts(Number(leadId));
+    const stats = await LeadService.getAssignmentCounts();
     res.status(200).json(stats);
   } catch (error) {
     res.status(500).json({ error: "Failed to get assignment stats" });

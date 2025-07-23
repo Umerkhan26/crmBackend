@@ -295,15 +295,20 @@ export const getAllLeadsWithAssignee = async () => {
 };
 
 
-export const getAssignmentCounts = async (leadId: number) => {
-  // Fetch the lead to get the assigned user
-  const lead = await Lead.findByPk(leadId);
-
-  // Get all users
+export const getAssignmentCounts = async () => {
+  // Count total users
   const totalUsers = await User.count();
 
-  // Count if the lead has a user assigned
-  const assignedCount = lead?.assigneeId ? 1 : 0;
+  // Count leads that have an assigneeId (i.e., assigned)
+  const assignedCount = await Lead.count({
+    where: {
+      assigneeId: {
+        [Op.ne]: null as unknown as number, // cast to satisfy TypeScript
+      },
+    },
+  });
+
+  // Count users not currently assigned to a lead
   const unassignedCount = totalUsers - assignedCount;
 
   return {
@@ -325,7 +330,7 @@ export const getUnassignedLeads = async () => {
       {
         model: User,
         as: "assignee",
-        attributes: ["id", "firstname ", "email"],
+        attributes: ["id", "firstname", "email"],
         required: false,
       },
     ],

@@ -11,6 +11,7 @@ import express from "express";
 import { verifyToken } from "../middleware/verifyToken.middleware";
 import { checkPermission } from "../middleware/checkPermission";
 import { PERMISSIONS } from "../constants/permissions";
+import { checkCampaignPermission } from "../middleware/checkCampaignPermission";
 
 const router = express.Router();
 // Create campaign
@@ -30,26 +31,26 @@ router.post(
   );
   
   // Get campaign by ID
-  router.get(
-    "/getCampaignById/:id",
-    verifyToken,
-    checkPermission(PERMISSIONS.CAMPAIGN_GET),
-    getCampaignById
-  );
-  
-  // Update campaign
-  router.put(
-    "/updateCampaignById/:id",
-    verifyToken,
-    checkPermission(PERMISSIONS.CAMPAIGN_UPDATE),
-    updateCampaign
-  );
-  
-  // Delete campaign
-  router.delete(
-    "/deleteCampaign/:id",
-    verifyToken,
-    checkPermission(PERMISSIONS.CAMPAIGN_DELETE),
-    deleteCampaign
-  );
+ router.get(
+  "/getCampaignById/:id",
+  verifyToken,
+  checkCampaignPermission("get"),
+  getCampaignById
+);
+
+// Update campaign by ID
+router.put(
+  "/updateCampaignById/:id",
+  verifyToken,
+  checkCampaignPermission("update"),
+  updateCampaign
+);
+
+// Delete campaign by ID
+router.delete(
+  "/deleteCampaign/:id",
+  verifyToken,
+  checkCampaignPermission("delete"),
+  deleteCampaign
+);
 export default router;

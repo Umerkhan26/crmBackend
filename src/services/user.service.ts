@@ -121,7 +121,6 @@ export const loginUser = async (userData: {
         include: [
           {
             model: Permission,
-            as: "permissions",
             attributes: ["id", "name", "resourceType", "resourceId"],
           },
         ],

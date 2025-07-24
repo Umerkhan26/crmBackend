@@ -15,7 +15,6 @@ import Permission from "../models/permission.model"; // <-- Add this at the top
   }
 
 
-
 export const createCampaign = async (
   data: CampaignCreationAttributes[],
   userId?: number
@@ -39,16 +38,33 @@ export const createCampaign = async (
 
     const campaign = created.get();
 
+    // ✅ Always create permissions (userId can be null)
+    const permissionsToCreate = [
+  {
+    name: "getCampaignById",
+    resourceType: "campaign",
+    resourceId: campaign.id,
+    ...(userId !== undefined && { userId }),
+  },
+  {
+    name: "updateCampaign",
+    resourceType: "campaign",
+    resourceId: campaign.id,
+    ...(userId !== undefined && { userId }),
+  },
+  {
+    name: "deleteCampaign",
+    resourceType: "campaign",
+    resourceId: campaign.id,
+    ...(userId !== undefined && { userId }),
+  },
+];
+
+
+    await Permission.bulkCreate(permissionsToCreate); // <- store all at once
+
+    // ✅ Only log activity and send notification if userId is available
     if (userId) {
-      // ✅ Multiple permissions for this campaign
-      const permissionsToCreate = [
-        { name: "getCampaignById", resourceType: "campaign", resourceId: campaign.id, userId },
-        { name: "updateCampaign", resourceType: "campaign", resourceId: campaign.id, userId },
-        { name: "deleteCampaign", resourceType: "campaign", resourceId: campaign.id, userId },
-      ];
-
-      await Permission.bulkCreate(permissionsToCreate); // <- store all at once
-
       await logActivity(userId, "Campaign Created", `Created campaign "${campaignName}"`);
       await sendNotification(userId, `You have successfully created the campaign "${campaignName}".`);
     }

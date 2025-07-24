@@ -126,7 +126,7 @@ export const getAllLeads = async ({
         {
           model: User,
           as: "assignee",
-          attributes: ["id", "firstname", "email", "role"], // Add other fields if needed
+          attributes: ["id", "firstname", "email"], // Add other fields if needed
         },
       ],
       order: [["createdAt", "DESC"]],

@@ -65,7 +65,7 @@ export const createUser = async (
 
     const { subject, body } = await getCompiledTemplate("user:create", {
       firstname: user.firstname || "",
-      lastname: user.lastname || "",
+      lastname: user.lastname || "", 
       email: user.email,
     });
 

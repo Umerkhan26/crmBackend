@@ -38,32 +38,33 @@ export const createCampaign = async (
 
     const campaign = created.get();
 
-    // ✅ Always create permissions (userId can be null)
+    // ✅ Set campaign-specific resourceType using campaign name
+    const resourceType = `campaign-${campaignName}`;
+
     const permissionsToCreate = [
-  {
-    name: "getCampaignById",
-    resourceType: "campaign",
-    resourceId: campaign.id,
-    ...(userId !== undefined && { userId }),
-  },
-  {
-    name: "updateCampaign",
-    resourceType: "campaign",
-    resourceId: campaign.id,
-    ...(userId !== undefined && { userId }),
-  },
-  {
-    name: "deleteCampaign",
-    resourceType: "campaign",
-    resourceId: campaign.id,
-    ...(userId !== undefined && { userId }),
-  },
-];
+      {
+        name: "getCampaignById",
+        resourceType,
+        resourceId: campaign.id,
+        ...(userId !== undefined && { userId }),
+      },
+      {
+        name: "updateCampaign",
+        resourceType,
+        resourceId: campaign.id,
+        ...(userId !== undefined && { userId }),
+      },
+      {
+        name: "deleteCampaign",
+        resourceType,
+        resourceId: campaign.id,
+        ...(userId !== undefined && { userId }),
+      },
+    ];
 
+    await Permission.bulkCreate(permissionsToCreate); // store all permissions at once
 
-    await Permission.bulkCreate(permissionsToCreate); // <- store all at once
-
-    // ✅ Only log activity and send notification if userId is available
+    // ✅ Log and notify only if userId is provided
     if (userId) {
       await logActivity(userId, "Campaign Created", `Created campaign "${campaignName}"`);
       await sendNotification(userId, `You have successfully created the campaign "${campaignName}".`);
@@ -75,6 +76,7 @@ export const createCampaign = async (
     throw new Error(`Error creating campaign: ${error.message}`);
   }
 };
+
 
 
   export const getAllCampaigns = async ({

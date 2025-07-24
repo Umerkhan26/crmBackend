@@ -101,7 +101,17 @@ export const loginUser = async (userData: {
     throw new Error("Email and password are required!");
   }
 
-  const user = await User.findOne({ where: { email } });
+  const user = await User.findOne({
+    where: { email },
+    include: [
+      {
+        model: Role,
+        as: "role",
+        attributes: ["id", "name", "description"],
+      },
+    ],
+  });
+
   if (!user) {
     throw new Error("User not found!");
   }
@@ -110,7 +120,6 @@ export const loginUser = async (userData: {
     throw new Error("User password is missing!");
   }
 
-  // ✅ Check if user is blocked
   if (user.status === "blocked") {
     throw new Error("Your account has been blocked. Please contact support.");
   }
@@ -140,13 +149,15 @@ export const loginUser = async (userData: {
       lastname: user.lastname,
       email: user.email,
       userrole: user.userrole,
-      status: user.status, // ✅ Return new status field
+      status: user.status,
       last_login: user.last_login,
       userImage: user.userImage || null,
+      role: user.role, // ✅ Include role details here
     },
     token,
   };
 };
+
 
 export const getUserById = async (userId: number): Promise<any> => {
   const user = await User.findByPk(userId, {

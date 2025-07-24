@@ -118,6 +118,13 @@ export const loginUser = async (userData: {
         model: Role,
         as: "role",
         attributes: ["id", "name", "description"],
+        include: [
+          {
+            model: Permission,
+            as: "permissions",
+            attributes: ["id", "name", "resourceType", "resourceId"],
+          },
+        ],
       },
     ],
   });
@@ -162,11 +169,12 @@ export const loginUser = async (userData: {
       status: user.status,
       last_login: user.last_login,
       userImage: user.userImage || null,
-      role: user.role, // ✅ Include role details here
+      role: user.role, // includes permissions
     },
     token,
   };
 };
+
 
 
 export const getUserById = async (userId: number): Promise<any> => {

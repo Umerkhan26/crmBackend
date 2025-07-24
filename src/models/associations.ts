@@ -34,7 +34,8 @@ import ClientLead from "./clientLead.model";
 
 // Relations
 Role.belongsToMany(Permission, { through: RolePermission, foreignKey: "roleId" });
-Permission.belongsToMany(Role, { through: RolePermission, foreignKey: "permissionId" });
+Permission.belongsToMany(Role, { through: RolePermission, foreignKey: "permissionId",  as: "permissions", // 👈 define alias
+});
 
 Role.hasMany(User, { foreignKey: "roleId" });
 User.belongsTo(Role, { foreignKey: "roleId" });

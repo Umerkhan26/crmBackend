@@ -11,6 +11,7 @@ import { checkEmailPermission } from "./email.service";
 import { getCompiledTemplate } from "./template.service";
 import { emailQueue } from "../queue/emailQueue"; // or wherever your queue is defined
 import { buildSearchFilter } from "../utils/filterQuery";
+import Permission from "../models/permission.model";
 
 interface PaginationParams {
   page?: number;
@@ -77,15 +78,24 @@ export const createUser = async (
     });
   }
 
-  const userWithRole = await User.findByPk(user.id, {
-    include: [
-      {
-        model: Role,
-        as: "role",
-        attributes: ["id", "name", "description"],
-      },
-    ],
-  });
+ const userWithRole = await User.findOne({
+  where: { email },
+  include: [
+    {
+      model: Role,
+      as: "role",
+      attributes: ["id", "name", "description"],
+      include: [
+        {
+          model: Permission,
+          as: "permissions",
+          attributes: ["id", "name", "resourceType", "resourceId"],
+        },
+      ],
+    },
+  ],
+});
+
 
   return userWithRole;
 };

@@ -42,7 +42,7 @@ const ClientLead = db.define<ClientLeadModel>(
       allowNull: true, // ✅ changed from false → true
       references: {
         model: Order,
-        key: "id",
+        key: "id",  
       },
     },
     campaign_id: {

@@ -1,12 +1,13 @@
-import  Lead  from "./lead.model"; // 👈 make sure this path is correct
+import Lead from "./lead.model";
 import { User } from "./user.model";
 import { Message } from "./chatmodels/message.model";
 import { Conversation } from "./chatmodels/conversation.model";
 import { ConversationParticipant } from "./chatmodels/conversationParticipant.model";
 import Note from "./note.model";
+import ClientLead from "./clientLead.model"; // 👈 Ensure this import is correct
 
 export const associateModels = () => {
-  // Existing chat-related associations
+  // 📌 Chat-related associations
   Conversation.hasMany(Message, { foreignKey: "conversationId" });
   Message.belongsTo(Conversation, { foreignKey: "conversationId" });
 
@@ -25,7 +26,7 @@ export const associateModels = () => {
     otherKey: "conversationId",
   });
 
-  // ✅ New: Lead ↔ User (assignee)
+  // 📌 Lead ↔ User (assignee)
   Lead.belongsTo(User, {
     foreignKey: "assigneeId",
     as: "assignee",
@@ -35,14 +36,47 @@ export const associateModels = () => {
     foreignKey: "assigneeId",
     as: "assignedLeads",
   });
+
+  // 📌 Note ↔ User (creator)
+  Note.belongsTo(User, {
+    foreignKey: "createdBy",
+    as: "creator",
+  });
+
+  User.hasMany(Note, {
+    foreignKey: "createdBy",
+    as: "notes",
+  });
+
+  // 📌 Polymorphic associations: Note ↔ Lead
+  Lead.hasMany(Note, {
+    foreignKey: "notebleId",
+    constraints: false,
+    scope: {
+      notebleType: "lead",
+    },
+    as: "notes",
+  });
+
+  Note.belongsTo(Lead, {
+    foreignKey: "notebleId",
+    constraints: false,
+    as: "lead",
+  });
+
+  // 📌 Polymorphic associations: Note ↔ ClientLead
+  ClientLead.hasMany(Note, {
+    foreignKey: "notebleId",
+    constraints: false,
+    scope: {
+      notebleType: "client_lead",
+    },
+    as: "notes",
+  });
+
+  Note.belongsTo(ClientLead, {
+    foreignKey: "notebleId",
+    constraints: false,
+    as: "clientLead",
+  });
 };
-
-Note.belongsTo(User, {
-  foreignKey: "createdBy",
-  as: "creator",
-});
-
-User.hasMany(Note, {
-  foreignKey: "createdBy",
-  as: "notes",
-});

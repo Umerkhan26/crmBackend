@@ -1,9 +1,8 @@
-
 // controllers/note.controller.ts
 import { Request, Response } from "express";
 import * as NoteService from "../services/note.service";
 
-export const addNote = async (req: Request, res: Response) => {
+export const addNote = async (req: Request, res: Response): Promise<any> => {
   try {
     const { content, type, notebleId, notebleType } = req.body;
     const userId = req.user?.id;
@@ -21,24 +20,28 @@ export const addNote = async (req: Request, res: Response) => {
       type,
       notebleId,
       notebleType,
-      userId, // ✅ Now TS knows it's definitely a number
+      userId,
     });
 
-    res.status(201).json({ success: true, note });
+    return res.status(201).json({ success: true, note });
   } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message });
+    return res.status(500).json({ success: false, message: error.message });
   }
 };
-;
 
-export const getNotes = async (req: Request, res: Response) => {
+export const getNotes = async (req: Request, res: Response): Promise<any> => {
   try {
     const notebleId = parseInt(req.params.id, 10);
     const notebleType = req.params.type as "lead" | "client_lead";
 
-    const notes = await NoteService.getNotesForEntity(notebleId, notebleType);
-    res.status(200).json({ success: true, notes });
+    if (isNaN(notebleId) || !["lead", "client_lead"].includes(notebleType)) {
+      return res.status(400).json({ message: "Invalid notebleId or notebleType" });
+    }
+
+    const notes = await NoteService.getNotesForEntity({ notebleId, notebleType });
+
+    return res.status(200).json({ success: true, notes });
   } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message });
+    return res.status(500).json({ success: false, message: error.message });
   }
 };

@@ -39,4 +39,8 @@ export const PERMISSIONS = {
   CLIENT_LEAD_DELETE: "clientLead:delete",
   CLIENT_LEAD_UPDATE_STATUS: "clientLead:updateStatus",
 
+    // ✅ Note permissions
+
+ NOTE_CREATE: "note:create",
+  NOTE_VIEW: "note:view",
 };

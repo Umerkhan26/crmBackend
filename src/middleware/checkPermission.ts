@@ -18,7 +18,11 @@ declare global {
 export const checkPermission = (requiredPermission: string) => {
   return (req: Request, res: Response, next: NextFunction): void => {
     if (!req.user || !req.user.permissions.includes(requiredPermission)) {
-      res.status(403).json({ message: "Forbidden: You lack permission to perform this action." });
+      res
+        .status(403)
+        .json({
+          message: "Forbidden: You lack permission to perform this action.",
+        });
       return; // Add explicit return to exit early
     }
 

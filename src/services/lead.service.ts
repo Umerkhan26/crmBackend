@@ -36,7 +36,6 @@ export const createLead = async (
   }
 };
 
-
 // export const getAllLeads = async ({
 //   page = 1,
 //   limit = 10,
@@ -90,7 +89,6 @@ export const createLead = async (
 
 // Get Leads by Campaign
 
-
 export const getAllLeads = async ({
   page = 1,
   limit = 10,
@@ -106,11 +104,21 @@ export const getAllLeads = async ({
     const searchCondition = search
       ? {
           [Op.or]: [
-            Sequelize.literal(`JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.first_name')) LIKE '%${search}%'`),
-            Sequelize.literal(`JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.last_name')) LIKE '%${search}%'`),
-            Sequelize.literal(`JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.agent_name')) LIKE '%${search}%'`),
-            Sequelize.literal(`JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.phone_number')) LIKE '%${search}%'`),
-            Sequelize.literal(`JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.state')) LIKE '%${search}%'`),
+            Sequelize.literal(
+              `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.first_name')) LIKE '%${search}%'`
+            ),
+            Sequelize.literal(
+              `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.last_name')) LIKE '%${search}%'`
+            ),
+            Sequelize.literal(
+              `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.agent_name')) LIKE '%${search}%'`
+            ),
+            Sequelize.literal(
+              `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.phone_number')) LIKE '%${search}%'`
+            ),
+            Sequelize.literal(
+              `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.state')) LIKE '%${search}%'`
+            ),
           ],
         }
       : {};
@@ -138,7 +146,6 @@ export const getAllLeads = async ({
     throw new Error(`Error fetching leads: ${error.message}`);
   }
 };
-
 
 export const getLeadsByCampaign = async (
   campaignName: string
@@ -200,8 +207,6 @@ export const deleteLead = async (
   }
 };
 
-
-
 // export const assignLeadToUser = async (
 //   leadId: number,
 //   userIdToAssign: number,
@@ -235,7 +240,6 @@ export const deleteLead = async (
 //   }
 // };
 
-
 export const assignLeadToUser = async (
   leadId: number,
   userIdToAssign: number,
@@ -249,7 +253,9 @@ export const assignLeadToUser = async (
 
     // ✅ Prevent reassigning if already assigned to the same user
     if (lead.assigneeId === userIdToAssign) {
-      throw new Error(`Lead ID ${leadId} is already assigned to user ID ${userIdToAssign}`);
+      throw new Error(
+        `Lead ID ${leadId} is already assigned to user ID ${userIdToAssign}`
+      );
     }
 
     // ✅ Proceed with assignment
@@ -294,29 +300,28 @@ export const getAllLeadsWithAssignee = async () => {
   }
 };
 
-
 export const getAssignmentCounts = async () => {
-  // Count total users
-  const totalUsers = await User.count();
-
-  // Count leads that have an assigneeId (i.e., assigned)
   const assignedCount = await Lead.count({
     where: {
       assigneeId: {
-        [Op.ne]: null as unknown as number, // cast to satisfy TypeScript
+        [Op.not]: null as any,
       },
     },
   });
 
-  // Count users not currently assigned to a lead
-  const unassignedCount = totalUsers - assignedCount;
+  const unassignedCount = await Lead.count({
+    where: {
+      assigneeId: {
+        [Op.is]: null as any,
+      },
+    },
+  });
 
   return {
     assignedCount,
     unassignedCount,
   };
 };
-
 // Get all leads with no assignee
 
 export const getUnassignedLeads = async () => {
@@ -338,4 +343,3 @@ export const getUnassignedLeads = async () => {
 
   return unassignedLeads;
 };
-

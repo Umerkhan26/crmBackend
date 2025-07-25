@@ -3,6 +3,7 @@ import { User } from "./user.model";
 import { Message } from "./chatmodels/message.model";
 import { Conversation } from "./chatmodels/conversation.model";
 import { ConversationParticipant } from "./chatmodels/conversationParticipant.model";
+import Note from "./note.model";
 
 export const associateModels = () => {
   // Existing chat-related associations
@@ -35,3 +36,13 @@ export const associateModels = () => {
     as: "assignedLeads",
   });
 };
+
+Note.belongsTo(User, {
+  foreignKey: "createdBy",
+  as: "creator",
+});
+
+User.hasMany(Note, {
+  foreignKey: "createdBy",
+  as: "notes",
+});

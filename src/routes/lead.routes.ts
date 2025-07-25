@@ -86,5 +86,10 @@ router.get(
   checkPermission(PERMISSIONS.LEAD_VIEW_UNASSIGNED_USERS),
   LeadController.getUnassignedLeads
 );
-
+router.get(
+  "/getLeadsByAssigneeId/:assigneeId",
+  verifyToken,
+  checkPermission(PERMISSIONS.LEAD_GET_BY_ASSIGNEE),
+  LeadController.getLeadsByAssigneeId
+);
 export default router;

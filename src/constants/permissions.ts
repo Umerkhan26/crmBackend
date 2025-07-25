@@ -28,6 +28,8 @@ export const PERMISSIONS = {
  LEAD_VIEW_ASSIGNED_USERS: "lead:view_assigned_users",
   LEAD_VIEW_ASSIGNMENT_STATS: "lead:view_assignment_stats",
   LEAD_VIEW_UNASSIGNED_USERS: "lead:view_unassigned_users",
+  LEAD_GET_BY_ASSIGNEE: "lead:get-by-assignee",
+
   // ✅ Client Lead permissions
   CLIENT_LEAD_CREATE: "clientLead:create",
   CLIENT_LEAD_GET_ALL: "clientLead:getAll",

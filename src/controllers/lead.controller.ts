@@ -173,6 +173,29 @@ export const getAllLeadsWithAssignee = async (req: Request, res: Response) => {
   }
 };
 
+export const getLeadsByAssigneeId = async (req: Request, res: Response): Promise<any> => {
+  try {
+    const assigneeId = parseInt(req.params.assigneeId, 10);
+
+    if (isNaN(assigneeId)) {
+      return res.status(400).json({ message: "Invalid assignee ID." });
+    }
+
+    const leads = await LeadService.getLeadsByAssigneeId(assigneeId);
+
+    return res.status(200).json({
+      success: true,
+      message: `Leads assigned to user ID ${assigneeId} fetched successfully.`,
+      data: leads,
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      message: error.message || "An error occurred while fetching leads.",
+    });
+  }
+};
+
 export const getAssignmentStats = async (req: Request, res: Response) => {
   try {
     const stats = await LeadService.getAssignmentCounts();

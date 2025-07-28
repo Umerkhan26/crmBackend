@@ -136,7 +136,7 @@ export const createCampaign = async (
             permissionId: permission.id,
           });
         } catch (error: any) {
-          console.warn(`RolePermission creation skipped: ${error.message}`);
+          console.warn(`RolePermisssion creation skipped: ${error.message}`);
         }
       }
 

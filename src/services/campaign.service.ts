@@ -48,18 +48,18 @@ export const createCampaign = async (
         resourceId: campaign.id,
         ...(userId !== undefined && { userId }),
       },
-      {
-        name: "updateCampaign",
-        resourceType,
-        resourceId: campaign.id,
-        ...(userId !== undefined && { userId }),
-      },
-      {
-        name: "deleteCampaign",
-        resourceType,
-        resourceId: campaign.id,
-        ...(userId !== undefined && { userId }),
-      },
+      // {
+      //   name: "updateCampaign",
+      //   resourceType,
+      //   resourceId: campaign.id,
+      //   ...(userId !== undefined && { userId }),
+      // },
+      // {
+      //   name: "deleteCampaign",
+      //   resourceType,
+      //   resourceId: campaign.id,
+      //   ...(userId !== undefined && { userId }),
+      // },
     ];
 
     await Permission.bulkCreate(permissionsToCreate); // store all permissions at once

@@ -36,7 +36,7 @@ Lead.init(
       allowNull: false,
     },
     leadData: {
-      type: DataTypes.JSON,
+      type: DataTypes.JSON,   
       allowNull: false,
     },
     assigneeId: {

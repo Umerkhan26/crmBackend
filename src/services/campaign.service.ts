@@ -46,28 +46,60 @@ export const createCampaign = async (
         name: "getCampaignById",
         resourceType,
         resourceId: campaign.id,
-        ...(userId !== undefined && { userId }),
-      },
-      // {
-      //   name: "updateCampaign",
-      //   resourceType,
-      //   resourceId: campaign.id,
-      //   ...(userId !== undefined && { userId }),
-      // },
-      // {
-      //   name: "deleteCampaign",
-      //   resourceType,
-      //   resourceId: campaign.id,
-      //   ...(userId !== undefined && { userId }),
-      // },
-    ];
+        userId: userId,
+      });
 
-    await Permission.bulkCreate(permissionsToCreate); // store all permissions at once
+      const user = await User.findByPk(userId, {
+        include: [
+          {
+            model: Role,
+            as: "role",
+            include: [{ model: Permission, as: "Permissions" }],
+          },
+        ],
+      });
 
-    // ✅ Log and notify only if userId is provided
-    if (userId) {
-      await logActivity(userId, "Campaign Created", `Created campaign "${campaignName}"`);
-      await sendNotification(userId, `You have successfully created the campaign "${campaignName}".`);
+      if (user?.role) {
+        try {
+          await RolePermission.create({
+            roleId: user.role.id,
+            permissionId: permission.id,
+          });
+        } catch (error: any) {
+          console.warn(`RolePermisssion creation skipped: ${error.message}`);
+        }
+      }
+
+      // Remove or limit the automatic assignment to admin roles
+      // Comment out or remove this block if you don't want automatic assignment
+      /*
+      const adminRoles = await Role.findAll({
+        include: [{ model: Permission, as: "Permissions", where: { name: "campaign:get" }, through: { attributes: [] } }],
+      });
+
+      for (const role of adminRoles) {
+        if (role.id !== user.role.id) {
+          try {
+            await RolePermission.create({
+              roleId: role.id,
+              permissionId: permission.id,
+            });
+          } catch (error: any) {
+            console.warn(`RolePermission creation skipped for role ${role.id}: ${error.message}`);
+          }
+        }
+      }
+      */
+
+      await logActivity(
+        userId,
+        "Campaign Created",
+        `Created campaign "${campaignName}"`
+      );
+      await sendNotification(
+        userId,
+        `You have successfully created the campaign "${campaignName}".`
+      );
     }
 
     return campaign;

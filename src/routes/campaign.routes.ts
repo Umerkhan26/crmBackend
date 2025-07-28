@@ -42,7 +42,7 @@ router.get(
 router.put(
   "/updateCampaignById/:id",
   verifyToken,
-  checkCampaignPermission("update"),
+  checkPermission(PERMISSIONS.CAMPAIGN_UPDATE),
   updateCampaign
 );
 
@@ -50,7 +50,7 @@ router.put(
 router.delete(
   "/deleteCampaign/:id",
   verifyToken,
-  checkCampaignPermission("delete"),
+  checkPermission(PERMISSIONS.CAMPAIGN_DELETE),
   deleteCampaign
 );
 export default router;

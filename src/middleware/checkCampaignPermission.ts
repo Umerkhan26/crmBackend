@@ -32,9 +32,7 @@ import { Request, Response, NextFunction } from "express";
 //   };
 // };
 
-export const checkCampaignPermission = (
-  action: "get" | "update" | "delete"
-) => {
+export const checkCampaignPermission = (action: "get") => {
   return (req: Request, res: Response, next: NextFunction): void => {
     const campaignId = parseInt(req.params.id, 10);
     const userPermissions = req.user?.permissions || [];

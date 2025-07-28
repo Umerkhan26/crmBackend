@@ -1,19 +1,90 @@
-  import Campaign from "../models/campaign.model";
-  import {
-    CampaignAttributes,
-    CampaignCreationAttributes,
-  } from "../models/campaign.model";
-  import { buildSearchFilter } from "../utils/filterQuery";
-  import { getPagination, getPagingData } from "../utils/paginate";
-  import { logActivity } from "./activity.service";
-  import { sendNotification } from "./notification.service";
+import Campaign from "../models/campaign.model";
+import {
+  CampaignAttributes,
+  CampaignCreationAttributes,
+} from "../models/campaign.model";
+import { buildSearchFilter } from "../utils/filterQuery";
+import { getPagination, getPagingData } from "../utils/paginate";
+import { logActivity } from "./activity.service";
+import { sendNotification } from "./notification.service";
 import Permission from "../models/permission.model"; // <-- Add this at the top
+import User from "../models/user.model";
+import Role from "../models/role.model";
+import RolePermission from "../models/rolePermission.model";
 
-  interface PaginationParams {
-    page?: number;
-    limit?: number;
-  }
+interface PaginationParams {
+  page?: number;
+  limit?: number;
+}
 
+// export const createCampaign = async (
+//   data: CampaignCreationAttributes[],
+//   userId?: number
+// ): Promise<CampaignAttributes> => {
+//   try {
+//     if (!data || data.length === 0) {
+//       throw new Error("No campaign data provided.");
+//     }
+
+//     const campaignName = data[0].campaignName;
+//     if (!campaignName) {
+//       throw new Error("Campaign name is missing.");
+//     }
+
+//     const fields = data[0].fields;
+
+//     const created = await Campaign.create({
+//       campaignName,
+//       fields,
+//     });
+
+//     const campaign = created.get();
+
+//     // ✅ Set campaign-specific resourceType using campaign name
+//     const resourceType = `campaign-${campaignName}`;
+
+//     const permissionsToCreate = [
+//       {
+//         name: "getCampaignById",
+//         resourceType,
+//         resourceId: campaign.id,
+//         ...(userId !== undefined && { userId }),
+//       },
+//       // {
+//       //   name: "updateCampaign",
+//       //   resourceType,
+//       //   resourceId: campaign.id,
+//       //   ...(userId !== undefined && { userId }),
+//       // },
+//       // {
+//       //   name: "deleteCampaign",
+//       //   resourceType,
+//       //   resourceId: campaign.id,
+//       //   ...(userId !== undefined && { userId }),
+//       // },
+//     ];
+
+//     await Permission.bulkCreate(permissionsToCreate); // store all permissions at once
+
+//     // ✅ Log and notify only if userId is provided
+//     if (userId) {
+//       await logActivity(
+//         userId,
+//         "Campaign Created",
+//         `Created campaign "${campaignName}"`
+//       );
+//       await sendNotification(
+//         userId,
+//         `You have successfully created the campaign "${campaignName}".`
+//       );
+//     }
+
+//     return campaign;
+//   } catch (error: any) {
+//     console.error("Error creating campaign:", error);
+//     throw new Error(`Error creating campaign: ${error.message}`);
+//   }
+// };
 
 export const createCampaign = async (
   data: CampaignCreationAttributes[],
@@ -38,36 +109,67 @@ export const createCampaign = async (
 
     const campaign = created.get();
 
-    // ✅ Set campaign-specific resourceType using campaign name
     const resourceType = `campaign-${campaignName}`;
 
-    const permissionsToCreate = [
-      {
+    if (userId) {
+      const permission = await Permission.create({
         name: "getCampaignById",
         resourceType,
         resourceId: campaign.id,
-        ...(userId !== undefined && { userId }),
-      },
-      // {
-      //   name: "updateCampaign",
-      //   resourceType,
-      //   resourceId: campaign.id,
-      //   ...(userId !== undefined && { userId }),
-      // },
-      // {
-      //   name: "deleteCampaign",
-      //   resourceType,
-      //   resourceId: campaign.id,
-      //   ...(userId !== undefined && { userId }),
-      // },
-    ];
+        userId: userId,
+      });
 
-    await Permission.bulkCreate(permissionsToCreate); // store all permissions at once
+      const user = await User.findByPk(userId, {
+        include: [
+          {
+            model: Role,
+            as: "role",
+            include: [{ model: Permission, as: "Permissions" }],
+          },
+        ],
+      });
 
-    // ✅ Log and notify only if userId is provided
-    if (userId) {
-      await logActivity(userId, "Campaign Created", `Created campaign "${campaignName}"`);
-      await sendNotification(userId, `You have successfully created the campaign "${campaignName}".`);
+      if (user?.role) {
+        try {
+          await RolePermission.create({
+            roleId: user.role.id,
+            permissionId: permission.id,
+          });
+        } catch (error: any) {
+          console.warn(`RolePermission creation skipped: ${error.message}`);
+        }
+      }
+
+      // Remove or limit the automatic assignment to admin roles
+      // Comment out or remove this block if you don't want automatic assignment
+      /*
+      const adminRoles = await Role.findAll({
+        include: [{ model: Permission, as: "Permissions", where: { name: "campaign:get" }, through: { attributes: [] } }],
+      });
+
+      for (const role of adminRoles) {
+        if (role.id !== user.role.id) {
+          try {
+            await RolePermission.create({
+              roleId: role.id,
+              permissionId: permission.id,
+            });
+          } catch (error: any) {
+            console.warn(`RolePermission creation skipped for role ${role.id}: ${error.message}`);
+          }
+        }
+      }
+      */
+
+      await logActivity(
+        userId,
+        "Campaign Created",
+        `Created campaign "${campaignName}"`
+      );
+      await sendNotification(
+        userId,
+        `You have successfully created the campaign "${campaignName}".`
+      );
     }
 
     return campaign;
@@ -77,104 +179,113 @@ export const createCampaign = async (
   }
 };
 
+export const getAllCampaigns = async ({
+  page = 1,
+  limit = 10,
+  search = "",
+}: {
+  page: number;
+  limit: number;
+  search?: string;
+}) => {
+  try {
+    const { offset, limit: pageLimit } = getPagination({ page, limit });
 
+    const searchFilter = buildSearchFilter(search, ["campaignName"]);
 
-  export const getAllCampaigns = async ({
-    page = 1,
-    limit = 10,
-    search = "",
-  }: {
-    page: number;
-    limit: number;
-    search?: string;
-  }) => {
-    try {
-      const { offset, limit: pageLimit } = getPagination({ page, limit });
+    const result = await Campaign.findAndCountAll({
+      where: searchFilter,
+      offset,
+      limit: pageLimit,
+    });
 
-      const searchFilter = buildSearchFilter(search, ["campaignName"]);
+    return getPagingData(result, page, pageLimit);
+  } catch (error: any) {
+    throw new Error(`Error retrieving campaigns: ${error.message}`);
+  }
+};
 
-      const result = await Campaign.findAndCountAll({
-        where: searchFilter,
-        offset,
-        limit: pageLimit,
-      });
+export const getCampaignById = async (
+  id: number
+): Promise<CampaignAttributes[]> => {
+  try {
+    const campaignEntry = await Campaign.findByPk(id);
+    if (!campaignEntry) return [];
 
-      return getPagingData(result, page, pageLimit);
-    } catch (error: any) {
-      throw new Error(`Error retrieving campaigns: ${error.message}`);
+    const campaignName = campaignEntry.getDataValue("campaignName");
+
+    const campaignFields = await Campaign.findAll({ where: { campaignName } });
+    return campaignFields.map((c) => c.get());
+  } catch (error: any) {
+    throw new Error(`Error retrieving campaign: ${error.message}`);
+  }
+};
+
+export const updateCampaign = async (
+  id: number,
+  data: { campaignName: string; fields: any[] },
+  userId?: number
+): Promise<any> => {
+  try {
+    const existingCampaign = await Campaign.findOne({ where: { id } });
+
+    if (!existingCampaign) {
+      throw new Error("Campaign not found");
     }
-  };
 
-  export const getCampaignById = async (
-    id: number
-  ): Promise<CampaignAttributes[]> => {
-    try {
-      const campaignEntry = await Campaign.findByPk(id);
-      if (!campaignEntry) return [];
+    const oldName = existingCampaign.campaignName;
 
-      const campaignName = campaignEntry.getDataValue("campaignName");
+    existingCampaign.campaignName = data.campaignName;
+    existingCampaign.fields = data.fields;
 
-      const campaignFields = await Campaign.findAll({ where: { campaignName } });
-      return campaignFields.map((c) => c.get());
-    } catch (error: any) {
-      throw new Error(`Error retrieving campaign: ${error.message}`);
+    await existingCampaign.save();
+
+    if (userId) {
+      await logActivity(
+        userId,
+        "Campaign Updated",
+        `Updated campaign "${oldName}" to "${data.campaignName}"`
+      );
+      await sendNotification(userId, `Campaign "${oldName}" has been updated.`);
     }
-  };
 
-  export const updateCampaign = async (
-    id: number,
-    data: { campaignName: string; fields: any[] },
-    userId?: number
-  ): Promise<any> => {
-    try {
-      const existingCampaign = await Campaign.findOne({ where: { id } });
+    return existingCampaign.get();
+  } catch (error: any) {
+    throw new Error(`Error updating campaign: ${error.message}`);
+  }
+};
 
-      if (!existingCampaign) {
-        throw new Error("Campaign not found");
-      }
+export const deleteCampaign = async (
+  id: number,
+  userId?: number
+): Promise<boolean> => {
+  try {
+    const campaign = await Campaign.findByPk(id);
 
-      const oldName = existingCampaign.campaignName;
-
-      existingCampaign.campaignName = data.campaignName;
-      existingCampaign.fields = data.fields;
-
-      await existingCampaign.save();
-
-      if (userId) {
-        await logActivity(userId, "Campaign Updated", `Updated campaign "${oldName}" to "${data.campaignName}"`);
-        await sendNotification(userId, `Campaign "${oldName}" has been updated.`);
-      }
-
-      return existingCampaign.get();
-    } catch (error: any) {
-      throw new Error(`Error updating campaign: ${error.message}`);
+    if (!campaign) {
+      throw new Error("Campaign field not found");
     }
-  };
 
-  export const deleteCampaign = async (
-    id: number,
-    userId?: number
-  ): Promise<boolean> => {
-    try {
-      const campaign = await Campaign.findByPk(id);
+    const campaignName = campaign.get("campaignName");
 
-      if (!campaign) {
-        throw new Error("Campaign field not found");
-      }
+    await Campaign.destroy({
+      where: { campaignName },
+    });
 
-      const campaignName = campaign.get("campaignName");
-
-      await Campaign.destroy({
-        where: { campaignName },
-      });
-
-      if (userId) {
-        await logActivity(userId, "Campaign Deleted", `Deleted campaign "${campaignName}"`);
-        await sendNotification(userId, `Campaign "${campaignName}" has been deleted.`);
-      }
-
-      return true;
-    } catch (error: any) {
-      throw new Error(`Error deleting campaign: ${error.message}`);
+    if (userId) {
+      await logActivity(
+        userId,
+        "Campaign Deleted",
+        `Deleted campaign "${campaignName}"`
+      );
+      await sendNotification(
+        userId,
+        `Campaign "${campaignName}" has been deleted.`
+      );
     }
-  };
+
+    return true;
+  } catch (error: any) {
+    throw new Error(`Error deleting campaign: ${error.message}`);
+  }
+};

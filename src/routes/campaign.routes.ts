@@ -4,7 +4,7 @@ import {
   getAllCampaigns,
   getCampaignById,
   updateCampaign,
-  deleteCampaign
+  deleteCampaign,
 } from "../controllers/campaign.controller";
 import express from "express";
 
@@ -16,22 +16,22 @@ import { checkCampaignPermission } from "../middleware/checkCampaignPermission";
 const router = express.Router();
 // Create campaign
 router.post(
-    "/createCampaign",
-    verifyToken,
-    checkPermission(PERMISSIONS.CAMPAIGN_CREATE),
-    createCampaignn
-  );
-  
-  // Get all campaigns
-  router.get(
-    "/getAllCampaigns",
-    verifyToken,
-    checkPermission(PERMISSIONS.CAMPAIGN_GET),
-    getAllCampaigns
-  );
-  
-  // Get campaign by ID
- router.get(
+  "/createCampaign",
+  verifyToken,
+  checkPermission(PERMISSIONS.CAMPAIGN_CREATE),
+  createCampaignn
+);
+
+// Get all campaigns
+router.get(
+  "/getAllCampaigns",
+  verifyToken,
+  checkPermission(PERMISSIONS.CAMPAIGN_GET),
+  getAllCampaigns
+);
+
+// Get campaign by ID
+router.get(
   "/getCampaignById/:id",
   verifyToken,
   checkCampaignPermission("get"),
@@ -42,7 +42,7 @@ router.post(
 router.put(
   "/updateCampaignById/:id",
   verifyToken,
-  checkCampaignPermission("update"),
+  checkPermission(PERMISSIONS.CAMPAIGN_UPDATE),
   updateCampaign
 );
 
@@ -50,7 +50,7 @@ router.put(
 router.delete(
   "/deleteCampaign/:id",
   verifyToken,
-  checkCampaignPermission("delete"),
+  checkPermission(PERMISSIONS.CAMPAIGN_DELETE),
   deleteCampaign
 );
 export default router;

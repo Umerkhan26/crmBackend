@@ -9,9 +9,13 @@ export interface LeadAttributes {
   assigneeId?: number; // The user assigned to this lead
 }
 
-export interface LeadCreationAttributes extends Optional<LeadAttributes, "id"> {}
+export interface LeadCreationAttributes
+  extends Optional<LeadAttributes, "id"> {}
 
-class Lead extends Model<LeadAttributes, LeadCreationAttributes> implements LeadAttributes {
+class Lead
+  extends Model<LeadAttributes, LeadCreationAttributes>
+  implements LeadAttributes
+{
   public id!: number;
   public campaignName!: string;
   public leadData!: any;
@@ -55,6 +59,5 @@ Lead.init(
     indexes: [{ fields: ["campaignName"] }],
   }
 );
-
 
 export default Lead;

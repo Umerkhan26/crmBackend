@@ -18,7 +18,6 @@ interface PaginationParams {
   limit?: number;
 }
 
-
 export const createUser = async (
   userData: Partial<UserAttributes>
 ): Promise<any> => {
@@ -44,7 +43,6 @@ export const createUser = async (
     created_at: new Date(),
     updated_at: new Date(),
     userImage: userData.userImage || null,
-
   };
 
   const user = await User.create(newUserData);
@@ -55,17 +53,23 @@ export const createUser = async (
 
   // ✅ Log activity + notification
   await logActivity(user.id, "Registration", "User registered successfully");
-  await sendNotification(user.id, "Welcome! Your account has been successfully created.");
+  await sendNotification(
+    user.id,
+    "Welcome! Your account has been successfully created."
+  );
 
   // ✅ Check permission to send email on 'user:create'
-  const canSendEmail = await checkEmailPermission("user:create", user.userrole || "client");
+  const canSendEmail = await checkEmailPermission(
+    "user:create",
+    user.userrole || "client"
+  );
 
   if (canSendEmail) {
     const smtpConfig = await getSmtpConfig(user.id);
 
     const { subject, body } = await getCompiledTemplate("user:create", {
       firstname: user.firstname || "",
-      lastname: user.lastname || "", 
+      lastname: user.lastname || "",
       email: user.email,
     });
 
@@ -78,28 +82,26 @@ export const createUser = async (
     });
   }
 
- const userWithRole = await User.findOne({
-  where: { email },
-  include: [
-    {
-      model: Role,
-      as: "role",
-      attributes: ["id", "name", "description"],
-      include: [
-        {
-          model: Permission,
-          as: "permissions",
-          attributes: ["id", "name", "resourceType", "resourceId"],
-        },
-      ],
-    },
-  ],
-});
-
+  const userWithRole = await User.findOne({
+    where: { email },
+    include: [
+      {
+        model: Role,
+        as: "role",
+        attributes: ["id", "name", "description"],
+        include: [
+          {
+            model: Permission,
+            // as: "permissions",
+            attributes: ["id", "name", "resourceType", "resourceId"],
+          },
+        ],
+      },
+    ],
+  });
 
   return userWithRole;
 };
-
 
 export const loginUser = async (userData: {
   email: string;
@@ -174,8 +176,6 @@ export const loginUser = async (userData: {
   };
 };
 
-
-
 export const getUserById = async (userId: number): Promise<any> => {
   const user = await User.findByPk(userId, {
     include: [
@@ -194,7 +194,6 @@ export const getUserById = async (userId: number): Promise<any> => {
   return user;
 };
 
-
 // services/user.service.ts
 
 export const getAllUsers = async ({
@@ -204,7 +203,11 @@ export const getAllUsers = async ({
 }: PaginationParams & { search?: string }): Promise<any> => {
   const { offset, limit: pageLimit } = getPagination({ page, limit });
 
-  const whereClause = buildSearchFilter(search, ["firstname", "lastname", "email"]);
+  const whereClause = buildSearchFilter(search, [
+    "firstname",
+    "lastname",
+    "email",
+  ]);
 
   const data = await User.findAndCountAll({
     where: whereClause,
@@ -285,16 +288,30 @@ export const blockOrUnblockUser = async (
         return "User is already blocked.";
       }
       await user.update({ status: "blocked" });
-      await logActivity(userIdNum, "Account Blocked", "User account was blocked.");
-      await sendNotification(userIdNum, "Your account has been blocked. Please contact support.");
+      await logActivity(
+        userIdNum,
+        "Account Blocked",
+        "User account was blocked."
+      );
+      await sendNotification(
+        userIdNum,
+        "Your account has been blocked. Please contact support."
+      );
       return "User has been blocked successfully.";
     } else if (action === "unblock") {
       if (user.status === "active") {
         return "User is already active.";
       }
       await user.update({ status: "active" });
-      await logActivity(userIdNum, "Account Unblocked", "User account was unblocked.");
-      await sendNotification(userIdNum, "Your account has been unblocked. You can now log in.");
+      await logActivity(
+        userIdNum,
+        "Account Unblocked",
+        "User account was unblocked."
+      );
+      await sendNotification(
+        userIdNum,
+        "Your account has been unblocked. You can now log in."
+      );
       return "User has been unblocked successfully.";
     } else {
       throw new Error("Invalid action. Use 'block' or 'unblock'.");

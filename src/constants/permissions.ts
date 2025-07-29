@@ -5,7 +5,7 @@ export const PERMISSIONS = {
   USER_UPDATE: "user:update",
   USER_DELETE: "user:delete",
   USER_UPDATESTATUS: "user:updateStatus",
-
+  USER_GET_by_Id: "user:getById",
   // Campaign permissions
   CAMPAIGN_CREATE: "campaign:create",
   CAMPAIGN_GET: "campaign:get",

@@ -8,6 +8,11 @@ import { getPagination, getPagingData } from "../utils/paginate";
 import { logActivity } from "./activity.service";
 import { sendNotification } from "./notification.service";
 import User from "../models/user.model";
+import { checkEmailPermission } from "./email.service";
+import EmailTemplate from "../models/emailTemplate.model";
+import { getSmtpConfig } from "../utils/getSmtpConfig";
+import { sendEmail } from "../utils/email";
+import { logEmailStatus } from "./emailLog.service";
 
 interface PaginationParams {
   page?: number;
@@ -37,7 +42,6 @@ export const createLead = async (
 };
 
 
-
 export const getAllLeads = async ({
   page = 1,
   limit = 10,
@@ -53,11 +57,21 @@ export const getAllLeads = async ({
     const searchCondition = search
       ? {
           [Op.or]: [
-            Sequelize.literal(`JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.first_name')) LIKE '%${search}%'`),
-            Sequelize.literal(`JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.last_name')) LIKE '%${search}%'`),
-            Sequelize.literal(`JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.agent_name')) LIKE '%${search}%'`),
-            Sequelize.literal(`JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.phone_number')) LIKE '%${search}%'`),
-            Sequelize.literal(`JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.state')) LIKE '%${search}%'`),
+            Sequelize.literal(
+              `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.first_name')) LIKE '%${search}%'`
+            ),
+            Sequelize.literal(
+              `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.last_name')) LIKE '%${search}%'`
+            ),
+            Sequelize.literal(
+              `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.agent_name')) LIKE '%${search}%'`
+            ),
+            Sequelize.literal(
+              `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.phone_number')) LIKE '%${search}%'`
+            ),
+            Sequelize.literal(
+              `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.state')) LIKE '%${search}%'`
+            ),
           ],
         }
       : {};
@@ -85,7 +99,6 @@ export const getAllLeads = async ({
     throw new Error(`Error fetching leads: ${error.message}`);
   }
 };
-
 
 export const getLeadsByCampaign = async (
   campaignName: string
@@ -148,6 +161,37 @@ export const deleteLead = async (
 };
 
 
+//   leadId: number,
+//   userIdToAssign: number,
+//   assignedByUserId?: number
+// ): Promise<LeadAttributes> => {
+//   try {
+//     const lead = await Lead.findByPk(leadId);
+//     if (!lead) {
+//       throw new Error("Lead not found");
+//     }
+
+//     // Use the correct field: assigneeId
+//     await lead.update({ assigneeId: userIdToAssign });
+
+//     if (assignedByUserId) {
+//       await logActivity(
+//         assignedByUserId,
+//         "assign",
+//         `Lead ID ${leadId} assigned to user ID ${userIdToAssign}`
+//       );
+
+//       await sendNotification(
+//         userIdToAssign,
+//         `You have been assigned a new lead (ID: ${leadId})`
+//       );
+//     }
+
+//     return lead.get();
+//   } catch (error: any) {
+//     throw new Error(`Error assigning lead: ${error.message}`);
+//   }
+// };
 
 export const assignLeadToUser = async (
   leadId: number,
@@ -162,7 +206,9 @@ export const assignLeadToUser = async (
 
     // ✅ Prevent reassigning if already assigned to the same user
     if (lead.assigneeId === userIdToAssign) {
-      throw new Error(`Lead ID ${leadId} is already assigned to user ID ${userIdToAssign}`);
+      throw new Error(
+        `Lead ID ${leadId} is already assigned to user ID ${userIdToAssign}`
+      );
     }
 
     // ✅ Proceed with assignment
@@ -207,29 +253,28 @@ export const getAllLeadsWithAssignee = async () => {
   }
 };
 
-
 export const getAssignmentCounts = async () => {
-  // Count total users
-  const totalUsers = await User.count();
-
-  // Count leads that have an assigneeId (i.e., assigned)
   const assignedCount = await Lead.count({
     where: {
       assigneeId: {
-        [Op.ne]: null as unknown as number, // cast to satisfy TypeScript
+        [Op.not]: null as any,
       },
     },
   });
 
-  // Count users not currently assigned to a lead
-  const unassignedCount = totalUsers - assignedCount;
+  const unassignedCount = await Lead.count({
+    where: {
+      assigneeId: {
+        [Op.is]: null as any,
+      },
+    },
+  });
 
   return {
     assignedCount,
     unassignedCount,
   };
 };
-
 // Get all leads with no assignee
 
 export const getUnassignedLeads = async () => {
@@ -271,3 +316,76 @@ export const getLeadsByAssigneeId = async (assigneeId: number) => {
     throw new Error(`Error fetching leads for assignee ID ${assigneeId}: ${error.message}`);
   }
 };
+
+// ✅ Corrected function
+export const sendEmailToLeadUsingTemplate = async (
+  leadId: number,
+  templateKey: string,       // e.g., "user:create"
+  senderUserId: number       // current user sending the email
+) => {
+  // ✅ Fetch lead
+  const lead = await Lead.findByPk(leadId);
+  if (!lead) throw new Error("Lead not found");
+
+  const email = lead.leadData?.email;
+  if (!email) throw new Error("Lead email not found in leadData");
+
+  // ✅ Fetch sender user and their role (for permission check)
+  const sender = await User.findByPk(senderUserId);
+const senderRole = String(sender?.role || "guest");
+
+  // ✅ Check permission for this email type
+  const canSend = await checkEmailPermission(templateKey, senderRole);
+  if (!canSend) throw new Error("You are not authorized to send this email");
+
+  // ✅ Fetch the template
+  const template = await EmailTemplate.findOne({ where: { serviceName: templateKey } });
+  if (!template) throw new Error("Email template not found");
+
+  // ✅ Replace placeholders in subject/body
+  const filledSubject = fillTemplate(template.subjectTemplate, lead.leadData);
+  const filledBody = fillTemplate(template.bodyTemplate, lead.leadData);
+
+  // ✅ Get SMTP config for current sender
+  const smtpRaw = await getSmtpConfig(senderUserId);
+  const smtp = {
+    host: smtpRaw.host || "",
+    port: smtpRaw.port || 587,
+    user: smtpRaw.user || "",
+    pass: smtpRaw.pass || "",
+  };
+
+  if (!smtp.host || !smtp.user || !smtp.pass) {
+    throw new Error("SMTP configuration is incomplete.");
+  }
+
+  // ✅ Send email
+  await sendEmail({
+    smtp,
+    to: email,
+    subject: filledSubject,
+    body: filledBody,
+  });
+
+  // ✅ Log email send
+  await logEmailStatus({
+    leadId,
+    to: email,
+    subject: filledSubject,
+    body: filledBody,
+    templateUsed: templateKey,
+    sentBy: senderUserId,
+    sentAt: new Date(),
+    status: "sent",
+  });
+
+  return { message: "Email sent successfully", to: email };
+};
+
+// ✅ Helper: replace {{key}} in text with values from leadData
+function fillTemplate(template: string, data: any): string {
+  return template.replace(/{{(.*?)}}/g, (_, key) => {
+    const trimmedKey = key.trim();
+    return data?.[trimmedKey] || "";
+  });
+}

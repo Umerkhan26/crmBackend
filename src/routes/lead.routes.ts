@@ -92,4 +92,8 @@ router.get(
   checkPermission(PERMISSIONS.LEAD_GET_BY_ASSIGNEE),
   LeadController.getLeadsByAssigneeId
 );
+
+
+router.post("/leads/:leadId/send-email", verifyToken, LeadController.sendEmailToLead);
+
 export default router;

@@ -8,6 +8,9 @@
   import { logActivity } from "./activity.service";
   import { sendNotification } from "./notification.service";
 import Permission from "../models/permission.model"; // <-- Add this at the top
+import User from "../models/user.model";
+import Role from "../models/role.model";
+import RolePermission from "../models/rolePermission.model";
 
   interface PaginationParams {
     page?: number;
@@ -23,59 +26,69 @@ export const createCampaign = async (
     if (!data || data.length === 0) {
       throw new Error("No campaign data provided.");
     }
-
     const campaignName = data[0].campaignName;
     if (!campaignName) {
       throw new Error("Campaign name is missing.");
     }
-
     const fields = data[0].fields;
-
     const created = await Campaign.create({
       campaignName,
       fields,
     });
-
     const campaign = created.get();
-
-    // ✅ Set campaign-specific resourceType using campaign name
     const resourceType = `campaign-${campaignName}`;
-
-    const permissionsToCreate = [
-      {
+    if (userId) {
+      const permission = await Permission.create({
         name: "getCampaignById",
         resourceType,
         resourceId: campaign.id,
-        ...(userId !== undefined && { userId }),
-      },
-      {
-        name: "updateCampaign",
-        resourceType,
-        resourceId: campaign.id,
-        ...(userId !== undefined && { userId }),
-      },
-      {
-        name: "deleteCampaign",
-        resourceType,
-        resourceId: campaign.id,
-        ...(userId !== undefined && { userId }),
-      },
-    ];
-
-    await Permission.bulkCreate(permissionsToCreate); // store all permissions at once
-
-    // ✅ Log and notify only if userId is provided
-    if (userId) {
-      await logActivity(userId, "Campaign Created", `Created campaign "${campaignName}"`);
-      await sendNotification(userId, `You have successfully created the campaign "${campaignName}".`);
+        userId: userId,
+      });
+      const user = await User.findByPk(userId, {
+        include: [
+          {
+            model: Role,
+            as: "role",
+            include: [{ model: Permission, as: "Permissions" }],
+          },
+        ],
+      });
+      if (user?.role) {
+        try {
+          await RolePermission.create({
+            roleId: user.role.id,
+            permissionId: permission.id,
+          });
+        } catch (error: any) {
+          console.warn(`RolePermisssion creation skipped: ${error.message}`);
+        }
+      }
+      await logActivity(
+        userId,
+        "Campaign Created",
+        `Created campaign "${campaignName}"`
+      );
+      await sendNotification(
+        userId,
+        `You have successfully created the campaign "${campaignName}".`
+      );
     }
-
     return campaign;
   } catch (error: any) {
     console.error("Error creating campaign:", error);
     throw new Error(`Error creating campaign: ${error.message}`);
   }
 };
+
+
+
+
+
+
+
+
+
+
 
 
 

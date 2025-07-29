@@ -34,7 +34,7 @@ router.get(
 router.get(
   "/getUserById/:id",
   verifyToken,
-  checkPermission(PERMISSIONS.USER_GET),
+  checkPermission(PERMISSIONS.USER_GET_by_Id),
   getUser
 );
 

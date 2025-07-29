@@ -17,38 +17,6 @@ export const createLead = async (req: Request, res: Response): Promise<any> => {
   }
 };
 
-// Get All Leads
-// export const getAllLeads = async (req: Request, res: Response): Promise<any> => {
-//   try {
-//     const page = parseInt(req.query.page as string) || 1;
-//     const limit = parseInt(req.query.limit as string) || 10;
-//     const search = (req.query.search as string) || ""; // Ensure default empty string
-
-//     // Collect filters (extendable for more keys)
-//     const filters: any = {};
-//     if (req.query.status) filters.status = req.query.status;
-//     if (req.query.campaign_id) filters.campaign_id = Number(req.query.campaign_id);
-
-//     const leads = await LeadService.getAllLeads({
-//       page,
-//       limit,
-//       search,
-//       filters,
-//     });
-
-//     return res.status(200).json({
-//       success: true,
-//       message: "Leads fetched successfully",
-//       ...leads,
-//     });
-//   } catch (error: any) {
-//     console.error("Error in getAllLeads:", error);
-//     return res.status(500).json({
-//       success: false,
-//       message: error.message || "An error occurred while fetching leads",
-//     });
-//   }
-// };
 
 
 export const getAllLeads = async (req: Request, res: Response): Promise<any> => {
@@ -211,5 +179,42 @@ export const getUnassignedLeads = async (req: Request, res: Response) => {
     res.status(200).json({ success: true, data: leads });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+
+
+// POST /leads/:leadId/send-email
+export const sendEmailToLead = async (req: Request, res: Response): Promise<any> => {
+  try {
+    const leadId = parseInt(req.params.leadId, 10);
+    const templateKey = req.body.templateKey; // e.g., "user:create"
+    const senderUserId = req.user?.id; // assumes `verifyToken` middleware sets req.user
+
+    if (isNaN(leadId)) {
+      return res.status(400).json({ message: "Invalid lead ID." });
+    }
+
+    if (!templateKey) {
+      return res.status(400).json({ message: "Email template key is required." });
+    }
+
+    if (!senderUserId) {
+      return res.status(401).json({ message: "Unauthorized. User not authenticated." });
+    }
+
+    const result = await LeadService.sendEmailToLeadUsingTemplate(leadId, templateKey, senderUserId);
+
+    return res.status(200).json({
+      success: true,
+      message: result.message,
+      to: result.to,
+    });
+  } catch (error: any) {
+    console.error("Error sending email:", error.message);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "An error occurred while sending email to lead.",
+    });
   }
 };

@@ -320,33 +320,44 @@ export const getLeadsByAssigneeId = async (assigneeId: number) => {
 // ✅ Corrected function
 export const sendEmailToLeadUsingTemplate = async (
   leadId: number,
-  templateKey: string,       // e.g., "user:create"
-  senderUserId: number       // current user sending the email
+  templateKey: string, // e.g., "user:create"
+  senderUserId: number
 ) => {
-  // ✅ Fetch lead
+  console.log("Fetching lead with ID:", leadId); // Debug log
   const lead = await Lead.findByPk(leadId);
-  if (!lead) throw new Error("Lead not found");
-  
-  const email = lead.leadData?.email;
-  if (!email) throw new Error("Lead email not found in leadData");
-
-  // ✅ Fetch sender user and their role (for permission check)
+  if (!lead) {
+    console.error("Lead not found for ID:", leadId);
+    throw new Error("Lead not found");
+  }
+  // Parse leadData if it's a string
+  let leadData;
+  if (typeof lead.leadData === "string") {
+    try {
+      leadData = JSON.parse(lead.leadData);
+      console.log("Parsed leadData:", leadData); // Debug log
+    } catch (error: any) {
+      console.error("Error parsing leadData for ID:", leadId, error.message);
+      throw new Error("Invalid leadData format");
+    }
+  } else {
+    leadData = lead.leadData;
+    console.log("leadData (already parsed):", leadData); // Debug log
+  }
+  const email = leadData?.email;
+  if (!email) {
+    console.error("No email found in leadData for ID:", leadId, leadData);
+    throw new Error("Lead email not found in leadData");
+  }
   const sender = await User.findByPk(senderUserId);
-const senderRole = String(sender?.role || "guest");
-
-  // ✅ Check permission for this email type
+  const senderRole = String(sender?.role || "guest");
   // const canSend = await checkEmailPermission(templateKey, senderRole);
   // if (!canSend) throw new Error("You are not authorized to send this email");
-
-  // ✅ Fetch the template
-  const template = await EmailTemplate.findOne({ where: { serviceName: templateKey } });
+  const template = await EmailTemplate.findOne({
+    where: { serviceName: templateKey },
+  });
   if (!template) throw new Error("Email template not found");
-
-  // ✅ Replace placeholders in subject/body
-  const filledSubject = fillTemplate(template.subjectTemplate, lead.leadData);
-  const filledBody = fillTemplate(template.bodyTemplate, lead.leadData);
-
-  // ✅ Get SMTP config for current sender
+  const filledSubject = fillTemplate(template.subjectTemplate, leadData);
+  const filledBody = fillTemplate(template.bodyTemplate, leadData);
   const smtpRaw = await getSmtpConfig(senderUserId);
   const smtp = {
     host: smtpRaw.host || "",
@@ -354,20 +365,15 @@ const senderRole = String(sender?.role || "guest");
     user: smtpRaw.user || "",
     pass: smtpRaw.pass || "",
   };
-
   if (!smtp.host || !smtp.user || !smtp.pass) {
     throw new Error("SMTP configuration is incomplete.");
   }
-
-  // ✅ Send email
   await sendEmail({
     smtp,
     to: email,
     subject: filledSubject,
     body: filledBody,
   });
-
-  // ✅ Log email send
   await logEmailStatus({
     leadId,
     to: email,
@@ -378,10 +384,8 @@ const senderRole = String(sender?.role || "guest");
     sentAt: new Date(),
     status: "sent",
   });
-
   return { message: "Email sent successfully", to: email };
 };
-
 // ✅ Helper: replace {{key}} in text with values from leadData
 function fillTemplate(template: string, data: any): string {
   return template.replace(/{{(.*?)}}/g, (_, key) => {

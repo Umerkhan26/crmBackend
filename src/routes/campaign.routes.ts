@@ -38,6 +38,13 @@ router.get(
   getCampaignById
 );
 
+router.get(
+  "/getCampaignId/:id",
+  verifyToken,
+  checkPermission(PERMISSIONS.CAMPAIGN_GET),
+  getCampaignById
+);
+
 // Update campaign by ID
 router.put(
   "/updateCampaignById/:id",

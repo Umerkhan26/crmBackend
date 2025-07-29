@@ -326,7 +326,7 @@ export const sendEmailToLeadUsingTemplate = async (
   // ✅ Fetch lead
   const lead = await Lead.findByPk(leadId);
   if (!lead) throw new Error("Lead not found");
-
+  
   const email = lead.leadData?.email;
   if (!email) throw new Error("Lead email not found in leadData");
 
@@ -335,8 +335,8 @@ export const sendEmailToLeadUsingTemplate = async (
 const senderRole = String(sender?.role || "guest");
 
   // ✅ Check permission for this email type
-  const canSend = await checkEmailPermission(templateKey, senderRole);
-  if (!canSend) throw new Error("You are not authorized to send this email");
+  // const canSend = await checkEmailPermission(templateKey, senderRole);
+  // if (!canSend) throw new Error("You are not authorized to send this email");
 
   // ✅ Fetch the template
   const template = await EmailTemplate.findOne({ where: { serviceName: templateKey } });

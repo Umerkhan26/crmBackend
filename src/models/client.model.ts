@@ -12,7 +12,7 @@ export interface ClientAttributes {
 interface ClientModel extends Model<ClientAttributes>, ClientAttributes {}
 
 const Client = db.define<ClientModel>("Client", {
-  id: {
+  id: { 
     type: DataTypes.INTEGER,
     autoIncrement: true,
     primaryKey: true,

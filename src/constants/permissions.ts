@@ -17,19 +17,18 @@ export const PERMISSIONS = {
   ORDER_GET: "order:get",
   ORDER_UPDATE: "order:update",
   ORDER_DELETE: "order:delete",
-  ORDER_UPDATESTATUS:"order:updateStatus",
+  ORDER_UPDATESTATUS: "order:updateStatus",
   // Lead permissions
   LEAD_CREATE: "lead:create",
   LEAD_GET_ALL: "lead:getAll",
   LEAD_GET_BY_CAMPAIGN: "lead:getByCampaign",
   LEAD_UPDATE: "lead:update",
   LEAD_DELETE: "lead:delete",
+  LEAD_GET_BY_ASSIGNEE: "lead:getByAssignee",
   LEAD_ASSIGN_USER: "lead:assign",
- LEAD_VIEW_ASSIGNED_USERS: "lead:view_assigned_users",
+  LEAD_VIEW_ASSIGNED_USERS: "lead:view_assigned_users",
   LEAD_VIEW_ASSIGNMENT_STATS: "lead:view_assignment_stats",
   LEAD_VIEW_UNASSIGNED_USERS: "lead:view_unassigned_users",
-  LEAD_GET_BY_ASSIGNEE: "lead:get-by-assignee",
-
   // ✅ Client Lead permissions
   CLIENT_LEAD_CREATE: "clientLead:create",
   CLIENT_LEAD_GET_ALL: "clientLead:getAll",
@@ -39,8 +38,6 @@ export const PERMISSIONS = {
   CLIENT_LEAD_DELETE: "clientLead:delete",
   CLIENT_LEAD_UPDATE_STATUS: "clientLead:updateStatus",
 
-    // ✅ Note permissions
-
- NOTE_CREATE: "note:create",
+  NOTE_CREATE: "note:create",
   NOTE_VIEW: "note:view",
 };

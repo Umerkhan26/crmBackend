@@ -26,7 +26,9 @@ export const addNote = async ({
   });
 
   return Note.findByPk(note.id, {
-    include: [{ model: User, as: "creator", attributes: ["id", "firstname", "email"] }],
+    include: [
+      { model: User, as: "creator", attributes: ["id", "firstname", "email"] },
+    ],
   });
 };
 
@@ -35,10 +37,15 @@ interface GetNotesParams {
   notebleType: "lead" | "client_lead";
 }
 
-export const getNotesForEntity = async ({ notebleId, notebleType }: GetNotesParams) => {
+export const getNotesForEntity = async ({
+  notebleId,
+  notebleType,
+}: GetNotesParams) => {
   return Note.findAll({
     where: { notebleId, notebleType },
-    include: [{ model: User, as: "creator", attributes: ["id", "firstname", "email"] }],
+    include: [
+      { model: User, as: "creator", attributes: ["id", "firstname", "email"] },
+    ],
     order: [["createdAt", "DESC"]],
   });
 };

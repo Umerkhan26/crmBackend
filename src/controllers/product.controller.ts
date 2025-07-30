@@ -2,9 +2,9 @@ import { Request, Response } from "express";
 import * as ProductSaleService from "../services/product.service";
 
 // ✅ Convert Lead to Sale
-export const convertLeadToSale = async (req: Request, res: Response):Promise<any> => {
+export const convertLeadToSale = async (req: Request, res: Response): Promise<any> => {
   try {
-    const { leadId, productType, price, notes } = req.body;
+    const { leadId, productType, price, notes, status } = req.body;
     const createdBy = req.user?.id;
 
     if (!leadId || !productType || !price) {
@@ -16,6 +16,7 @@ export const convertLeadToSale = async (req: Request, res: Response):Promise<any
       productType,
       price,
       notes,
+      status, // Optional
       conversionDate: new Date(),
       createdBy,
     });
@@ -31,7 +32,7 @@ export const convertLeadToSale = async (req: Request, res: Response):Promise<any
 };
 
 // ✅ Get All Sales
-export const getAllSales = async (req: Request, res: Response):Promise<any> => {
+export const getAllSales = async (req: Request, res: Response): Promise<any> => {
   try {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
@@ -39,6 +40,7 @@ export const getAllSales = async (req: Request, res: Response):Promise<any> => {
 
     const filters: any = {};
     if (req.query.productType) filters.productType = req.query.productType;
+    if (req.query.status) filters.status = req.query.status;
 
     const salesData = await ProductSaleService.getAllSales({
       page,
@@ -58,7 +60,7 @@ export const getAllSales = async (req: Request, res: Response):Promise<any> => {
 };
 
 // ✅ Get Sale by ID
-export const getSaleById = async (req: Request, res: Response):Promise<any> => {
+export const getSaleById = async (req: Request, res: Response): Promise<any> => {
   try {
     const saleId = parseInt(req.params.id, 10);
     if (isNaN(saleId)) {
@@ -81,7 +83,7 @@ export const getSaleById = async (req: Request, res: Response):Promise<any> => {
 };
 
 // ✅ Update Sale
-export const updateSale = async (req: Request, res: Response):Promise<any> => {
+export const updateSale = async (req: Request, res: Response): Promise<any> => {
   try {
     const saleId = parseInt(req.params.id, 10);
     const updatedData = req.body;
@@ -104,7 +106,7 @@ export const updateSale = async (req: Request, res: Response):Promise<any> => {
 };
 
 // ✅ Delete Sale
-export const deleteSale = async (req: Request, res: Response) => {
+export const deleteSale = async (req: Request, res: Response): Promise<any> => {
   try {
     const saleId = parseInt(req.params.id, 10);
     const userId = req.user?.id;
@@ -124,8 +126,8 @@ export const deleteSale = async (req: Request, res: Response) => {
   }
 };
 
-// ✅ Get Sales by Product Type (Fix applied)
-export const getSalesByProductType = async (req: Request, res: Response) :Promise<any>=> {
+// ✅ Get Sales by Product Type
+export const getSalesByProductType = async (req: Request, res: Response): Promise<any> => {
   try {
     const { type } = req.params;
 
@@ -133,7 +135,7 @@ export const getSalesByProductType = async (req: Request, res: Response) :Promis
       return res.status(400).json({ message: "Product type is required" });
     }
 
-    const sales = await ProductSaleService.getSalesByProductType(type); // ⬅️ FIX: Removed 2nd argument
+    const sales = await ProductSaleService.getSalesByProductType(type);
 
     return res.status(200).json({
       success: true,
@@ -143,26 +145,4 @@ export const getSalesByProductType = async (req: Request, res: Response) :Promis
   } catch (error: any) {
     return res.status(500).json({ success: false, message: error.message });
   }
-};
-
-// ✅ Dummy Product Methods for Route Compatibility
-
-export const createProduct = async (req: Request, res: Response):Promise<any> => {
-  return res.status(200).json({ success: true, message: "Stub: createProduct" });
-};
-
-export const getAllProducts = async (req: Request, res: Response):Promise<any> => {
-  return res.status(200).json({ success: true, message: "Stub: getAllProducts" });
-};
-
-export const getProductById = async (req: Request, res: Response) :Promise<any>=> {
-  return res.status(200).json({ success: true, message: "Stub: getProductById" });
-};
-
-export const updateProduct = async (req: Request, res: Response) :Promise<any>=> {
-  return res.status(200).json({ success: true, message: "Stub: updateProduct" });
-};
-
-export const deleteProduct = async (req: Request, res: Response):Promise<any> => {
-  return res.status(200).json({ success: true, message: "Stub: deleteProduct" });
 };

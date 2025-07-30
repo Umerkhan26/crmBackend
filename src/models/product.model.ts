@@ -11,10 +11,11 @@ export interface ProductSaleAttributes {
   notes?: string;
   conversionDate: Date;
   createdBy?: number; // User who converted the lead
+  status: "pending" | "converted" | "cancelled"; // ✅ added
 }
 
 export interface ProductSaleCreationAttributes
-  extends Optional<ProductSaleAttributes, "id" | "notes" | "createdBy"> {}
+  extends Optional<ProductSaleAttributes, "id" | "notes" | "createdBy" | "status"> {}
 
 class ProductSale
   extends Model<ProductSaleAttributes, ProductSaleCreationAttributes>
@@ -27,6 +28,7 @@ class ProductSale
   public notes?: string;
   public conversionDate!: Date;
   public createdBy?: number;
+  public status!: "pending" | "converted" | "cancelled"; // ✅ added
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
@@ -71,6 +73,11 @@ ProductSale.init(
         key: "id",
       },
     },
+    status: {
+      type: DataTypes.ENUM("pending", "converted", "cancelled"), // ✅ ENUM for limited values
+      allowNull: false,
+      defaultValue: "pending", // ✅ default to pending
+    },
   },
   {
     sequelize: db,
@@ -79,11 +86,9 @@ ProductSale.init(
   }
 );
 
-// Associations
-ProductSale.belongsTo(Lead, { foreignKey: "leadId" });
-Lead.hasOne(ProductSale, { foreignKey: "leadId" });
-
-ProductSale.belongsTo(User, { foreignKey: "createdBy" });
+// Optional: Define associations (uncomment if used)
+// ProductSale.belongsTo(Lead, { foreignKey: "leadId" });
+// Lead.hasOne(ProductSale, { foreignKey: "leadId" });
+// ProductSale.belongsTo(User, { foreignKey: "createdBy" });
 
 export default ProductSale;
-    

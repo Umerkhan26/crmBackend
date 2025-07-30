@@ -35,6 +35,7 @@ export const convertLeadToSale = async (
 
     const sale = await ProductSale.create({
       ...data,
+      status: "converted",
       conversionDate: new Date(),
     });
 
@@ -65,6 +66,7 @@ export const getAllSales = async ({
       where[Op.or] = [
         { productType: { [Op.like]: `%${search}%` } },
         { notes: { [Op.like]: `%${search}%` } },
+        { status: { [Op.like]: `%${search}%` } },
       ];
     }
 
@@ -125,7 +127,10 @@ export const updateSale = async (
     const sale = await ProductSale.findByPk(id);
     if (!sale) throw new Error("Sale not found");
 
-    await sale.update(updatedData);
+    await sale.update({
+      ...updatedData,
+      status: updatedData.status || sale.status, // ensure status is not lost
+    });
 
     if (userId) {
       await logActivity(userId, "update", `Sale updated with ID ${id}`);
@@ -158,7 +163,7 @@ export const deleteSale = async (
   }
 };
 
-// ✅ Get Sales by Product Type (e.g., "Web Development")
+// ✅ Get Sales by Product Type
 export const getSalesByProductType = async (
   productType: string
 ): Promise<ProductSaleAttributes[]> => {

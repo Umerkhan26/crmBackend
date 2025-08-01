@@ -118,7 +118,7 @@ export const getAllLeads = async ({
           if (numericIds.length > 0) {
             assignees = await User.findAll({
               where: { id: numericIds },
-              attributes: ["id", "firstname", "email"], // Add other fields if needed
+              attributes: ["id", "firstname","lastname", "email"], // Add other fields if needed
             });
           }
         }

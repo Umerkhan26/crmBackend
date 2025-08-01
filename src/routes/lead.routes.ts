@@ -105,7 +105,7 @@ router.get(
 
 // ✅ NEW: Update lead status for specific user
 router.put(
-  "/:leadId/status",
+  "/getAssignedLeadsByStatus:leadId/status",
   verifyToken,
   checkPermission(PERMISSIONS.LEAD_UPDATE_STATUS),
   LeadController.updateLeadStatus

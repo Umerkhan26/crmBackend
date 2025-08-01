@@ -448,8 +448,6 @@ export const getLeadStatusSummary = async (assigneeId?: number) => {
   }
 };
 
-
-// Define your allowed statuses as a type
 export type LeadStatus = "pending" | "sold" | "most_interested" | "to_call";
 
 // Keep a constant for validation
@@ -458,31 +456,68 @@ const ALLOWED_STATUSES: LeadStatus[] = ["pending", "sold", "most_interested", "t
 export const updateLeadStatusForUser = async (
   leadId: number,
   userId: number,
-  newStatus: LeadStatus // ✅ typed here
+  newStatus: LeadStatus
 ) => {
-  if (!ALLOWED_STATUSES.includes(newStatus)) {
-    throw new Error(`Invalid status. Allowed statuses: ${ALLOWED_STATUSES.join(", ")}`);
+  try {
+    console.log("📝 Updating lead status", {
+      leadId,
+      userId,
+      newStatus
+    });
+
+    // ✅ Validate status
+    if (!ALLOWED_STATUSES.includes(newStatus)) {
+      console.error("❌ Invalid status provided:", newStatus);
+      throw new Error(
+        `Invalid status. Allowed statuses: ${ALLOWED_STATUSES.join(", ")}`
+      );
+    }
+
+    // ✅ Find lead
+    const lead = await Lead.findByPk(leadId);
+    if (!lead) {
+      console.error("❌ Lead not found:", leadId);
+      throw new Error(`Lead not found (ID: ${leadId})`);
+    }
+
+    // ✅ Get current assignees
+    let assignees: { userId: number; status: LeadStatus }[] = [];
+    try {
+      assignees = (lead.assignees as any) || [];
+    } catch (parseError) {
+      console.error("❌ Failed to parse assignees for lead:", leadId, parseError);
+      throw new Error(`Failed to parse assignees for lead ID ${leadId}`);
+    }
+
+    // ✅ Find assigned user index
+    const index = assignees.findIndex((a) => a.userId === userId);
+    if (index === -1) {
+      console.error(
+        `❌ User ${userId} is not assigned to lead ${leadId}`
+      );
+      throw new Error(`User ID ${userId} is not assigned to this lead`);
+    }
+
+    // ✅ Update the status
+    assignees[index].status = newStatus;
+    console.log(
+      `✅ Updated status for user ${userId} in lead ${leadId} to "${newStatus}"`
+    );
+
+    // ✅ Save changes
+    await lead.update({ assignees });
+
+    console.log(`💾 Lead ${leadId} status updated successfully`);
+
+    return lead;
+  } catch (error: any) {
+    console.error("🔥 Error in updateLeadStatusForUser:", {
+      message: error.message,
+      stack: error.stack,
+      leadId,
+      userId,
+      newStatus
+    });
+    throw error; // Keep throwing so controller sends error response
   }
-
-  const lead = await Lead.findByPk(leadId);
-  if (!lead) {
-    throw new Error("Lead not found");
-  }
-
-  // `assignees` might not be typed, so we explicitly cast it
-  let assignees: { userId: number; status: LeadStatus }[] = (lead.assignees as any) || [];
-
-  // Find the assigned user
-  const index = assignees.findIndex((a) => a.userId === userId);
-  if (index === -1) {
-    throw new Error(`User ID ${userId} is not assigned to this lead`);
-  }
-
-  // ✅ Update the status safely
-  assignees[index].status = newStatus;
-
-  // Save changes
-  await lead.update({ assignees });
-
-  return lead;
 };

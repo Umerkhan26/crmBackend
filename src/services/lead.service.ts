@@ -1,5 +1,6 @@
 import { Op, Sequelize } from "sequelize";
 import Lead, {
+  AssigneeWithStatus,
   LeadAttributes,
   LeadCreationAttributes,
 } from "../models/lead.model";
@@ -42,7 +43,6 @@ export const createLead = async (
   }
 };
 
-
 export const getAllLeads = async ({
   page = 1,
   limit = 10,
@@ -77,7 +77,7 @@ export const getAllLeads = async ({
         }
       : {};
 
-    // First, get leads without trying to join on assigneeIds
+    // Fetch leads
     const leadsData = await Lead.findAndCountAll({
       offset,
       limit: pageLimit,
@@ -88,46 +88,52 @@ export const getAllLeads = async ({
       order: [["createdAt", "DESC"]],
     });
 
-    // Populate assignees manually based on assigneeIds JSON array
+    // Populate assignees with user details + status
     const rowsWithAssignees = await Promise.all(
       leadsData.rows.map(async (lead) => {
-        let assignees: InstanceType<typeof User>[] = [];
+        let assigneesRaw: AssigneeWithStatus[] = [];
 
-        // Get IDs from lead.assigneeIds in a safe way
-        let ids: any = lead.assigneeIds;
-
-        // If stored as JSON string in DB, parse it
-        if (typeof ids === "string") {
+        // Parse if stored as string
+        if (typeof lead.assignees === "string") {
           try {
-            ids = JSON.parse(ids);
+            assigneesRaw = JSON.parse(lead.assignees) as AssigneeWithStatus[];
           } catch {
-            ids = [];
+            assigneesRaw = [];
           }
+        } else if (Array.isArray(lead.assignees)) {
+          assigneesRaw = lead.assignees as AssigneeWithStatus[];
         }
 
-        // If it's already a single value, wrap in array
-        if (!Array.isArray(ids) && ids != null) {
-          ids = [ids];
+        // Extract user IDs
+        const userIds = assigneesRaw
+          .map((a: AssigneeWithStatus) => a.userId)
+          .filter((id): id is number => typeof id === "number");
+
+        let assigneesData: any[] = [];
+
+        if (userIds.length > 0) {
+          const users = await User.findAll({
+            where: { id: userIds },
+            attributes: ["id", "firstname", "lastname", "email"],
+          });
+
+          // Merge status with user info
+          assigneesData = users.map((user) => {
+            const assignment = assigneesRaw.find(
+              (a: AssigneeWithStatus) => a.userId === user.id
+            );
+            return {
+              ...user.toJSON(),
+              status: assignment?.status || "pending",
+            };
+          });
         }
 
-        // Only fetch if we have valid IDs
-        if (Array.isArray(ids) && ids.length > 0) {
-          // Convert all IDs to numbers just in case
-          const numericIds = ids.map((id) => Number(id)).filter((n) => !isNaN(n));
-
-          if (numericIds.length > 0) {
-            assignees = await User.findAll({
-              where: { id: numericIds },
-              attributes: ["id", "firstname","lastname", "email"], // Add other fields if needed
-            });
-          }
-        }
-
-        return { ...lead.toJSON(), assignees };
+        return { ...lead.toJSON(), assignees: assigneesData };
       })
     );
 
-    // Return with pagination
+    // Return paginated data
     return getPagingData(
       { count: leadsData.count, rows: rowsWithAssignees },
       page,
@@ -138,7 +144,6 @@ export const getAllLeads = async ({
     throw new Error(`Error fetching leads: ${error.message}`);
   }
 };
-
 
 
 export const getLeadsByCampaign = async (
@@ -200,9 +205,9 @@ export const deleteLead = async (
     throw new Error(`Error deleting lead: ${error.message}`);
   }
 };
-export const assignLeadToUser = async (
+export const assignLeadToUsers = async (
   leadId: number,
-  userIdToAssign: number,
+  userIdsToAssign: number[],
   assignedByUserId?: number
 ): Promise<LeadAttributes> => {
   try {
@@ -211,31 +216,51 @@ export const assignLeadToUser = async (
       throw new Error("Lead not found");
     }
 
-    const currentAssignees = lead.assigneeIds || [];
+    let currentAssignees: AssigneeWithStatus[] = [];
 
-    // ✅ Prevent duplicate assignment
-    if (currentAssignees.includes(userIdToAssign)) {
-      throw new Error(
-        `Lead ID ${leadId} is already assigned to user ID ${userIdToAssign}`
-      );
+    // Parse existing assignees from DB
+    if (typeof lead.assignees === "string") {
+      try {
+        currentAssignees = JSON.parse(lead.assignees);
+      } catch {
+        currentAssignees = [];
+      }
+    } else if (Array.isArray(lead.assignees)) {
+      currentAssignees = lead.assignees as AssigneeWithStatus[];
     }
 
-    // ✅ Add the new user to the assignee list
-    const updatedAssignees = [...currentAssignees, userIdToAssign];
-    await lead.update({ assigneeIds: updatedAssignees });
+    // Create set of existing user IDs
+    const existingIds = new Set<number>(currentAssignees.map((a) => a.userId));
 
-    // ✅ Optional logging and notification
+    // Prepare new assignees (only those not already assigned)
+    const newAssignees: AssigneeWithStatus[] = userIdsToAssign
+      .filter((id: number) => !existingIds.has(id))
+      .map((id: number) => ({ userId: id, status: "pending" }));
+
+    if (newAssignees.length === 0) {
+      throw new Error("All provided users are already assigned to this lead.");
+    }
+
+    // Merge old + new assignments
+    const updatedAssignees = [...currentAssignees, ...newAssignees];
+
+    // Save in DB in a single update
+    await lead.update({ assignees: updatedAssignees });
+
+    // Log and notify new assignees
     if (assignedByUserId) {
-      await logActivity(
-        assignedByUserId,
-        "assign",
-        `Lead ID ${leadId} assigned to user ID ${userIdToAssign}`
-      );
+      for (const newUser of newAssignees) {
+        await logActivity(
+          assignedByUserId,
+          "assign",
+          `Lead ID ${leadId} assigned to user ID ${newUser.userId}`
+        );
 
-      await sendNotification(
-        userIdToAssign,
-        `You have been assigned a new lead (ID: ${leadId})`
-      );
+        await sendNotification(
+          newUser.userId,
+          `You have been assigned a new lead (ID: ${leadId})`
+        );
+      }
     }
 
     return lead.get();
@@ -243,11 +268,13 @@ export const assignLeadToUser = async (
     throw new Error(`Error assigning lead: ${error.message}`);
   }
 };
-
+/**
+ * Get all leads that have at least one assignee
+ */
 export const getAllLeadsWithAssignee = async () => {
   try {
     const leads = await Lead.findAll({
-      where: Sequelize.literal("JSON_LENGTH(assigneeIds) > 0"), // ✅ At least one assignee
+      where: Sequelize.literal("JSON_LENGTH(assignees) > 0"), // ✅ At least one assignee
     });
 
     return leads;
@@ -256,13 +283,16 @@ export const getAllLeadsWithAssignee = async () => {
   }
 };
 
+/**
+ * Get counts of assigned and unassigned leads
+ */
 export const getAssignmentCounts = async () => {
   const assignedCount = await Lead.count({
-    where: Sequelize.literal("JSON_LENGTH(assigneeIds) > 0"), // ✅ Has at least one ID
+    where: Sequelize.literal("JSON_LENGTH(assignees) > 0"), // ✅ Has at least one assignment
   });
 
   const unassignedCount = await Lead.count({
-    where: Sequelize.literal("JSON_LENGTH(assigneeIds) = 0"), // ✅ No IDs
+    where: Sequelize.literal("JSON_LENGTH(assignees) = 0"), // ✅ No assignments
   });
 
   return {
@@ -271,18 +301,26 @@ export const getAssignmentCounts = async () => {
   };
 };
 
+/**
+ * Get all unassigned leads
+ */
 export const getUnassignedLeads = async () => {
   const unassignedLeads = await Lead.findAll({
-    where: Sequelize.literal("JSON_LENGTH(assigneeIds) = 0"), // ✅ No IDs
+    where: Sequelize.literal("JSON_LENGTH(assignees) = 0"), // ✅ No assignments
   });
 
   return unassignedLeads;
 };
 
+/**
+ * Get all leads assigned to a specific user
+ */
 export const getLeadsByAssigneeId = async (assigneeId: number) => {
   try {
     const leads = await Lead.findAll({
-      where: Sequelize.literal(`JSON_CONTAINS(assigneeIds, '[${assigneeId}]')`), // ✅ Check if array contains the userId
+      where: Sequelize.literal(
+        `JSON_SEARCH(JSON_EXTRACT(assignees, '$[*].userId'), 'one', '${assigneeId}') IS NOT NULL`
+      ), // ✅ Check if any assignee.userId matches
     });
 
     return leads;
@@ -292,7 +330,6 @@ export const getLeadsByAssigneeId = async (assigneeId: number) => {
     );
   }
 };
-
 // ✅ Corrected function
 export const sendEmailToLeadUsingTemplate = async (
   leadId: number,
@@ -369,3 +406,83 @@ function fillTemplate(template: string, data: any): string {
     return data?.[trimmedKey] || "";
   });
 }
+
+
+/**
+ * Get lead status counts + leads grouped by status
+ * @param assigneeId optional filter by specific user
+ */
+export const getLeadStatusSummary = async (assigneeId?: number) => {
+  try {
+    const statuses = ["pending", "sold", "most_interested", "to_call"]; // Default statuses
+    const statusCounts: Record<string, number> = {};
+    const leadsByStatus: Record<string, any[]> = {};
+
+    // Loop over each status and fetch only those leads
+    for (const status of statuses) {
+      // Build WHERE clause for filtering JSON array of assignees
+      let whereCondition;
+      if (assigneeId) {
+        whereCondition = Sequelize.literal(
+          `JSON_SEARCH(JSON_EXTRACT(assignees, '$[*].status'), 'one', '${status}') IS NOT NULL
+           AND JSON_SEARCH(JSON_EXTRACT(assignees, '$[*].userId'), 'one', '${assigneeId}') IS NOT NULL`
+        );
+      } else {
+        whereCondition = Sequelize.literal(
+          `JSON_SEARCH(JSON_EXTRACT(assignees, '$[*].status'), 'one', '${status}') IS NOT NULL`
+        );
+      }
+
+      const leads = await Lead.findAll({
+        where: whereCondition,
+        order: [["createdAt", "DESC"]],
+      });
+
+      statusCounts[status] = leads.length;
+      leadsByStatus[status] = leads;
+    }
+
+    return { statusCounts, leadsByStatus };
+  } catch (error: any) {
+    throw new Error(`Error getting lead status summary: ${error.message}`);
+  }
+};
+
+
+// Define your allowed statuses as a type
+export type LeadStatus = "pending" | "sold" | "most_interested" | "to_call";
+
+// Keep a constant for validation
+const ALLOWED_STATUSES: LeadStatus[] = ["pending", "sold", "most_interested", "to_call"];
+
+export const updateLeadStatusForUser = async (
+  leadId: number,
+  userId: number,
+  newStatus: LeadStatus // ✅ typed here
+) => {
+  if (!ALLOWED_STATUSES.includes(newStatus)) {
+    throw new Error(`Invalid status. Allowed statuses: ${ALLOWED_STATUSES.join(", ")}`);
+  }
+
+  const lead = await Lead.findByPk(leadId);
+  if (!lead) {
+    throw new Error("Lead not found");
+  }
+
+  // `assignees` might not be typed, so we explicitly cast it
+  let assignees: { userId: number; status: LeadStatus }[] = (lead.assignees as any) || [];
+
+  // Find the assigned user
+  const index = assignees.findIndex((a) => a.userId === userId);
+  if (index === -1) {
+    throw new Error(`User ID ${userId} is not assigned to this lead`);
+  }
+
+  // ✅ Update the status safely
+  assignees[index].status = newStatus;
+
+  // Save changes
+  await lead.update({ assignees });
+
+  return lead;
+};

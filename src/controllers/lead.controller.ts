@@ -110,20 +110,18 @@ export const deleteLead = async (req: Request, res: Response): Promise<any> => {
 export const assignUserToLead = async (req: Request, res: Response): Promise<any> => {
   try {
     const leadId = parseInt(req.params.leadId, 10);
-    const assignedByUserId = req.user?.id; // assuming verifyToken middleware sets this
+    const assignedByUserId = req.user?.id; // from verifyToken middleware
 
     let userIds: number[] = [];
 
+    // Multiple IDs case
     if (Array.isArray(req.body.userIds)) {
       userIds = req.body.userIds
-        .map((id: unknown) => {
-          if (typeof id === "string" || typeof id === "number") {
-            return parseInt(id as string, 10);
-          }
-          return NaN;
-        })
+        .map((id: string | number) => parseInt(id as string, 10))
         .filter((id: number) => !isNaN(id));
-    } else if (req.body.userId) {
+    }
+    // Single ID case
+    else if (req.body.userId) {
       const singleId = parseInt(req.body.userId, 10);
       if (!isNaN(singleId)) {
         userIds = [singleId];
@@ -134,16 +132,17 @@ export const assignUserToLead = async (req: Request, res: Response): Promise<any
       return res.status(400).json({ message: "Invalid lead ID or user IDs." });
     }
 
-    const updatedLeadResults = [];
-    for (const userId of userIds) {
-      const updatedLead = await LeadService.assignLeadToUser(leadId, userId, assignedByUserId);
-      updatedLeadResults.push(updatedLead);
-    }
+    // Bulk assign in one DB update
+    const updatedLead = await LeadService.assignLeadToUsers(
+      leadId,
+      userIds,
+      assignedByUserId
+    );
 
     return res.status(200).json({
       success: true,
       message: `User(s) ${userIds.join(", ")} have been assigned to lead ID ${leadId}.`,
-      leads: updatedLeadResults,
+      lead: updatedLead,
     });
   } catch (error: any) {
     return res.status(500).json({
@@ -152,6 +151,7 @@ export const assignUserToLead = async (req: Request, res: Response): Promise<any
     });
   }
 };
+
 
 
 
@@ -238,6 +238,58 @@ export const sendEmailToLead = async (req: Request, res: Response): Promise<any>
     return res.status(500).json({
       success: false,
       message: error.message || "An error occurred while sending email to lead.",
+    });
+  }
+};
+
+export const getLeadStatusSummary = async (req: Request, res: Response):Promise<any> => {
+  try {
+    const assigneeId = req.query.assigneeId
+      ? parseInt(req.query.assigneeId as string, 10)
+      : undefined;
+
+    const result = await LeadService.getLeadStatusSummary(assigneeId);
+
+    return res.status(200).json({
+      success: true,
+      message: "Lead status summary fetched successfully",
+      data: result
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      message: error.message || "An error occurred while fetching status summary."
+    });
+  }
+};
+export const updateLeadStatus = async (req: Request, res: Response):Promise<any> => {
+  try {
+    const leadId = parseInt(req.params.leadId, 10);
+    const userId = parseInt(req.body.userId, 10);
+    const status = req.body.status as LeadService.LeadStatus; // ✅ Type assertion
+
+    if (isNaN(leadId) || isNaN(userId) || !status) {
+      return res.status(400).json({
+        success: false,
+        message: "Lead ID, user ID, and status are required"
+      });
+    }
+
+    const updatedLead = await LeadService.updateLeadStatusForUser(
+      leadId,
+      userId,
+      status
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: `Status updated to "${status}" for user ${userId} on lead ${leadId}`,
+      lead: updatedLead
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      message: error.message || "An error occurred while updating lead status"
     });
   }
 };

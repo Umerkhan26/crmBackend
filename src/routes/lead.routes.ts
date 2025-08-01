@@ -96,4 +96,18 @@ router.get(
 
 router.post("/leads/:leadId/send-email", verifyToken, LeadController.sendEmailToLead);
 
+router.get(
+  "/status-summary",
+  verifyToken,
+  checkPermission(PERMISSIONS.LEAD_GET_STATUS_SUMMARY),
+  LeadController.getLeadStatusSummary
+);
+
+// ✅ NEW: Update lead status for specific user
+router.put(
+  "/:leadId/status",
+  verifyToken,
+  checkPermission(PERMISSIONS.LEAD_UPDATE_STATUS),
+  LeadController.updateLeadStatus
+);
 export default router;

@@ -29,6 +29,8 @@ export const PERMISSIONS = {
   LEAD_VIEW_ASSIGNED_USERS: "lead:view_assigned_users",
   LEAD_VIEW_ASSIGNMENT_STATS: "lead:view_assignment_stats",
   LEAD_VIEW_UNASSIGNED_USERS: "lead:view_unassigned_users",
+  LEAD_GET_STATUS_SUMMARY: "lead:get_status_summary", // View leads grouped by status with counts
+  LEAD_UPDATE_STATUS: "lead:update_status", // Update status for a specific assigned lead
   // ✅ Client Lead permissions
   CLIENT_LEAD_CREATE: "clientLead:create",
   CLIENT_LEAD_GET_ALL: "clientLead:getAll",

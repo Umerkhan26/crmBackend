@@ -484,7 +484,7 @@ export const updateLeadStatusForUser = async (
       : [];
 
     // ✅ Find assigned user
-    const index = assignees.findIndex((a) => a.userId === userId);
+    const index = assignees.findIndex((a) => Number(a.userId) === Number(userId));
     if (index === -1) {
       throw new Error(
         `User ID ${userId} is not assigned to lead ID ${leadId}`

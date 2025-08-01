@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import * as LeadService from "../services/lead.service";
+import { LeadStatus } from "../models/lead.model";
 
 // Create Lead
 export const createLead = async (req: Request, res: Response): Promise<any> => {
@@ -262,19 +263,26 @@ export const getLeadStatusSummary = async (req: Request, res: Response):Promise<
     });
   }
 };
-export const updateLeadStatus = async (req: Request, res: Response):Promise<any> => {
+export const updateLeadStatus = async (
+  req: Request,
+  res: Response
+): Promise<any> => {
   try {
-    const leadId = parseInt(req.params.leadId, 10);
-    const userId = parseInt(req.body.userId, 10);
-    const status = req.body.status as LeadService.LeadStatus; // ✅ Type assertion
+    const leadId = Number(req.params.leadId);
+    const userId = Number(req.body.userId);
+    const status = req.body.status as LeadStatus;
 
-    if (isNaN(leadId) || isNaN(userId) || !status) {
+    console.log("📌 Update Lead Status Request:", { leadId, userId, status });
+
+    // ✅ Validate input
+    if (!leadId || !userId || !status) {
       return res.status(400).json({
         success: false,
-        message: "Lead ID, user ID, and status are required"
+        message: "Lead ID, user ID, and status are required",
       });
     }
 
+    // ✅ Call service function
     const updatedLead = await LeadService.updateLeadStatusForUser(
       leadId,
       userId,
@@ -284,12 +292,18 @@ export const updateLeadStatus = async (req: Request, res: Response):Promise<any>
     return res.status(200).json({
       success: true,
       message: `Status updated to "${status}" for user ${userId} on lead ${leadId}`,
-      lead: updatedLead
+      lead: updatedLead,
     });
   } catch (error: any) {
+    console.error("🔥 Error in updateLeadStatus controller:", {
+      message: error.message,
+      stack: error.stack,
+    });
+
     return res.status(500).json({
       success: false,
-      message: error.message || "An error occurred while updating lead status"
+      message:
+        error.message || "An error occurred while updating lead status",
     });
   }
 };

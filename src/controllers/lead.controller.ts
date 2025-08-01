@@ -18,7 +18,39 @@ export const createLead = async (req: Request, res: Response): Promise<any> => {
 };
 
 
- 
+
+export const getAllLeads = async (req: Request, res: Response): Promise<any> => {
+  try {
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+    const search = (req.query.search as string) || "";
+
+    // Prepare filters based on query parameters
+    const filters: any = {};
+    if (req.query.status) filters.status = req.query.status;
+    if (req.query.campaign_id) filters.campaign_id = Number(req.query.campaign_id);
+
+    // Call service with the structured parameters
+    const leadsData = await LeadService.getAllLeads({
+      page,
+      limit,
+      search,
+      filters,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Leads fetched successfully",
+      ...leadsData,
+    });
+  } catch (error: any) {
+    console.error("Error in getAllLeads:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "An error occurred while fetching leads",
+    });
+  }
+};
 
 // Get Leads by Campaign
 export const getLeadsByCampaign = async (

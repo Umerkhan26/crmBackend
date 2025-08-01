@@ -13,6 +13,7 @@ import EmailTemplate from "../models/emailTemplate.model";
 import { getSmtpConfig } from "../utils/getSmtpConfig";
 import { sendEmail } from "../utils/email";
 import { logEmailStatus } from "./emailLog.service";
+import { UserAttributes } from "../interfaces/user.interface";
 
 interface PaginationParams {
   page?: number;
@@ -76,29 +77,43 @@ export const getAllLeads = async ({
         }
       : {};
 
-    const data = await Lead.findAndCountAll({
+    // First, get leads without trying to join on assigneeIds
+    const leadsData = await Lead.findAndCountAll({
       offset,
       limit: pageLimit,
       where: {
         ...whereCondition,
         ...(search ? { [Op.and]: searchCondition } : {}),
       },
-      include: [
-        {
-          model: User,
-          as: "assignee",
-          attributes: ["id", "firstname", "email"], // Add other fields if needed
-        },
-      ],
       order: [["createdAt", "DESC"]],
     });
 
-    return getPagingData(data, page, pageLimit);
+    // Populate assignees manually based on assigneeIds JSON array
+    const rowsWithAssignees = await Promise.all(
+      leadsData.rows.map(async (lead) => {
+        let assignees: UserAttributes[] = [];
+        if (Array.isArray(lead.assigneeIds) && lead.assigneeIds.length > 0) {
+          assignees = await User.findAll({
+            where: { id: lead.assigneeIds },
+            attributes: ["id", "firstname", "email"], // You can add more fields if needed
+          });
+        }
+        return { ...lead.toJSON(), assignees };
+      })
+    );
+
+    // Return with pagination
+    return getPagingData(
+      { count: leadsData.count, rows: rowsWithAssignees },
+      page,
+      pageLimit
+    );
   } catch (error: any) {
     console.error("Error in getAllLeads:", error.stack);
     throw new Error(`Error fetching leads: ${error.message}`);
   }
 };
+
 
 export const getLeadsByCampaign = async (
   campaignName: string

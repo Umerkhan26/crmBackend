@@ -270,6 +270,7 @@ export const updateLeadStatus = async (
   try {
     const leadId = Number(req.params.leadId);
     const userId = Number(req.body.userId);
+    
     const status = req.body.status as LeadStatus;
 
     console.log("📌 Update Lead Status Request:", { leadId, userId, status });

@@ -2,7 +2,7 @@ import { DataTypes, Model, Optional } from "sequelize";
 import db from "../../db";
 import User from "./user.model"; // Adjust path if needed
 
-// Define allowed statuses
+// ✅ Allowed statuses
 export type LeadStatus =
   | "pending"
   | "to_call"
@@ -12,7 +12,7 @@ export type LeadStatus =
   | "not_interested"
   | "do_not_call";
 
-// Structure for each assigned user
+// ✅ Structure for each assigned user
 export interface AssigneeWithStatus {
   userId: number;
   status: LeadStatus;
@@ -60,7 +60,7 @@ Lead.init(
     assignees: {
       type: DataTypes.JSON, // Store { userId, status } for each assigned user
       allowNull: true,
-      defaultValue: [], // Will auto-fill with default statuses in a hook
+      defaultValue: [], // Always an array
     },
   },
   {
@@ -71,12 +71,30 @@ Lead.init(
   }
 );
 
-// ✅ Automatically set default status if missing
+// ✅ Allowed status list
+const ALLOWED_STATUSES: LeadStatus[] = [
+  "pending",
+  "to_call",
+  "interested",
+  "most_interested",
+  "sold",
+  "not_interested",
+  "do_not_call",
+];
+
+// ✅ Ensure `assignees` is always an array
+Lead.beforeValidate((lead) => {
+  if (!Array.isArray(lead.assignees)) {
+    lead.assignees = [];
+  }
+});
+
+// ✅ Set default status & validate statuses
 Lead.beforeCreate((lead) => {
   if (Array.isArray(lead.assignees)) {
     lead.assignees = lead.assignees.map((a) => ({
       ...a,
-      status: a.status || "pending",
+      status: ALLOWED_STATUSES.includes(a.status) ? a.status : "pending",
     }));
   }
 });
@@ -85,7 +103,7 @@ Lead.beforeUpdate((lead) => {
   if (Array.isArray(lead.assignees)) {
     lead.assignees = lead.assignees.map((a) => ({
       ...a,
-      status: a.status || "pending",
+      status: ALLOWED_STATUSES.includes(a.status) ? a.status : "pending",
     }));
   }
 });

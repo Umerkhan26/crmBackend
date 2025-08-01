@@ -91,13 +91,38 @@ export const getAllLeads = async ({
     // Populate assignees manually based on assigneeIds JSON array
     const rowsWithAssignees = await Promise.all(
       leadsData.rows.map(async (lead) => {
-        let assignees: UserAttributes[] = [];
-        if (Array.isArray(lead.assigneeIds) && lead.assigneeIds.length > 0) {
-          assignees = await User.findAll({
-            where: { id: lead.assigneeIds },
-            attributes: ["id", "firstname", "email"], // You can add more fields if needed
-          });
+        let assignees: InstanceType<typeof User>[] = [];
+
+        // Get IDs from lead.assigneeIds in a safe way
+        let ids: any = lead.assigneeIds;
+
+        // If stored as JSON string in DB, parse it
+        if (typeof ids === "string") {
+          try {
+            ids = JSON.parse(ids);
+          } catch {
+            ids = [];
+          }
         }
+
+        // If it's already a single value, wrap in array
+        if (!Array.isArray(ids) && ids != null) {
+          ids = [ids];
+        }
+
+        // Only fetch if we have valid IDs
+        if (Array.isArray(ids) && ids.length > 0) {
+          // Convert all IDs to numbers just in case
+          const numericIds = ids.map((id) => Number(id)).filter((n) => !isNaN(n));
+
+          if (numericIds.length > 0) {
+            assignees = await User.findAll({
+              where: { id: numericIds },
+              attributes: ["id", "firstname", "email"], // Add other fields if needed
+            });
+          }
+        }
+
         return { ...lead.toJSON(), assignees };
       })
     );
@@ -113,6 +138,7 @@ export const getAllLeads = async ({
     throw new Error(`Error fetching leads: ${error.message}`);
   }
 };
+
 
 
 export const getLeadsByCampaign = async (

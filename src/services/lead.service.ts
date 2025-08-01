@@ -159,40 +159,6 @@ export const deleteLead = async (
     throw new Error(`Error deleting lead: ${error.message}`);
   }
 };
-
-
-//   leadId: number,
-//   userIdToAssign: number,
-//   assignedByUserId?: number
-// ): Promise<LeadAttributes> => {
-//   try {
-//     const lead = await Lead.findByPk(leadId);
-//     if (!lead) {
-//       throw new Error("Lead not found");
-//     }
-
-//     // Use the correct field: assigneeId
-//     await lead.update({ assigneeId: userIdToAssign });
-
-//     if (assignedByUserId) {
-//       await logActivity(
-//         assignedByUserId,
-//         "assign",
-//         `Lead ID ${leadId} assigned to user ID ${userIdToAssign}`
-//       );
-
-//       await sendNotification(
-//         userIdToAssign,
-//         `You have been assigned a new lead (ID: ${leadId})`
-//       );
-//     }
-
-//     return lead.get();
-//   } catch (error: any) {
-//     throw new Error(`Error assigning lead: ${error.message}`);
-//   }
-// };
-
 export const assignLeadToUser = async (
   leadId: number,
   userIdToAssign: number,
@@ -204,15 +170,18 @@ export const assignLeadToUser = async (
       throw new Error("Lead not found");
     }
 
-    // ✅ Prevent reassigning if already assigned to the same user
-    if (lead.assigneeId === userIdToAssign) {
+    const currentAssignees = lead.assigneeIds || [];
+
+    // ✅ Prevent duplicate assignment
+    if (currentAssignees.includes(userIdToAssign)) {
       throw new Error(
         `Lead ID ${leadId} is already assigned to user ID ${userIdToAssign}`
       );
     }
 
-    // ✅ Proceed with assignment
-    await lead.update({ assigneeId: userIdToAssign });
+    // ✅ Add the new user to the assignee list
+    const updatedAssignees = [...currentAssignees, userIdToAssign];
+    await lead.update({ assigneeIds: updatedAssignees });
 
     // ✅ Optional logging and notification
     if (assignedByUserId) {
@@ -237,14 +206,7 @@ export const assignLeadToUser = async (
 export const getAllLeadsWithAssignee = async () => {
   try {
     const leads = await Lead.findAll({
-      include: [
-        {
-          model: User,
-          as: "assignee",
-          attributes: ["id", "firstname", "email"],
-          required: true, // ensures only leads with an assignee are returned
-        },
-      ],
+      where: Sequelize.literal("JSON_LENGTH(assigneeIds) > 0"), // ✅ At least one assignee
     });
 
     return leads;
@@ -255,19 +217,11 @@ export const getAllLeadsWithAssignee = async () => {
 
 export const getAssignmentCounts = async () => {
   const assignedCount = await Lead.count({
-    where: {
-      assigneeId: {
-        [Op.not]: null as any,
-      },
-    },
+    where: Sequelize.literal("JSON_LENGTH(assigneeIds) > 0"), // ✅ Has at least one ID
   });
 
   const unassignedCount = await Lead.count({
-    where: {
-      assigneeId: {
-        [Op.is]: null as any,
-      },
-    },
+    where: Sequelize.literal("JSON_LENGTH(assigneeIds) = 0"), // ✅ No IDs
   });
 
   return {
@@ -275,45 +229,26 @@ export const getAssignmentCounts = async () => {
     unassignedCount,
   };
 };
-// Get all leads with no assignee
 
 export const getUnassignedLeads = async () => {
   const unassignedLeads = await Lead.findAll({
-    where: {
-      assigneeId: {
-        [Op.is]: null,
-      },
-    } as any, // 👈 type assertion to bypass TS conflict
-    include: [
-      {
-        model: User,
-        as: "assignee",
-        attributes: ["id", "firstname", "email"],
-        required: false,
-      },
-    ],
+    where: Sequelize.literal("JSON_LENGTH(assigneeIds) = 0"), // ✅ No IDs
   });
 
   return unassignedLeads;
 };
 
-
 export const getLeadsByAssigneeId = async (assigneeId: number) => {
   try {
     const leads = await Lead.findAll({
-      where: { assigneeId },
-      include: [
-        {
-          model: User,
-          as: "assignee",
-          attributes: ["id", "firstname", "email"],
-        },
-      ],
+      where: Sequelize.literal(`JSON_CONTAINS(assigneeIds, '[${assigneeId}]')`), // ✅ Check if array contains the userId
     });
 
     return leads;
   } catch (error: any) {
-    throw new Error(`Error fetching leads for assignee ID ${assigneeId}: ${error.message}`);
+    throw new Error(
+      `Error fetching leads for assignee ID ${assigneeId}: ${error.message}`
+    );
   }
 };
 

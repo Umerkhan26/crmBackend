@@ -174,3 +174,4 @@ export const getSalesByProductType = async (
     throw new Error(`Error fetching sales by product type: ${error.message}`);
   }
 };
+  

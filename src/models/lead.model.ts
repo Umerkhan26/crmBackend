@@ -6,7 +6,7 @@ export interface LeadAttributes {
   id: number;
   campaignName: string;
   leadData: any;
-  assigneeId?: number; // The user assigned to this lead
+  assigneeIds?: number[]; // Multiple user IDs assigned to this lead
 }
 
 export interface LeadCreationAttributes
@@ -19,13 +19,13 @@ class Lead
   public id!: number;
   public campaignName!: string;
   public leadData!: any;
-  public assigneeId?: number;
+  public assigneeIds?: number[];
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
 
   // Association (optional)
-  public readonly assignee?: InstanceType<typeof User>;
+  public readonly assignees?: InstanceType<typeof User>[];
 }
 
 Lead.init(
@@ -43,13 +43,10 @@ Lead.init(
       type: DataTypes.JSON,
       allowNull: false,
     },
-    assigneeId: {
-      type: DataTypes.INTEGER,
+    assigneeIds: {
+      type: DataTypes.JSON, // Store multiple user IDs
       allowNull: true,
-      references: {
-        model: "users", // Reference the 'users' table
-        key: "id",
-      },
+      defaultValue: [],
     },
   },
   {

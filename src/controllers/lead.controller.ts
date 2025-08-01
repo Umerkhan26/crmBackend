@@ -110,27 +110,50 @@ export const deleteLead = async (req: Request, res: Response): Promise<any> => {
 export const assignUserToLead = async (req: Request, res: Response): Promise<any> => {
   try {
     const leadId = parseInt(req.params.leadId, 10);
-    const userId = parseInt(req.body.userId, 10);
-    const assignedByUserId = req.user?.id; // assuming user info is set by verifyToken middleware
+    const assignedByUserId = req.user?.id; // assuming verifyToken middleware sets this
 
-    if (isNaN(leadId) || isNaN(userId)) {
-      return res.status(400).json({ message: "Invalid lead ID or user ID." });
+    let userIds: number[] = [];
+
+    if (Array.isArray(req.body.userIds)) {
+      userIds = req.body.userIds
+        .map((id: unknown) => {
+          if (typeof id === "string" || typeof id === "number") {
+            return parseInt(id as string, 10);
+          }
+          return NaN;
+        })
+        .filter((id: number) => !isNaN(id));
+    } else if (req.body.userId) {
+      const singleId = parseInt(req.body.userId, 10);
+      if (!isNaN(singleId)) {
+        userIds = [singleId];
+      }
     }
 
-    const updatedLead = await LeadService.assignLeadToUser(leadId, userId, assignedByUserId);
+    if (isNaN(leadId) || userIds.length === 0) {
+      return res.status(400).json({ message: "Invalid lead ID or user IDs." });
+    }
+
+    const updatedLeadResults = [];
+    for (const userId of userIds) {
+      const updatedLead = await LeadService.assignLeadToUser(leadId, userId, assignedByUserId);
+      updatedLeadResults.push(updatedLead);
+    }
 
     return res.status(200).json({
       success: true,
-      message: `User ID ${userId} has been assigned to lead ID ${leadId}.`,
-      lead: updatedLead,
+      message: `User(s) ${userIds.join(", ")} have been assigned to lead ID ${leadId}.`,
+      leads: updatedLeadResults,
     });
   } catch (error: any) {
     return res.status(500).json({
       success: false,
-      message: error.message || "An error occurred while assigning user to lead.",
+      message: error.message || "An error occurred while assigning user(s) to lead.",
     });
   }
 };
+
+
 
 export const getAllLeadsWithAssignee = async (req: Request, res: Response) => {
   try {

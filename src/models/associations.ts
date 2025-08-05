@@ -52,17 +52,15 @@ ProductSale.belongsTo(User, { foreignKey: "createdBy" });
 // Optional: User → Lead (if not already set)
 User.hasMany(Lead, { foreignKey: "assigneeId" });
 Lead.belongsTo(User, { foreignKey: "assigneeId" });
-
-// Campaign → ProductSale (via campaignName)
 Campaign.hasMany(ProductSale, {
-  foreignKey: "campaignName",
-  sourceKey: "campaignName",
+  foreignKey: "campaignId", // ✅ Changed
+  sourceKey: "id",          // ✅ Changed
   as: "productSales",
 });
 
 ProductSale.belongsTo(Campaign, {
-  foreignKey: "campaignName",
-  targetKey: "campaignName",
+  foreignKey: "campaignId", // ✅ Changed
+  targetKey: "id",          // ✅ Changed
   as: "campaign",
 });
 

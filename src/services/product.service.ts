@@ -8,6 +8,7 @@ import User from "../models/user.model";
 import { getPagination, getPagingData } from "../utils/paginate";
 import { logActivity } from "./activity.service";
 import { sendNotification } from "./notification.service";
+import Campaign from "../models/campaign.model";
 
 interface PaginationParams {
   page?: number;
@@ -185,7 +186,7 @@ export const createProduct = async (
   try {
     const product = await ProductSale.create({
       ...data,
-      leadId: undefined, // Assuming lead is not set at creation
+      leadId: undefined,
       conversionDate: new Date(),
       createdBy: userId ?? undefined,
     });
@@ -195,11 +196,17 @@ export const createProduct = async (
       await sendNotification(userId, `New product created: ${product.productType}`);
     }
 
-    return product.get();
+    // Fetch full product with campaign info if campaignId is provided
+    const productWithCampaign = await ProductSale.findOne({
+      where: { id: product.id },
+      include: [{ model: Campaign }],
+    });
+
+    return productWithCampaign?.get() as ProductSaleAttributes;
   } catch (error: any) {
     throw new Error(`Error creating product: ${error.message}`);
   }
-};
+};;
 
 
 // ✅ Get Product by ID

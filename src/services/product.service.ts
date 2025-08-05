@@ -179,17 +179,15 @@ export const getSalesByProductType = async (
   
 // pure crud new 
 export const createProduct = async (
-  data: Omit<ProductSaleCreationAttributes, "leadId" | "status" | "conversionDate" | "createdBy" | "notes">,
+  data: Omit<ProductSaleCreationAttributes, "leadId" | "conversionDate" | "createdBy">,
   userId?: number
 ): Promise<ProductSaleAttributes> => {
   try {
     const product = await ProductSale.create({
       ...data,
-      leadId: undefined,
-      status: undefined,
+      leadId: undefined, // Assuming lead is not set at creation
       conversionDate: new Date(),
       createdBy: userId ?? undefined,
-      notes: undefined,
     });
 
     if (userId) {
@@ -202,6 +200,7 @@ export const createProduct = async (
     throw new Error(`Error creating product: ${error.message}`);
   }
 };
+
 
 // ✅ Get Product by ID
 export const getProductById = async (id: number): Promise<ProductSaleAttributes> => {

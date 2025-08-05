@@ -13,19 +13,14 @@ export interface ProductSaleAttributes {
   conversionDate?: Date;
   createdBy?: number;
   status: "pending" | "converted" | "cancelled";
-  campaignId: number;           // ✅ Changed from campaignName to campaignId
+  campaignId: number; // ✅ Changed from campaignName to campaignId
   assigneeId: number;
 }
 
 export interface ProductSaleCreationAttributes
   extends Optional<
     ProductSaleAttributes,
-    | "id"
-    | "leadId"
-    | "notes"
-    | "createdBy"
-    | "status"
-    | "conversionDate"
+    "id" | "leadId" | "notes" | "createdBy" | "status" | "conversionDate"
   > {}
 
 class ProductSale
@@ -107,7 +102,7 @@ ProductSale.init(
     },
     assigneeId: {
       type: DataTypes.INTEGER,
-      allowNull: false,
+      allowNull: true,
       references: {
         model: User,
         key: "id",

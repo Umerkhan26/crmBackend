@@ -11,7 +11,10 @@ export interface RoleAttributes {
 // Optional fields for creation
 interface RoleCreationAttributes extends Optional<RoleAttributes, "id"> {}
 
-export class Role extends Model<RoleAttributes, RoleCreationAttributes> implements RoleAttributes {
+export class Role
+  extends Model<RoleAttributes, RoleCreationAttributes>
+  implements RoleAttributes
+{
   public id!: number;
   public name!: string;
   public description?: string;

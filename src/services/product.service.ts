@@ -221,12 +221,18 @@ export const getProductById = async (id: number): Promise<ProductSaleAttributes>
   return product.get();
 };
 
-// ✅ Get All Products
 export const getAllProducts = async (): Promise<ProductSaleAttributes[]> => {
   const products = await ProductSale.findAll({
+    include: [
+      {
+        model: Campaign,
+        as: "campaign", // match the alias used in the association
+      },
+    ],
     order: [["createdAt", "DESC"]],
   });
-  return products.map((p) => p.get());
+
+  return products.map((p) => p.get({ plain: true }));
 };
 
 // ✅ Update Product

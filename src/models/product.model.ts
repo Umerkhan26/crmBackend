@@ -13,8 +13,8 @@ export interface ProductSaleAttributes {
   conversionDate?: Date;
   createdBy?: number;
   status: "pending" | "converted" | "cancelled";
-  campaignId: number;           // ✅ Changed from campaignName to campaignId
-  assigneeId: number;
+  campaignId: number;           // ✅ must remain required
+  assigneeId?: number;
 }
 
 export interface ProductSaleCreationAttributes
@@ -26,6 +26,7 @@ export interface ProductSaleCreationAttributes
     | "createdBy"
     | "status"
     | "conversionDate"
+    | "assigneeId" // ✅ this makes it optional at creation
   > {}
 
 class ProductSale
@@ -40,8 +41,8 @@ class ProductSale
   public conversionDate?: Date;
   public createdBy?: number;
   public status!: "pending" | "converted" | "cancelled";
-  public campaignId!: number; // ✅
-  public assigneeId!: number;
+  public campaignId!: number;
+  public assigneeId?: number;
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
@@ -99,7 +100,7 @@ ProductSale.init(
       type: DataTypes.INTEGER,
       allowNull: false,
       references: {
-        model: Campaign, // ✅ references campaigns.id
+        model: Campaign,
         key: "id",
       },
       onDelete: "CASCADE",
@@ -107,7 +108,7 @@ ProductSale.init(
     },
     assigneeId: {
       type: DataTypes.INTEGER,
-      allowNull: false,
+      allowNull: true,
       references: {
         model: User,
         key: "id",

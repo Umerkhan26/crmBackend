@@ -3,6 +3,7 @@ import Lead, {
   AssigneeWithStatus,
   LeadAttributes,
   LeadCreationAttributes,
+ 
 } from "../models/lead.model";
 import { buildSearchFilter } from "../utils/filterQuery";
 import { getPagination, getPagingData } from "../utils/paginate";
@@ -25,7 +26,7 @@ interface LeadQueryParams extends PaginationParams {
   search?: string;
 }
 // Create Lead
-export const createLead = async (
+export const createLead = async ( 
   data: LeadCreationAttributes,
   userId?: number
 ): Promise<LeadAttributes> => {

@@ -179,13 +179,17 @@ export const getSalesByProductType = async (
   
 // pure crud new 
 export const createProduct = async (
-  data: Omit<ProductSaleCreationAttributes, "leadId">,
+  data: Omit<ProductSaleCreationAttributes, "leadId" | "status" | "conversionDate" | "createdBy" | "notes">,
   userId?: number
 ): Promise<ProductSaleAttributes> => {
   try {
     const product = await ProductSale.create({
       ...data,
-      createdBy: userId,
+      leadId: undefined,
+      status: undefined,
+      conversionDate: new Date(),
+      createdBy: userId ?? undefined,
+      notes: undefined,
     });
 
     if (userId) {

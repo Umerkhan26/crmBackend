@@ -175,7 +175,6 @@ export const getSalesByProductType = async (
   }
 };
   
-
 // pure crud new 
 export const createProduct = async (
   data: Omit<ProductSaleCreationAttributes, "leadId">,
@@ -197,7 +196,6 @@ export const createProduct = async (
     throw new Error(`Error creating product: ${error.message}`);
   }
 };
-
 
 // ✅ Get Product by ID
 export const getProductById = async (id: number): Promise<ProductSaleAttributes> => {
@@ -246,5 +244,24 @@ export const deleteProduct = async (
   if (userId) {
     await logActivity(userId, "delete", `Product deleted with ID ${id}`);
     await sendNotification(userId, `Product deleted: ID ${id}`);
+  }
+};
+
+// ✅ Get Products by campaignName and assigneeId (NEW)
+export const getProductsByCampaignAndAssignee = async (
+  campaignName: string,
+  assigneeId: number
+): Promise<ProductSaleAttributes[]> => {
+  try {
+    const products = await ProductSale.findAll({
+      where: {
+        campaignName,
+        assigneeId,
+      },
+    });
+
+    return products.map((product) => product.get());
+  } catch (error: any) {
+    throw new Error(`Error fetching products: ${error.message}`);
   }
 };

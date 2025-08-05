@@ -2,7 +2,7 @@ import { DataTypes, Model, Optional } from "sequelize";
 import db from "../../db";
 import Lead from "./lead.model";
 import User from "./user.model";
-import Campaign from "./campaign.model"; // import for relation reference
+import Campaign from "./campaign.model";
 
 export interface ProductSaleAttributes {
   id: number;
@@ -13,7 +13,7 @@ export interface ProductSaleAttributes {
   conversionDate?: Date;
   createdBy?: number;
   status: "pending" | "converted" | "cancelled";
-  campaignId: number;           // ✅ must remain required
+  campaignId: number;
   assigneeId?: number;
 }
 
@@ -26,7 +26,7 @@ export interface ProductSaleCreationAttributes
     | "createdBy"
     | "status"
     | "conversionDate"
-    | "assigneeId" // ✅ this makes it optional at creation
+    | "assigneeId" // ✅ optional
   > {}
 
 class ProductSale
@@ -108,12 +108,12 @@ ProductSale.init(
     },
     assigneeId: {
       type: DataTypes.INTEGER,
-      allowNull: true,
+      allowNull: true, // ✅ Allows null in DB
       references: {
         model: User,
         key: "id",
       },
-      onDelete: "CASCADE",
+      onDelete: "SET NULL", // ✅ Safer than CASCADE if user is deleted
       onUpdate: "CASCADE",
     },
   },

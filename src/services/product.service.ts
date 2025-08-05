@@ -196,18 +196,23 @@ export const createProduct = async (
       await sendNotification(userId, `New product created: ${product.productType}`);
     }
 
-    // Fetch full product with campaign info if campaignId is provided
-    const productWithCampaign = await ProductSale.findOne({
-      where: { id: product.id },
-      include: [{ model: Campaign }],
-    });
+    // If campaignId is provided, fetch the campaign with alias
+    let campaignDetails = null;
+    if (data.campaignId) {
+      campaignDetails = await Campaign.findByPk(data.campaignId);
+    }
 
-    return productWithCampaign?.get() as ProductSaleAttributes;
+    // Combine product with campaign if found
+    const result: any = product.get();
+    if (campaignDetails) {
+      result.campaign = campaignDetails.get(); // attach campaign info to response
+    }
+
+    return result;
   } catch (error: any) {
     throw new Error(`Error creating product: ${error.message}`);
   }
-};;
-
+};
 
 // ✅ Get Product by ID
 export const getProductById = async (id: number): Promise<ProductSaleAttributes> => {

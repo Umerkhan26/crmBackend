@@ -9,11 +9,11 @@ import {
   getSaleById,
   updateSale,
   deleteSale,
-  createProduct,         // ✅ new controller
-  updateProduct,         // ✅ new controller
-  deleteProduct,         // ✅ new controller
-  getProductById,        // ✅ new controller
-  getAllProducts         // ✅ new controller
+  createProduct, // ✅ new controller
+  updateProduct, // ✅ new controller
+  deleteProduct, // ✅ new controller
+  getProductById, // ✅ new controller
+  getAllProducts, // ✅ new controller
 } from "../controllers/product.controller";
 
 const router = Router();
@@ -64,7 +64,7 @@ router.delete(
 
 // ✅ Create Product
 router.post(
-  "/create",
+  "/createProduct",
   verifyToken,
   checkPermission(PERMISSIONS.PRODUCT_CREATE),
   createProduct

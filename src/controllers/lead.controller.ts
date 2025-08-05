@@ -18,9 +18,10 @@ export const createLead = async (req: Request, res: Response): Promise<any> => {
   }
 };
 
-
-
-export const getAllLeads = async (req: Request, res: Response): Promise<any> => {
+export const getAllLeads = async (
+  req: Request,
+  res: Response
+): Promise<any> => {
   try {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
@@ -29,7 +30,8 @@ export const getAllLeads = async (req: Request, res: Response): Promise<any> => 
     // Prepare filters based on query parameters
     const filters: any = {};
     if (req.query.status) filters.status = req.query.status;
-    if (req.query.campaign_id) filters.campaign_id = Number(req.query.campaign_id);
+    if (req.query.campaign_id)
+      filters.campaign_id = Number(req.query.campaign_id);
 
     // Call service with the structured parameters
     const leadsData = await LeadService.getAllLeads({
@@ -108,7 +110,10 @@ export const deleteLead = async (req: Request, res: Response): Promise<any> => {
     return res.status(500).json({ message: error.message });
   }
 };
-export const assignUserToLead = async (req: Request, res: Response): Promise<any> => {
+export const assignUserToLead = async (
+  req: Request,
+  res: Response
+): Promise<any> => {
   try {
     const leadId = parseInt(req.params.leadId, 10);
     const assignedByUserId = req.user?.id; // from verifyToken middleware
@@ -142,19 +147,19 @@ export const assignUserToLead = async (req: Request, res: Response): Promise<any
 
     return res.status(200).json({
       success: true,
-      message: `User(s) ${userIds.join(", ")} have been assigned to lead ID ${leadId}.`,
+      message: `User(s) ${userIds.join(
+        ", "
+      )} have been assigned to lead ID ${leadId}.`,
       lead: updatedLead,
     });
   } catch (error: any) {
     return res.status(500).json({
       success: false,
-      message: error.message || "An error occurred while assigning user(s) to lead.",
+      message:
+        error.message || "An error occurred while assigning user(s) to lead.",
     });
   }
 };
-
-
-
 
 export const getAllLeadsWithAssignee = async (req: Request, res: Response) => {
   try {
@@ -165,7 +170,10 @@ export const getAllLeadsWithAssignee = async (req: Request, res: Response) => {
   }
 };
 
-export const getLeadsByAssigneeId = async (req: Request, res: Response): Promise<any> => {
+export const getLeadsByAssigneeId = async (
+  req: Request,
+  res: Response
+): Promise<any> => {
   try {
     const assigneeId = parseInt(req.params.assigneeId, 10);
 
@@ -206,10 +214,11 @@ export const getUnassignedLeads = async (req: Request, res: Response) => {
   }
 };
 
-
-
 // POST /leads/:leadId/send-email
-export const sendEmailToLead = async (req: Request, res: Response): Promise<any> => {
+export const sendEmailToLead = async (
+  req: Request,
+  res: Response
+): Promise<any> => {
   try {
     const leadId = parseInt(req.params.leadId, 10);
     const templateKey = req.body.templateKey; // e.g., "user:create"
@@ -220,14 +229,22 @@ export const sendEmailToLead = async (req: Request, res: Response): Promise<any>
     }
 
     if (!templateKey) {
-      return res.status(400).json({ message: "Email template key is required." });
+      return res
+        .status(400)
+        .json({ message: "Email template key is required." });
     }
 
     if (!senderUserId) {
-      return res.status(401).json({ message: "Unauthorized. User not authenticated." });
+      return res
+        .status(401)
+        .json({ message: "Unauthorized. User not authenticated." });
     }
 
-    const result = await LeadService.sendEmailToLeadUsingTemplate(leadId, templateKey, senderUserId);
+    const result = await LeadService.sendEmailToLeadUsingTemplate(
+      leadId,
+      templateKey,
+      senderUserId
+    );
 
     return res.status(200).json({
       success: true,
@@ -238,12 +255,16 @@ export const sendEmailToLead = async (req: Request, res: Response): Promise<any>
     console.error("Error sending email:", error.message);
     return res.status(500).json({
       success: false,
-      message: error.message || "An error occurred while sending email to lead.",
+      message:
+        error.message || "An error occurred while sending email to lead.",
     });
   }
 };
 
-export const getLeadStatusSummary = async (req: Request, res: Response):Promise<any> => {
+export const getLeadStatusSummary = async (
+  req: Request,
+  res: Response
+): Promise<any> => {
   try {
     const assigneeId = req.query.assigneeId
       ? parseInt(req.query.assigneeId as string, 10)
@@ -254,12 +275,13 @@ export const getLeadStatusSummary = async (req: Request, res: Response):Promise<
     return res.status(200).json({
       success: true,
       message: "Lead status summary fetched successfully",
-      data: result
+      data: result,
     });
   } catch (error: any) {
     return res.status(500).json({
       success: false,
-      message: error.message || "An error occurred while fetching status summary."
+      message:
+        error.message || "An error occurred while fetching status summary.",
     });
   }
 };
@@ -302,8 +324,7 @@ export const updateLeadStatus = async (
 
     return res.status(500).json({
       success: false,
-      message:
-        error.message || "An error occurred while updating lead status",
+      message: error.message || "An error occurred while updating lead status",
     });
   }
 };
@@ -321,7 +342,10 @@ export const getLeadsByCampaignAndAssignee = async (
         .json({ message: "campaignName and valid assigneeId are required" });
     }
 
-    const leads = await LeadService.getLeadsByCampaignAndAssignee(campaignName, assigneeId);
+    const leads = await LeadService.getLeadsByCampaignAndAssignee(
+      campaignName,
+      assigneeId
+    );
 
     if (leads.length === 0) {
       return res

@@ -12,6 +12,8 @@ import { getCompiledTemplate } from "./template.service";
 import { emailQueue } from "../queue/emailQueue"; // or wherever your queue is defined
 import { buildSearchFilter } from "../utils/filterQuery";
 import Permission from "../models/permission.model";
+import ActivityLog from "../models/activityLog.model";
+import Campaign from "../models/campaign.model";
 
 interface PaginationParams {
   page?: number;
@@ -176,6 +178,31 @@ export const loginUser = async (userData: {
   };
 };
 
+// export const getUserById = async (userId: number): Promise<any> => {
+//   const user = await User.findByPk(userId, {
+//     include: [
+//       {
+//         model: Role,
+//         as: "role",
+//         attributes: ["id", "name", "description"],
+//       },
+//     ],
+//   });
+
+//   if (!user) {
+//     throw new Error("User not found!");
+//   }
+
+//   return user;
+// };
+
+// services/user.service.ts
+
+
+
+
+
+
 export const getUserById = async (userId: number): Promise<any> => {
   const user = await User.findByPk(userId, {
     include: [
@@ -183,6 +210,23 @@ export const getUserById = async (userId: number): Promise<any> => {
         model: Role,
         as: "role",
         attributes: ["id", "name", "description"],
+        include: [
+          {
+            model: Permission,
+            attributes: ["id", "name", "resourceType", "resourceId"],
+          },
+        ],
+      },
+      {
+        model: Campaign, // if user is related to campaigns
+        as: "campaigns", // adjust alias if you've set one
+        attributes: ["id", "name", "status", "startDate", "endDate"],
+      },
+   
+      {
+        model: ActivityLog, // example: activity logs
+        as: "activities",
+        attributes: ["id", "action", "description", "createdAt"],
       },
     ],
   });
@@ -194,7 +238,8 @@ export const getUserById = async (userId: number): Promise<any> => {
   return user;
 };
 
-// services/user.service.ts
+
+
 
 export const getAllUsers = async ({
   page = 1,

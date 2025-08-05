@@ -113,7 +113,7 @@ router.put(
 
 
 router.get(
-  "/leads/by-campaign-and-assignee/:campaignName",
+  "/lead-get-by-campaign-and-assignee/:campaignName",
   verifyToken,
   checkPermission(PERMISSIONS.LEAD_GET_BY_CAMPAIGN_AND_ASSIGNEE),
   LeadController.getLeadsByCampaignAndAssignee

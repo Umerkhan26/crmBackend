@@ -19,13 +19,12 @@ interface SaleQueryParams extends PaginationParams {
   filters?: Record<string, any>;
 }
 
-// ✅ Convert Lead to Product Sale
 export const convertLeadToSale = async (
   data: ProductSaleCreationAttributes,
   userId?: number
 ): Promise<any> => {
   try {
-    const { leadId } = data;
+    const { leadId, campaignId, assigneeId } = data;
 
     const lead = await Lead.findByPk(leadId);
     if (!lead) throw new Error("Lead not found");
@@ -37,6 +36,9 @@ export const convertLeadToSale = async (
       ...data,
       status: "converted",
       conversionDate: new Date(),
+      createdBy: userId ?? undefined,
+      campaignId,
+      assigneeId,
     });
 
     if (userId) {
@@ -248,16 +250,18 @@ export const deleteProduct = async (
 };
 
 // ✅ Get Products by campaignName and assigneeId (NEW)
+// ✅ Get Products by campaignId and assigneeId
 export const getProductsByCampaignAndAssignee = async (
-  campaignName: string,
+  campaignId: number,
   assigneeId: number
 ): Promise<ProductSaleAttributes[]> => {
   try {
     const products = await ProductSale.findAll({
       where: {
-        campaignName,
+        campaignId,
         assigneeId,
       },
+      order: [["createdAt", "DESC"]],
     });
 
     return products.map((product) => product.get());

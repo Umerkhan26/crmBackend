@@ -2,6 +2,7 @@ import { DataTypes, Model, Optional } from "sequelize";
 import db from "../../db";
 import Lead from "./lead.model";
 import User from "./user.model";
+import Campaign from "./campaign.model"; // import for relation reference
 
 export interface ProductSaleAttributes {
   id: number;
@@ -12,8 +13,8 @@ export interface ProductSaleAttributes {
   conversionDate?: Date;
   createdBy?: number;
   status: "pending" | "converted" | "cancelled";
-  campaignName: string;         // ✅ Added
-  assigneeId: number;           // ✅ Added
+  campaignId: number;           // ✅ Changed from campaignName to campaignId
+  assigneeId: number;
 }
 
 export interface ProductSaleCreationAttributes
@@ -39,7 +40,7 @@ class ProductSale
   public conversionDate?: Date;
   public createdBy?: number;
   public status!: "pending" | "converted" | "cancelled";
-  public campaignName!: string;
+  public campaignId!: number; // ✅
   public assigneeId!: number;
 
   public readonly createdAt!: Date;
@@ -57,9 +58,11 @@ ProductSale.init(
       type: DataTypes.INTEGER,
       allowNull: true,
       references: {
-        model: "leads",
+        model: Lead,
         key: "id",
       },
+      onDelete: "SET NULL",
+      onUpdate: "CASCADE",
     },
     productType: {
       type: DataTypes.STRING,
@@ -81,26 +84,36 @@ ProductSale.init(
       type: DataTypes.INTEGER,
       allowNull: true,
       references: {
-        model: "users",
+        model: User,
         key: "id",
       },
+      onDelete: "SET NULL",
+      onUpdate: "CASCADE",
     },
     status: {
       type: DataTypes.ENUM("pending", "converted", "cancelled"),
       allowNull: false,
       defaultValue: "pending",
     },
-    campaignName: {
-      type: DataTypes.STRING,
+    campaignId: {
+      type: DataTypes.INTEGER,
       allowNull: false,
+      references: {
+        model: Campaign, // ✅ references campaigns.id
+        key: "id",
+      },
+      onDelete: "CASCADE",
+      onUpdate: "CASCADE",
     },
     assigneeId: {
       type: DataTypes.INTEGER,
       allowNull: false,
       references: {
-        model: "users",
+        model: User,
         key: "id",
       },
+      onDelete: "CASCADE",
+      onUpdate: "CASCADE",
     },
   },
   {

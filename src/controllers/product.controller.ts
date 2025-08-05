@@ -4,10 +4,10 @@ import * as ProductSaleService from "../services/product.service";
 // ✅ Convert Lead to Sale
 export const convertLeadToSale = async (req: Request, res: Response): Promise<any> => {
   try {
-    const { leadId, productType, price, notes, status } = req.body;
+    const { leadId, productType, price, notes, status, campaignId, assigneeId } = req.body;
     const createdBy = req.user?.id;
 
-    if (!leadId || !productType || !price) {
+    if (!leadId || !productType || !price || !campaignId || !assigneeId) {
       return res.status(400).json({ message: "Missing required sale data." });
     }
 
@@ -16,10 +16,12 @@ export const convertLeadToSale = async (req: Request, res: Response): Promise<an
       productType,
       price,
       notes,
-      status, // Optional
+      status: status ?? 'converted',
       conversionDate: new Date(),
-      createdBy,
-    });
+      createdBy: createdBy ?? undefined,
+      campaignId,
+      assigneeId,
+    }, createdBy);
 
     return res.status(201).json({
       success: true,
@@ -148,23 +150,29 @@ export const getSalesByProductType = async (req: Request, res: Response): Promis
 };
 
 
-// new crud 
+
+// ✅ Create Product
 export const createProduct = async (req: Request, res: Response): Promise<any> => {
   try {
-    const { productType, price, notes, status } = req.body;
+    const { productType, price, notes, status, campaignId, assigneeId } = req.body;
     const createdBy = req.user?.id;
 
-    if (!productType || !price) {
-      return res.status(400).json({ message: "Missing required product data." });
+    if (!productType || !price || !campaignId || !assigneeId) {
+      return res.status(400).json({ message: "Missing required fields: productType, price, campaignId, or assigneeId." });
     }
 
-    const newProduct = await ProductSaleService.createProduct({
-      productType,
-      price,
-      notes,
-      status,       // Optional
-      createdBy,    // Optional, injected into service
-    }, createdBy);
+    const newProduct = await ProductSaleService.createProduct(
+      {
+        productType,
+        price,
+        notes,
+        status,
+        campaignId,
+        assigneeId,
+        createdBy, // passed inside the data
+      },
+      createdBy
+    );
 
     return res.status(201).json({
       success: true,
@@ -176,6 +184,7 @@ export const createProduct = async (req: Request, res: Response): Promise<any> =
   }
 };
 
+// ✅ Get Product by ID
 export const getProductById = async (req: Request, res: Response): Promise<any> => {
   try {
     const id = parseInt(req.params.id, 10);
@@ -230,6 +239,28 @@ export const deleteProduct = async (req: Request, res: Response): Promise<any> =
       success: true,
       message: "Product deleted successfully",
     });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ✅ Get Products by Campaign & Assignee
+export const getProductsByCampaignAndAssignee = async (req: Request, res: Response): Promise<any> => {
+  try {
+    const campaignId = parseInt(req.params.campaignId, 10);
+    const assigneeId = parseInt(req.query.assigneeId as string, 10);
+
+    if (isNaN(campaignId) || isNaN(assigneeId)) {
+      return res.status(400).json({ message: "campaignId and assigneeId must be valid numbers." });
+    }
+
+    const products = await ProductSaleService.getProductsByCampaignAndAssignee(campaignId, assigneeId);
+
+    if (products.length === 0) {
+      return res.status(404).json({ message: "No products found for this campaign and assignee." });
+    }
+
+    return res.status(200).json({ success: true, data: products });
   } catch (error: any) {
     return res.status(500).json({ success: false, message: error.message });
   }

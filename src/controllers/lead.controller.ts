@@ -307,4 +307,30 @@ export const updateLeadStatus = async (
         error.message || "An error occurred while updating lead status",
     });
   }
+};export const getLeadsByCampaignAndAssignee = async (
+  req: Request,
+  res: Response
+): Promise<any> => {
+  try {
+    const { campaignName } = req.params;
+    const assigneeId = parseInt(req.query.assigneeId as string, 10);
+
+    if (!campaignName || isNaN(assigneeId)) {
+      return res
+        .status(400)
+        .json({ message: "campaignName and valid assigneeId are required" });
+    }
+
+    const leads = await LeadService.getLeadsByCampaignAndAssignee(campaignName, assigneeId);
+
+    if (leads.length === 0) {
+      return res
+        .status(404)
+        .json({ message: "No leads found for this campaign and assignee" });
+    }
+
+    return res.status(200).json(leads);
+  } catch (error: any) {
+    return res.status(500).json({ message: error.message });
+  }
 };

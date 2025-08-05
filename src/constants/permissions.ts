@@ -31,6 +31,8 @@ export const PERMISSIONS = {
   LEAD_VIEW_UNASSIGNED_USERS: "lead:view_unassigned_users",
   LEAD_GET_STATUS_SUMMARY: "lead:get_status_summary", // View leads grouped by status with counts
   LEAD_UPDATE_STATUS: "lead:update_status", // Update status for a specific assigned lead
+  LEAD_GET_BY_CAMPAIGN_AND_ASSIGNEE: "lead:get_by_campaign_and_assignee",
+
   // ✅ Client Lead permissions
   CLIENT_LEAD_CREATE: "clientLead:create",
   CLIENT_LEAD_GET_ALL: "clientLead:getAll",
@@ -49,4 +51,9 @@ export const PERMISSIONS = {
   PRODUCT_SALE_GET_BY_ID: "PRODUCT_SALE_GET_BY_ID",
   PRODUCT_SALE_UPDATE: "PRODUCT_SALE_UPDATE",
   PRODUCT_SALE_DELETE: "PRODUCT_SALE_DELETE", 
+   PRODUCT_CREATE: "PRODUCT_CREATE",
+  PRODUCT_GET_ALL: "PRODUCT_GET_ALL",
+  PRODUCT_GET_BY_ID: "PRODUCT_GET_BY_ID",
+  PRODUCT_UPDATE: "PRODUCT_UPDATE",
+  PRODUCT_DELETE: "PRODUCT_DELETE",
 };

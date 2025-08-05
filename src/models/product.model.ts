@@ -5,30 +5,30 @@ import User from "./user.model"; // For createdBy
 
 export interface ProductSaleAttributes {
   id: number;
-  leadId: number;
-  productType: string; // e.g., Web Development, Graphic Design
+  leadId?: number; // made optional
+  productType: string;
   price: number;
   notes?: string;
-  conversionDate: Date;
-  createdBy?: number; // User who converted the lead
-  status: "pending" | "converted" | "cancelled"; // ✅ added
+  conversionDate?: Date; // made optional
+  createdBy?: number;
+  status: "pending" | "converted" | "cancelled";
 }
 
 export interface ProductSaleCreationAttributes
-  extends Optional<ProductSaleAttributes, "id" | "notes" | "createdBy" | "status"> {}
+  extends Optional<ProductSaleAttributes, "id" | "leadId" | "notes" | "createdBy" | "status" | "conversionDate"> {}
 
 class ProductSale
   extends Model<ProductSaleAttributes, ProductSaleCreationAttributes>
   implements ProductSaleAttributes
 {
   public id!: number;
-  public leadId!: number;
+  public leadId?: number;
   public productType!: string;
   public price!: number;
   public notes?: string;
-  public conversionDate!: Date;
+  public conversionDate?: Date;
   public createdBy?: number;
-  public status!: "pending" | "converted" | "cancelled"; // ✅ added
+  public status!: "pending" | "converted" | "cancelled";
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
@@ -43,7 +43,7 @@ ProductSale.init(
     },
     leadId: {
       type: DataTypes.INTEGER,
-      allowNull: false,
+      allowNull: true, // was false
       references: {
         model: "leads",
         key: "id",
@@ -63,7 +63,7 @@ ProductSale.init(
     },
     conversionDate: {
       type: DataTypes.DATE,
-      allowNull: false,
+      allowNull: true, // was false
     },
     createdBy: {
       type: DataTypes.INTEGER,
@@ -74,9 +74,9 @@ ProductSale.init(
       },
     },
     status: {
-      type: DataTypes.ENUM("pending", "converted", "cancelled"), // ✅ ENUM for limited values
+      type: DataTypes.ENUM("pending", "converted", "cancelled"),
       allowNull: false,
-      defaultValue: "pending", // ✅ default to pending
+      defaultValue: "pending",
     },
   },
   {
@@ -86,9 +86,10 @@ ProductSale.init(
   }
 );
 
-// Optional: Define associations (uncomment if used)
+// Optional associations
 // ProductSale.belongsTo(Lead, { foreignKey: "leadId" });
 // Lead.hasOne(ProductSale, { foreignKey: "leadId" });
+
 // ProductSale.belongsTo(User, { foreignKey: "createdBy" });
 
 export default ProductSale;

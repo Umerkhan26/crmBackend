@@ -175,3 +175,76 @@ export const getSalesByProductType = async (
   }
 };
   
+
+// pure crud new 
+export const createProduct = async (
+  data: Omit<ProductSaleCreationAttributes, "leadId">,
+  userId?: number
+): Promise<ProductSaleAttributes> => {
+  try {
+    const product = await ProductSale.create({
+      ...data,
+      createdBy: userId,
+    });
+
+    if (userId) {
+      await logActivity(userId, "create", `Product created (Type: ${product.productType})`);
+      await sendNotification(userId, `New product created: ${product.productType}`);
+    }
+
+    return product.get();
+  } catch (error: any) {
+    throw new Error(`Error creating product: ${error.message}`);
+  }
+};
+
+
+// ✅ Get Product by ID
+export const getProductById = async (id: number): Promise<ProductSaleAttributes> => {
+  const product = await ProductSale.findByPk(id);
+  if (!product) throw new Error("Product not found");
+  return product.get();
+};
+
+// ✅ Get All Products
+export const getAllProducts = async (): Promise<ProductSaleAttributes[]> => {
+  const products = await ProductSale.findAll({
+    order: [["createdAt", "DESC"]],
+  });
+  return products.map((p) => p.get());
+};
+
+// ✅ Update Product
+export const updateProduct = async (
+  id: number,
+  updatedData: Partial<ProductSaleAttributes>,
+  userId?: number
+): Promise<ProductSaleAttributes> => {
+  const product = await ProductSale.findByPk(id);
+  if (!product) throw new Error("Product not found");
+
+  await product.update(updatedData);
+
+  if (userId) {
+    await logActivity(userId, "update", `Product updated with ID ${id}`);
+    await sendNotification(userId, `Product updated: ID ${id}`);
+  }
+
+  return product.get();
+};
+
+// ✅ Delete Product
+export const deleteProduct = async (
+  id: number,
+  userId?: number
+): Promise<void> => {
+  const product = await ProductSale.findByPk(id);
+  if (!product) throw new Error("Product not found");
+
+  await product.destroy();
+
+  if (userId) {
+    await logActivity(userId, "delete", `Product deleted with ID ${id}`);
+    await sendNotification(userId, `Product deleted: ID ${id}`);
+  }
+};

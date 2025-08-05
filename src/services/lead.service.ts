@@ -1,4 +1,4 @@
-import { Op, Sequelize } from "sequelize";
+import { literal, Op, Sequelize, where, fn, col, } from "sequelize";
 import Lead, {
   AssigneeWithStatus,
   LeadAttributes,
@@ -206,6 +206,8 @@ export const deleteLead = async (
     throw new Error(`Error deleting lead: ${error.message}`);
   }
 };
+
+
 export const assignLeadToUsers = async (
   leadId: number,
   userIdsToAssign: number[],
@@ -509,5 +511,33 @@ export const updateLeadStatusForUser = async (
       newStatus,
     });
     throw new Error(error.message || "Failed to update lead status");
+  }
+};
+export const getLeadsByCampaignAndAssignee = async (
+  campaignName: string,
+  assigneeId: number
+): Promise<LeadAttributes[]> => {
+  try {
+    const leads = await Lead.findAll({
+      where: {
+        campaignName,
+        [Op.and]: [
+          where(
+            fn(
+              "JSON_CONTAINS",
+              col("assignees"),
+              literal(`JSON_OBJECT('userId', ${assigneeId})`)
+            ),
+            true
+          ),
+        ],
+      },
+    });
+
+    return leads.map((lead) => lead.get());
+  } catch (error: any) {
+    throw new Error(
+      `Error fetching leads for campaign '${campaignName}' and assignee '${assigneeId}': ${error.message}`
+    );
   }
 };

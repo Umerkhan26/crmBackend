@@ -110,4 +110,12 @@ router.put(
   checkPermission(PERMISSIONS.LEAD_UPDATE_STATUS),
   LeadController.updateLeadStatus
 );
+
+
+router.get(
+  "/leads/by-campaign-and-assignee/:campaignName",
+  verifyToken,
+  checkPermission(PERMISSIONS.LEAD_GET_BY_CAMPAIGN_AND_ASSIGNEE),
+  LeadController.getLeadsByCampaignAndAssignee
+);
 export default router;

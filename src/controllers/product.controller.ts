@@ -146,3 +146,91 @@ export const getSalesByProductType = async (req: Request, res: Response): Promis
     return res.status(500).json({ success: false, message: error.message });
   }
 };
+
+
+// new crud 
+export const createProduct = async (req: Request, res: Response): Promise<any> => {
+  try {
+    const { productType, price, notes, status } = req.body;
+    const createdBy = req.user?.id;
+
+    if (!productType || !price) {
+      return res.status(400).json({ message: "Missing required product data." });
+    }
+
+    const newProduct = await ProductSaleService.createProduct({
+      productType,
+      price,
+      notes,
+      status,       // Optional
+      createdBy,    // Optional, injected into service
+    }, createdBy);
+
+    return res.status(201).json({
+      success: true,
+      message: "Product created successfully",
+      data: newProduct,
+    });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const getProductById = async (req: Request, res: Response): Promise<any> => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid product ID" });
+
+    const product = await ProductSaleService.getProductById(id);
+    return res.status(200).json({ success: true, data: product });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ✅ Get All Products
+export const getAllProducts = async (_req: Request, res: Response): Promise<any> => {
+  try {
+    const products = await ProductSaleService.getAllProducts();
+    return res.status(200).json({ success: true, data: products });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ✅ Update Product
+export const updateProduct = async (req: Request, res: Response): Promise<any> => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid product ID" });
+
+    const userId = req.user?.id;
+    const updatedProduct = await ProductSaleService.updateProduct(id, req.body, userId);
+
+    return res.status(200).json({
+      success: true,
+      message: "Product updated successfully",
+      data: updatedProduct,
+    });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ✅ Delete Product
+export const deleteProduct = async (req: Request, res: Response): Promise<any> => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid product ID" });
+
+    const userId = req.user?.id;
+    await ProductSaleService.deleteProduct(id, userId);
+
+    return res.status(200).json({
+      success: true,
+      message: "Product deleted successfully",
+    });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};

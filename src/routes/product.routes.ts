@@ -9,6 +9,11 @@ import {
   getSaleById,
   updateSale,
   deleteSale,
+  createProduct,         // ✅ new controller
+  updateProduct,         // ✅ new controller
+  deleteProduct,         // ✅ new controller
+  getProductById,        // ✅ new controller
+  getAllProducts         // ✅ new controller
 } from "../controllers/product.controller";
 
 const router = Router();
@@ -51,6 +56,50 @@ router.delete(
   verifyToken,
   checkPermission(PERMISSIONS.PRODUCT_SALE_DELETE),
   deleteSale
+);
+
+//
+// ✅✅✅ New Routes for Manual Product CRUD (without lead conversion)
+//
+
+// ✅ Create Product
+router.post(
+  "/create",
+  verifyToken,
+  checkPermission(PERMISSIONS.PRODUCT_CREATE),
+  createProduct
+);
+
+// ✅ Get All Products
+router.get(
+  "/getAll",
+  verifyToken,
+  checkPermission(PERMISSIONS.PRODUCT_GET_ALL),
+  getAllProducts
+);
+
+// ✅ Get Product by ID
+router.get(
+  "/getById/:id",
+  verifyToken,
+  checkPermission(PERMISSIONS.PRODUCT_GET_BY_ID),
+  getProductById
+);
+
+// ✅ Update Product by ID
+router.put(
+  "/update/:id",
+  verifyToken,
+  checkPermission(PERMISSIONS.PRODUCT_UPDATE),
+  updateProduct
+);
+
+// ✅ Delete Product by ID
+router.delete(
+  "/delete/:id",
+  verifyToken,
+  checkPermission(PERMISSIONS.PRODUCT_DELETE),
+  deleteProduct
 );
 
 export default router;

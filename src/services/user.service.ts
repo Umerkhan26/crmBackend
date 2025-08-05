@@ -217,11 +217,7 @@ export const getUserById = async (userId: number): Promise<any> => {
           },
         ],
       },
-      {
-        model: Campaign, // if user is related to campaigns
-        as: "campaigns", // adjust alias if you've set one
-        attributes: ["id", "name", "status", "startDate", "endDate"],
-      },
+    
    
       {
         model: ActivityLog, // example: activity logs

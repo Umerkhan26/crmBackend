@@ -457,62 +457,7 @@ const ALLOWED_STATUSES: LeadStatus[] = [
   "to_call",
 ];
 
-export const updateLeadStatusForUser = async (
-  leadId: number,
-  userId: number,
-  newStatus: LeadStatus
-) => {
-  console.log("🔹 Updating lead status request:", { leadId, userId, newStatus });
-
-  try {
-    // ✅ Validate status
-    if (!ALLOWED_STATUSES.includes(newStatus)) {
-      throw new Error(
-        `Invalid status. Allowed statuses: ${ALLOWED_STATUSES.join(", ")}`
-      );
-    }
-
-    // ✅ Find lead
-    const lead = await Lead.findByPk(leadId);
-    if (!lead) {
-      throw new Error(`Lead with ID ${leadId} not found`);
-    }
-
-    console.log("📌 Current lead assignees:", lead.assignees);
-
-    // ✅ Assignees will always be an array from model hooks
-    const assignees: AssigneeWithStatus[] = Array.isArray(lead.assignees)
-      ? [...lead.assignees]
-      : [];
-
-    // ✅ Find assigned user
-    const index = assignees.findIndex((a) => Number(a.userId) === Number(userId));
-    if (index === -1) {
-      throw new Error(
-        `User ID ${userId} is not assigned to lead ID ${leadId}`
-      );
-    }
-
-    // ✅ Update status
-    assignees[index] = { ...assignees[index], status: newStatus };
-    console.log(`✅ Updated status for user ${userId}:`, newStatus);
-
-    // ✅ Save changes
-    await lead.update({ assignees });
-    console.log("💾 Lead updated successfully");
-
-    return lead;
-  } catch (error: any) {
-    console.error("🔥 Error in updateLeadStatusForUser:", {
-      message: error.message,
-      stack: error.stack,
-      leadId,
-      userId,
-      newStatus,
-    });
-    throw new Error(error.message || "Failed to update lead status");
-  }
-};
+ 
 export const getLeadsByCampaignAndAssignee = async (
   campaignName: string,
   assigneeId: number

@@ -1,26 +1,4 @@
-// import User from "./user.model";
-// import Role from "./role.model";
-// import Permission from "./permission.model";
-// import RolePermission from "./rolePermission.model";
 
-// // Role ↔ Permission (Many-to-Many)
-// Role.belongsToMany(Permission, {
-//   through: RolePermission,
-//   foreignKey: "roleId",
-//   otherKey: "permissionId",
-//   as: "permissions",
-// });
-
-// Permission.belongsToMany(Role, {
-//   through: RolePermission,
-//   foreignKey: "permissionId",
-//   otherKey: "roleId",
-//   as: "roles",
-// });
-
-// // Role ↔ User (One-to-Many)
-// Role.hasMany(User, { foreignKey: "roleId" }); // ✅ No alias here
-// User.belongsTo(Role, { foreignKey: "roleId", as: "role" }); // ✅ Use alias only ONCE
 
 import User from "./user.model";
 import Role from "./role.model";
@@ -74,3 +52,28 @@ ProductSale.belongsTo(User, { foreignKey: "createdBy" });
 // Optional: User → Lead (if not already set)
 User.hasMany(Lead, { foreignKey: "assigneeId" });
 Lead.belongsTo(User, { foreignKey: "assigneeId" });
+
+
+// Campaign → ProductSale (via campaignName)
+Campaign.hasMany(ProductSale, {
+  foreignKey: "campaignName",
+  sourceKey: "campaignName",
+  as: "productSales",
+});
+
+ProductSale.belongsTo(Campaign, {
+  foreignKey: "campaignName",
+  targetKey: "campaignName",
+  as: "campaign",
+});
+
+// User (assignee) → ProductSale
+User.hasMany(ProductSale, {
+  foreignKey: "assigneeId",
+  as: "assignedProducts",
+});
+
+ProductSale.belongsTo(User, {
+  foreignKey: "assigneeId",
+  as: "assignee",
+});

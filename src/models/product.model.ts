@@ -86,10 +86,6 @@ ProductSale.init(
   }
 );
 
-// Optional associations
-// ProductSale.belongsTo(Lead, { foreignKey: "leadId" });
-// Lead.hasOne(ProductSale, { foreignKey: "leadId" });
 
-// ProductSale.belongsTo(User, { foreignKey: "createdBy" });
 
 export default ProductSale;

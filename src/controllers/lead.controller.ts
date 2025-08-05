@@ -270,7 +270,6 @@ export const updateLeadStatus = async (
   try {
     const leadId = Number(req.params.leadId);
     const userId = Number(req.body.userId);
-    
     const status = req.body.status as LeadStatus;
 
     console.log("📌 Update Lead Status Request:", { leadId, userId, status });
@@ -307,7 +306,8 @@ export const updateLeadStatus = async (
         error.message || "An error occurred while updating lead status",
     });
   }
-};export const getLeadsByCampaignAndAssignee = async (
+};
+export const getLeadsByCampaignAndAssignee = async (
   req: Request,
   res: Response
 ): Promise<any> => {

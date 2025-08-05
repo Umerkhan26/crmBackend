@@ -3,7 +3,6 @@ import Lead, {
   AssigneeWithStatus,
   LeadAttributes,
   LeadCreationAttributes,
-  LeadStatus,
 } from "../models/lead.model";
 import { buildSearchFilter } from "../utils/filterQuery";
 import { getPagination, getPagingData } from "../utils/paginate";
@@ -456,6 +455,65 @@ const ALLOWED_STATUSES: LeadStatus[] = [
   "most_interested",
   "to_call",
 ];
+
+export type LeadStatus =
+  | "pending"
+  | "to_call"
+  | "interested"
+  | "most_interested"
+  | "sold"
+  | "not_interested"
+  | "do_not_call";
+
+
+export const updateLeadStatusForUser = async (
+  leadId: number,
+  userId: number,
+  newStatus: LeadStatus
+) => {
+  console.log("🔹 Updating lead status request:", { leadId, userId, newStatus });
+
+  if (!ALLOWED_STATUSES.includes(newStatus)) {
+    throw new Error(
+      `Invalid status. Allowed statuses: ${ALLOWED_STATUSES.join(", ")}`
+    );
+  }
+
+  const lead = await Lead.findByPk(leadId);
+  if (!lead) {
+    throw new Error(`Lead with ID ${leadId} not found`);
+  }
+
+  console.log("📌 Current lead assignees:", lead.assignees);
+
+  let assignees: AssigneeWithStatus[] = [];
+
+  if (Array.isArray(lead.assignees)) {
+    assignees = lead.assignees;
+  } else if (typeof lead.assignees === "string") {
+    try {
+      assignees = JSON.parse(lead.assignees);
+    } catch {
+      console.warn("⚠️ Failed to parse assignees JSON, resetting to empty array");
+      assignees = [];
+    }
+  } else {
+    assignees = [];
+  }
+
+  const index = assignees.findIndex((a) => a.userId === userId);
+  if (index === -1) {
+    throw new Error(`User ID ${userId} is not assigned to lead ID ${leadId}`);
+  }
+
+  assignees[index].status = newStatus;
+
+  await lead.update({ assignees });
+
+  console.log("✅ Lead status updated successfully");
+
+  return lead;
+};
 
  
 export const getLeadsByCampaignAndAssignee = async (

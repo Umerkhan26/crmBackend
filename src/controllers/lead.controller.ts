@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import * as LeadService from "../services/lead.service";
 import { LeadStatus } from "../models/lead.model";
+import { FilterType } from "../utils/dateFilters";
 
 // Create Lead
 export const createLead = async (req: Request, res: Response): Promise<any> => {
@@ -27,18 +28,26 @@ export const getAllLeads = async (
     const limit = parseInt(req.query.limit as string) || 10;
     const search = (req.query.search as string) || "";
 
-    // Prepare filters based on query parameters
+    // ⏳ Date filter handling
+    const filterType = req.query.filterType as FilterType;
+    const startDate = req.query.startDate as string;
+    const endDate = req.query.endDate as string;
+
+    // Other filters
     const filters: any = {};
     if (req.query.status) filters.status = req.query.status;
     if (req.query.campaign_id)
       filters.campaign_id = Number(req.query.campaign_id);
 
-    // Call service with the structured parameters
+    // Call the service
     const leadsData = await LeadService.getAllLeads({
       page,
       limit,
       search,
       filters,
+      filterType,
+      startDate,
+      endDate,
     });
 
     return res.status(200).json({

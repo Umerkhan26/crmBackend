@@ -219,11 +219,7 @@ export const getUserById = async (userId: number): Promise<any> => {
       },
     
    
-      {
-        model: ActivityLog, // example: activity logs
-        as: "activities",
-        attributes: ["id", "action", "description", "createdAt"],
-      },
+  
     ],
   });
 

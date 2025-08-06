@@ -4,11 +4,12 @@ import Lead from "./lead.model";
 import User from "./user.model";
 import Campaign from "./campaign.model";
 
+// ✅ Step 1: Mark 'price' as optional
 export interface ProductSaleAttributes {
   id: number;
   leadId?: number;
   productType: string;
-  price: number;
+  price?: number; // ✅ Optional
   notes?: string;
   conversionDate?: Date;
   createdBy?: number;
@@ -26,7 +27,8 @@ export interface ProductSaleCreationAttributes
     | "createdBy"
     | "status"
     | "conversionDate"
-    | "assigneeId" // ✅ optional
+    | "assigneeId"
+    | "price" // ✅ Include in optional fields
   > {}
 
 class ProductSale
@@ -36,7 +38,7 @@ class ProductSale
   public id!: number;
   public leadId?: number;
   public productType!: string;
-  public price!: number;
+  public price?: number; // ✅ Optional in model
   public notes?: string;
   public conversionDate?: Date;
   public createdBy?: number;
@@ -71,7 +73,7 @@ ProductSale.init(
     },
     price: {
       type: DataTypes.FLOAT,
-      allowNull: false,
+      allowNull: true, // ✅ Allow null in DB
     },
     notes: {
       type: DataTypes.TEXT,
@@ -108,12 +110,12 @@ ProductSale.init(
     },
     assigneeId: {
       type: DataTypes.INTEGER,
-      allowNull: true, // ✅ Allows null in DB
+      allowNull: true,
       references: {
         model: User,
         key: "id",
       },
-      onDelete: "SET NULL", // ✅ Safer than CASCADE if user is deleted
+      onDelete: "SET NULL",
       onUpdate: "CASCADE",
     },
   },

@@ -157,21 +157,22 @@ export const createProduct = async (req: Request, res: Response): Promise<any> =
     const { productType, price, notes, status, campaignId, assigneeId } = req.body;
     const createdBy = req.user?.id;
 
-    if (!productType || !price || !campaignId) {
+    // ✅ Only check for productType and campaignId — price is now optional
+    if (!productType || !campaignId) {
       return res.status(400).json({
-        message: "Missing required fields: productType, price, or campaignId.",
+        message: "Missing required fields: productType or campaignId.",
       });
     }
 
     const newProduct = await ProductSaleService.createProduct(
       {
         productType,
-        price,
+        price,         // ✅ can be undefined
         notes,
         status,
         campaignId,
         ...(assigneeId && { assigneeId }),
-        createdBy,
+        createdBy,     // ✅ passed to track who created it
       },
       createdBy
     );

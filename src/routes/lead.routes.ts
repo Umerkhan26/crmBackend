@@ -15,12 +15,7 @@ router.post(
 );
 
 // Get All Leads
-router.get(
-  "/getleads",
-  verifyToken,
-  checkPermission(PERMISSIONS.LEAD_GET_ALL),
-  LeadController.getAllLeads
-);
+   
 
 // Get Leads by Campaign
 router.get(

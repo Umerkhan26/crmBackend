@@ -16,6 +16,7 @@ import { getSmtpConfig } from "../utils/getSmtpConfig";
 import { sendEmail } from "../utils/email";
 import { logEmailStatus } from "./emailLog.service";
 import { UserAttributes } from "../interfaces/user.interface";
+import { buildDateFilter, FilterType } from "../utils/dateFilters";
 
 interface PaginationParams {
   page?: number;
@@ -49,13 +50,30 @@ export const getAllLeads = async ({
   limit = 10,
   filters = {},
   search = "",
-}: any) => {
+  filterType,
+  startDate,
+  endDate,
+}: {
+  page?: number;
+  limit?: number;
+  filters?: any;
+  search?: string;
+  filterType?: FilterType;
+  startDate?: string;
+  endDate?: string;
+}) => {
   try {
     const { offset, limit: pageLimit } = getPagination({ page, limit });
 
     const whereCondition: any = { ...filters };
 
-    // Search condition on leadData JSON fields
+    // ⏳ Inject date filter (createdAt)
+    if (filterType) {
+      const dateFilter = buildDateFilter(filterType, startDate, endDate);
+      Object.assign(whereCondition, dateFilter);
+    }
+
+    // 🔍 JSON Search
     const searchCondition = search
       ? {
           [Op.or]: [
@@ -78,7 +96,7 @@ export const getAllLeads = async ({
         }
       : {};
 
-    // Fetch leads
+    // 🚀 Fetch leads
     const leadsData = await Lead.findAndCountAll({
       offset,
       limit: pageLimit,
@@ -89,12 +107,12 @@ export const getAllLeads = async ({
       order: [["createdAt", "DESC"]],
     });
 
-    // Populate assignees with user details + status
+    // 🔗 Enrich assignees with user details
     const rowsWithAssignees = await Promise.all(
       leadsData.rows.map(async (lead) => {
         let assigneesRaw: AssigneeWithStatus[] = [];
 
-        // Parse if stored as string
+        // Parse assignees
         if (typeof lead.assignees === "string") {
           try {
             assigneesRaw = JSON.parse(lead.assignees) as AssigneeWithStatus[];
@@ -102,12 +120,11 @@ export const getAllLeads = async ({
             assigneesRaw = [];
           }
         } else if (Array.isArray(lead.assignees)) {
-          assigneesRaw = lead.assignees as AssigneeWithStatus[];
+          assigneesRaw = lead.assignees;
         }
 
-        // Extract user IDs
         const userIds = assigneesRaw
-          .map((a: AssigneeWithStatus) => a.userId)
+          .map((a) => a.userId)
           .filter((id): id is number => typeof id === "number");
 
         let assigneesData: any[] = [];
@@ -118,11 +135,8 @@ export const getAllLeads = async ({
             attributes: ["id", "firstname", "lastname", "email"],
           });
 
-          // Merge status with user info
           assigneesData = users.map((user) => {
-            const assignment = assigneesRaw.find(
-              (a: AssigneeWithStatus) => a.userId === user.id
-            );
+            const assignment = assigneesRaw.find((a) => a.userId === user.id);
             return {
               ...user.toJSON(),
               status: assignment?.status || "pending",
@@ -134,7 +148,7 @@ export const getAllLeads = async ({
       })
     );
 
-    // Return paginated data
+    // ✅ Return paginated + enriched data
     return getPagingData(
       { count: leadsData.count, rows: rowsWithAssignees },
       page,
@@ -145,7 +159,6 @@ export const getAllLeads = async ({
     throw new Error(`Error fetching leads: ${error.message}`);
   }
 };
-
 
 export const getLeadsByCampaign = async (
   campaignName: string

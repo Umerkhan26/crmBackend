@@ -10,6 +10,21 @@ interface AddNoteParams {
   userId: number;
 }
 
+
+interface AddReminderParams {
+  content: string;
+  reminderDate?: Date;
+  reminderType?: string; // user-defined/custom type
+  notebleId: number;
+  notebleType: "lead" | "client_lead";
+  userId: number;
+}
+
+interface GetRemindersParams {
+  notebleId: number;
+  notebleType: "lead" | "client_lead";
+}
+
 export const addNote = async ({
   content,
   type,
@@ -43,6 +58,51 @@ export const getNotesForEntity = async ({
 }: GetNotesParams) => {
   return Note.findAll({
     where: { notebleId, notebleType },
+    include: [
+      { model: User, as: "creator", attributes: ["id", "firstname", "email"] },
+    ],
+    order: [["createdAt", "DESC"]],
+  });
+};
+
+
+export const addReminder = async ({
+  content,
+  reminderDate,
+  reminderType,
+  notebleId,
+  notebleType,
+  userId,
+}: AddReminderParams) => {
+  const reminder = await Note.create({
+    content,
+    type: "reminder",
+    notebleId,
+    notebleType,
+    createdBy: userId,
+    reminderDate,
+    reminderType,
+  });
+
+  return Note.findByPk(reminder.id, {
+    include: [
+      { model: User, as: "creator", attributes: ["id", "firstname", "email"] },
+    ],
+  });
+};
+
+
+
+export const getRemindersForEntity = async ({
+  notebleId,
+  notebleType,
+}: GetRemindersParams) => {
+  return Note.findAll({
+    where: {
+      notebleId,
+      notebleType,
+      type: "reminder", // filter only reminders
+    },
     include: [
       { model: User, as: "creator", attributes: ["id", "firstname", "email"] },
     ],

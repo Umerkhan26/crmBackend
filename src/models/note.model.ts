@@ -1,4 +1,3 @@
-// models/note.model.ts
 import { DataTypes, Model, Optional } from "sequelize";
 import db from "../../db";
 import User from "./user.model";
@@ -10,6 +9,8 @@ interface NoteAttributes {
   notebleId: number;
   notebleType: "lead" | "client_lead";
   createdBy: number;
+  reminderType?: string; // <-- NEW optional field
+  reminderDate?: Date;   // ✅ Added this field
 }
 
 interface NoteCreationAttributes extends Optional<NoteAttributes, "id"> {}
@@ -24,6 +25,7 @@ class Note
   public notebleId!: number;
   public notebleType!: "lead" | "client_lead";
   public createdBy!: number;
+  public reminderType?: string; // <-- define as optional
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
@@ -59,6 +61,14 @@ Note.init(
         model: "users",
         key: "id",
       },
+    },
+   reminderType: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    reminderDate: {
+      type: DataTypes.DATE,
+      allowNull: true,
     },
   },
   {

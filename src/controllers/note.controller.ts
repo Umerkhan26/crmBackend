@@ -45,3 +45,48 @@ export const getNotes = async (req: Request, res: Response): Promise<any> => {
     return res.status(500).json({ success: false, message: error.message });
   }
 };
+
+
+export const addReminder = async (req: Request, res: Response): Promise<any> => {
+  try {
+    const { content, reminderType, notebleId, notebleType } = req.body;
+    const userId = req.user?.id;
+
+    if (!userId) {
+      return res.status(401).json({ message: "Unauthorized: user ID not found" });
+    }
+
+    if (!content || !reminderType || !notebleId || !notebleType) {
+      return res.status(400).json({ message: "Missing required fields" });
+    }
+
+    const reminder = await NoteService.addReminder({
+      content,
+      reminderType,
+      notebleId,
+      notebleType,
+      userId,
+    });
+
+    return res.status(201).json({ success: true, reminder });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const getReminders = async (req: Request, res: Response): Promise<any> => {
+  try {
+    const notebleId = parseInt(req.params.id, 10);
+    const notebleType = req.params.type as "lead" | "client_lead";
+
+    if (isNaN(notebleId) || !["lead", "client_lead"].includes(notebleType)) {
+      return res.status(400).json({ message: "Invalid notebleId or notebleType" });
+    }
+
+    const reminders = await NoteService.getRemindersForEntity({ notebleId, notebleType });
+
+    return res.status(200).json({ success: true, reminders });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};

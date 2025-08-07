@@ -49,14 +49,14 @@ export const getNotes = async (req: Request, res: Response): Promise<any> => {
 
 export const addReminder = async (req: Request, res: Response): Promise<any> => {
   try {
-    const { content, reminderType, notebleId, notebleType } = req.body;
+    const { content, reminderType, notebleId, notebleType, reminderDate } = req.body; // ✅ include reminderDate
     const userId = req.user?.id;
 
     if (!userId) {
       return res.status(401).json({ message: "Unauthorized: user ID not found" });
     }
 
-    if (!content || !reminderType || !notebleId || !notebleType) {
+    if (!content || !reminderType || !notebleId || !notebleType || !reminderDate) {
       return res.status(400).json({ message: "Missing required fields" });
     }
 
@@ -65,6 +65,7 @@ export const addReminder = async (req: Request, res: Response): Promise<any> => 
       reminderType,
       notebleId,
       notebleType,
+      reminderDate, // ✅ pass it to service
       userId,
     });
 

@@ -17,6 +17,7 @@ import { sendEmail } from "../utils/email";
 import { logEmailStatus } from "./emailLog.service";
 import { UserAttributes } from "../interfaces/user.interface";
 import { buildDateFilter, FilterType } from "../utils/dateFilters";
+import { logLeadActivity } from "../utils/logLeadActivity";
 
 interface PaginationParams {
   page?: number;
@@ -365,44 +366,43 @@ export const getLeadsByAssigneeId = async (
 // ✅ Corrected function
 export const sendEmailToLeadUsingTemplate = async (
   leadId: number,
-  templateKey: string, // e.g., "user:create"
+  templateKey: string,
   senderUserId: number
 ) => {
-  console.log("Fetching lead with ID:", leadId); // Debug log
+  console.log("Fetching lead with ID:", leadId);
   const lead = await Lead.findByPk(leadId);
   if (!lead) {
-    console.error("Lead not found for ID:", leadId);
     throw new Error("Lead not found");
   }
-  // Parse leadData if it's a string
+
   let leadData;
   if (typeof lead.leadData === "string") {
     try {
       leadData = JSON.parse(lead.leadData);
-      console.log("Parsed leadData:", leadData); // Debug log
     } catch (error: any) {
-      console.error("Error parsing leadData for ID:", leadId, error.message);
       throw new Error("Invalid leadData format");
     }
   } else {
     leadData = lead.leadData;
-    console.log("leadData (already parsed):", leadData); // Debug log
   }
+
   const email = leadData?.email;
   if (!email) {
-    console.error("No email found in leadData for ID:", leadId, leadData);
     throw new Error("Lead email not found in leadData");
   }
+
   const sender = await User.findByPk(senderUserId);
   const senderRole = String(sender?.role || "guest");
-  // const canSend = await checkEmailPermission(templateKey, senderRole);
-  // if (!canSend) throw new Error("You are not authorized to send this email");
+
   const template = await EmailTemplate.findOne({
     where: { serviceName: templateKey },
   });
+
   if (!template) throw new Error("Email template not found");
+
   const filledSubject = fillTemplate(template.subjectTemplate, leadData);
   const filledBody = fillTemplate(template.bodyTemplate, leadData);
+
   const smtpRaw = await getSmtpConfig(senderUserId);
   const smtp = {
     host: smtpRaw.host || "",
@@ -410,15 +410,18 @@ export const sendEmailToLeadUsingTemplate = async (
     user: smtpRaw.user || "",
     pass: smtpRaw.pass || "",
   };
+
   if (!smtp.host || !smtp.user || !smtp.pass) {
     throw new Error("SMTP configuration is incomplete.");
   }
+
   await sendEmail({
     smtp,
     to: email,
     subject: filledSubject,
     body: filledBody,
   });
+
   await logEmailStatus({
     leadId,
     to: email,
@@ -429,6 +432,15 @@ export const sendEmailToLeadUsingTemplate = async (
     sentAt: new Date(),
     status: "sent",
   });
+
+  // ✅ Log the activity here
+  await logLeadActivity({
+    leadId,
+    action: "email_sent",
+    performedBy: senderUserId,
+    details: `Email sent using template "${templateKey}" to ${email}`,
+  });
+
   return { message: "Email sent successfully", to: email };
 };
 // ✅ Helper: replace {{key}} in text with values from leadData
@@ -496,6 +508,7 @@ export type LeadStatus =
   | "do_not_call";
 
 
+
 export const updateLeadStatusForUser = async (
   leadId: number,
   userId: number,
@@ -514,8 +527,6 @@ export const updateLeadStatusForUser = async (
     throw new Error(`Lead with ID ${leadId} not found`);
   }
 
-  console.log("📌 Current lead assignees:", lead.assignees);
-
   let assignees: AssigneeWithStatus[] = [];
 
   if (Array.isArray(lead.assignees)) {
@@ -527,8 +538,6 @@ export const updateLeadStatusForUser = async (
       console.warn("⚠️ Failed to parse assignees JSON, resetting to empty array");
       assignees = [];
     }
-  } else {
-    assignees = [];
   }
 
   const index = assignees.findIndex((a) => a.userId === userId);
@@ -536,14 +545,24 @@ export const updateLeadStatusForUser = async (
     throw new Error(`User ID ${userId} is not assigned to lead ID ${leadId}`);
   }
 
+  const previousStatus = assignees[index].status;
   assignees[index].status = newStatus;
 
   await lead.update({ assignees });
 
-  console.log("✅ Lead status updated successfully");
+  // ✅ Log the activity
+  await logLeadActivity({
+    leadId,
+    action: "status_updated",
+    performedBy: userId,
+    details: `Status changed from "${previousStatus}" to "${newStatus}"`,
+  });
+
+  console.log("✅ Lead status updated and activity logged");
 
   return lead;
 };
+
 
  
 export const getLeadsByCampaignAndAssignee = async (

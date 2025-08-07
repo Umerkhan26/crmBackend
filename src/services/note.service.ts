@@ -1,6 +1,7 @@
 // services/note.service.ts
 import Note from "../models/note.model";
 import User from "../models/user.model";
+import { logLeadActivity } from "../utils/logLeadActivity";
 
 interface AddNoteParams {
   content: string;
@@ -40,12 +41,25 @@ export const addNote = async ({
     createdBy: userId,
   });
 
-  return Note.findByPk(note.id, {
+  const fullNote = await Note.findByPk(note.id, {
     include: [
       { model: User, as: "creator", attributes: ["id", "firstname", "email"] },
     ],
   });
+
+  // ✅ Log only if note is for a lead
+  if (notebleType === "lead") {
+    await logLeadActivity({
+      leadId: notebleId,
+      action: "note_added",
+      performedBy: userId,
+      details: `Note added: "${content}"`,
+    });
+  }
+
+  return fullNote;
 };
+
 
 interface GetNotesParams {
   notebleId: number;
@@ -84,11 +98,23 @@ export const addReminder = async ({
     reminderType,
   });
 
-  return Note.findByPk(reminder.id, {
+  const fullReminder = await Note.findByPk(reminder.id, {
     include: [
       { model: User, as: "creator", attributes: ["id", "firstname", "email"] },
     ],
   });
+
+  // ✅ Log only if reminder is for a lead
+  if (notebleType === "lead") {
+    await logLeadActivity({
+      leadId: notebleId,
+      action: "reminder_added",
+      performedBy: userId,
+      details: `Reminder set: "${content}"${reminderDate ? ` (Date: ${reminderDate.toISOString().split("T")[0]})` : ""}`,
+    });
+  }
+
+  return fullReminder;
 };
 
 

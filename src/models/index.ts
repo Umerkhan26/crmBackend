@@ -14,6 +14,6 @@ import "./campaign.model";
 
 import "./activityLog.model";
 import "./emailLog.model";
-
+import "./leadActivity.model"
 // Apply associations
 associateModels();

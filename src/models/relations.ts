@@ -5,6 +5,7 @@ import { Conversation } from "./chatmodels/conversation.model";
 import { ConversationParticipant } from "./chatmodels/conversationParticipant.model";
 import Note from "./note.model";
 import ClientLead from "./clientLead.model"; // 👈 Ensure this import is correct
+import LeadActivity from "./leadActivity.model";
 
 export const associateModels = () => {
   // 📌 Chat-related associations
@@ -80,3 +81,8 @@ export const associateModels = () => {
     as: "clientLead",
   });
 };
+
+Lead.hasMany(LeadActivity, { foreignKey: "leadId", as: "activities" });
+LeadActivity.belongsTo(Lead, { foreignKey: "leadId" });
+Lead.hasMany(Note, { foreignKey: "leadId", as: "notes" });
+Note.belongsTo(Lead, { foreignKey: "leadId" });

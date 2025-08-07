@@ -1,5 +1,3 @@
-
-
 import { DataTypes, Model, Optional } from "sequelize";
 import db from "../../db";
 

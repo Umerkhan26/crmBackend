@@ -185,10 +185,21 @@ export const getLeadsByAssigneeId = async (
 ): Promise<any> => {
   try {
     const assigneeId = parseInt(req.params.assigneeId, 10);
+    const filterType = req.query.filterType as FilterType || "daily";
+    const startDate = req.query.startDate as string | undefined;
+    const endDate = req.query.endDate as string | undefined;
+
     if (isNaN(assigneeId)) {
       return res.status(400).json({ message: "Invalid assignee ID." });
     }
-    const leads = await LeadService.getLeadsByAssigneeId({ assigneeId });
+
+    const leads = await LeadService.getLeadsByAssigneeId(
+      assigneeId,
+      filterType,
+      startDate,
+      endDate
+    );
+
     return res.status(200).json({
       success: true,
       message: `Leads assigned to user ID ${assigneeId} fetched successfully.`,
@@ -264,6 +275,7 @@ export const sendEmailToLead = async (
       message:
         error.message || "An error occurred while sending email to lead.",
     });
+    
   }
 };
 

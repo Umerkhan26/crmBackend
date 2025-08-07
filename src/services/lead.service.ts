@@ -22,13 +22,6 @@ interface PaginationParams {
   page?: number;
   limit?: number;
 }
-
-interface GetLeadsByAssigneeOptions {
-  assigneeId: number;
-  filterType?: FilterType;
-  startDate?: string;
-  endDate?: string;
-}
 interface LeadQueryParams extends PaginationParams {
   filters?: Record<string, any>;
   search?: string;
@@ -338,27 +331,22 @@ export const getUnassignedLeads = async () => {
 /**
  * Get all leads assigned to a specific user
  */
-export const getLeadsByAssigneeId = async ({
-  assigneeId,
-  filterType,
-  startDate,
-  endDate,
-}: GetLeadsByAssigneeOptions) => {
+
+export const getLeadsByAssigneeId = async (
+  assigneeId: number,
+  filterType: FilterType = "daily",
+  startDate?: string,
+  endDate?: string
+) => {
   try {
-    const dateFilter = filterType
-      ? buildDateFilter(filterType, startDate, endDate)
-      : {};
+    const dateFilter = buildDateFilter(filterType, startDate, endDate);
 
     const leads = await Lead.findAll({
       where: {
-        [Op.and]: [
-          Sequelize.literal(
-            `JSON_SEARCH(JSON_EXTRACT(assignees, '$[*].userId'), 'one', '${assigneeId}') IS NOT NULL`
-          ),
-          ...Object.entries(dateFilter).map(([field, condition]) => ({
-            [field]: condition,
-          })),
-        ],
+        ...dateFilter,
+        [Op.and]: Sequelize.literal(
+          `JSON_SEARCH(JSON_EXTRACT(assignees, '$[*].userId'), 'one', '${assigneeId}') IS NOT NULL`
+        ),
       },
     });
 

@@ -46,7 +46,6 @@ router.delete(
   LeadController.deleteLead
 );
 
-
 router.post(
   "/assign/:leadId",
   verifyToken,
@@ -70,14 +69,12 @@ router.get(
 
 // ✅ Get assignment stats (assigned & unassigned counts)
 
-
 router.get(
   "/assignment-stats",
   verifyToken,
   checkPermission(PERMISSIONS.LEAD_VIEW_ASSIGNMENT_STATS),
   LeadController.getAssignmentStats
 );
-
 
 // ✅ Get all unassigned users for a lead
 router.get(
@@ -93,8 +90,11 @@ router.get(
   LeadController.getLeadsByAssigneeId
 );
 
-
-router.post("/leads/:leadId/send-email", verifyToken, LeadController.sendEmailToLead);
+router.post(
+  "/leads/:leadId/send-email",
+  verifyToken,
+  LeadController.sendEmailToLead
+);
 
 router.get(
   "/status-summary",
@@ -105,12 +105,11 @@ router.get(
 
 // ✅ NEW: Update lead status for specific user
 router.put(
-  "/getAssignedLeadsByStatus:leadId/status",
+  "/getAssignedLeadsByStatus/:leadId/status",
   verifyToken,
   checkPermission(PERMISSIONS.LEAD_UPDATE_STATUS),
   LeadController.updateLeadStatus
 );
-
 
 router.get(
   "/lead-get-by-campaign-and-assignee/:campaignName",

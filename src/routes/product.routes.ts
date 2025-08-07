@@ -52,7 +52,7 @@ router.put(
 
 // ✅ Delete Sale
 router.delete(
-  "/deketeSalesById/:id",
+  "/deleteSalesById/:id",
   verifyToken,
   checkPermission(PERMISSIONS.PRODUCT_SALE_DELETE),
   deleteSale

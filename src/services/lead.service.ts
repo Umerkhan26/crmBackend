@@ -336,18 +336,23 @@ export const getLeadsByAssigneeId = async (
   assigneeId: number,
   filterType: FilterType = "daily",
   startDate?: string,
-  endDate?: string
+  endDate?: string,
+  page: number = 1,
+  limit: number = 10
 ) => {
   try {
     const dateFilter = buildDateFilter(filterType, startDate, endDate);
+    const { offset } = getPagination({ page, limit });
 
-    const leads = await Lead.findAll({
+    const leads = await Lead.findAndCountAll({
       where: {
         ...dateFilter,
         [Op.and]: Sequelize.literal(
           `JSON_SEARCH(JSON_EXTRACT(assignees, '$[*].userId'), 'one', '${assigneeId}') IS NOT NULL`
         ),
       },
+      offset,
+      limit,
     });
 
     return leads;

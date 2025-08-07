@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import * as LeadService from "../services/lead.service";
 import { LeadStatus } from "../models/lead.model";
 import { FilterType } from "../utils/dateFilters";
+import { getPagingData } from "../utils/paginate";
 
 // Create Lead
 export const createLead = async (req: Request, res: Response): Promise<any> => {
@@ -188,22 +189,28 @@ export const getLeadsByAssigneeId = async (
     const filterType = req.query.filterType as FilterType || "daily";
     const startDate = req.query.startDate as string | undefined;
     const endDate = req.query.endDate as string | undefined;
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
 
     if (isNaN(assigneeId)) {
       return res.status(400).json({ message: "Invalid assignee ID." });
     }
 
-    const leads = await LeadService.getLeadsByAssigneeId(
+    const leadsResult = await LeadService.getLeadsByAssigneeId(
       assigneeId,
       filterType,
       startDate,
-      endDate
+      endDate,
+      page,
+      limit
     );
+
+    const responseData = getPagingData(leadsResult, page, limit);
 
     return res.status(200).json({
       success: true,
       message: `Leads assigned to user ID ${assigneeId} fetched successfully.`,
-      data: leads,
+      ...responseData,
     });
   } catch (error: any) {
     return res.status(500).json({

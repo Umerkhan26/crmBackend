@@ -45,6 +45,9 @@ export const PERMISSIONS = {
   NOTE_CREATE: "note:create",
   NOTE_VIEW: "note:view",
 
+  REMINDER_CREATE: "reminder:create",
+  REMINDER_VIEW: "reminder:view",
+
   PRODUCT_CONVERT_LEAD: "PRODUCT_CONVERT_LEAD",
   PRODUCT_SALE_GET_ALL: "PRODUCT_SALE_GET_ALL",
   PRODUCT_SALE_GET_BY_ID: "PRODUCT_SALE_GET_BY_ID",

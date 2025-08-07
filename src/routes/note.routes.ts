@@ -1,5 +1,10 @@
 import express from "express";
-import { addNote, getNotes } from "../controllers/note.controller";
+import {
+  addNote,
+  addReminder,
+  getNotes,
+  getReminders,
+} from "../controllers/note.controller";
 import { verifyToken } from "../middleware/verifyToken.middleware";
 import { checkPermission } from "../middleware/checkPermission";
 import { PERMISSIONS } from "../constants/permissions";
@@ -18,6 +23,20 @@ router.get(
   verifyToken,
   checkPermission(PERMISSIONS.NOTE_VIEW),
   getNotes
+);
+
+router.post(
+  "/addReminder",
+  verifyToken,
+  checkPermission(PERMISSIONS.REMINDER_CREATE),
+  addReminder
+);
+
+router.get(
+  "/getReminders/:type/:id",
+  verifyToken,
+  checkPermission(PERMISSIONS.REMINDER_VIEW),
+  getReminders
 );
 
 export default router;

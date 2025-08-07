@@ -267,6 +267,7 @@ export const sendEmailToLead = async (
       message:
         error.message || "An error occurred while sending email to lead.",
     });
+    
   }
 };
 

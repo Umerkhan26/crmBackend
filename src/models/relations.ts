@@ -78,19 +78,16 @@ export const associateModels = () => {
   Note.belongsTo(ClientLead, {
     foreignKey: "notebleId",
     constraints: false,
-    as: "clientLead",
+    as: "clientLead", 
   });
 };
 
 Lead.hasMany(LeadActivity, { foreignKey: "leadId", as: "activities" });
-LeadActivity.belongsTo(Lead, { foreignKey: "leadId", as: "lead" });
+LeadActivity.belongsTo(Lead, { foreignKey: "leadId" });
 Lead.hasMany(Note, { foreignKey: "leadId", as: "notess" });
 Note.belongsTo(Lead, { foreignKey: "leadId" });
-LeadActivity.belongsTo(User, {
-  foreignKey: "performedBy",
-  as: "performedByUser",
-});
-User.hasMany(LeadActivity, {
-  foreignKey: "performedBy",
-  as: "activitiesPerformed",
-});
+// LeadActivity.belongsTo(User, { foreignKey: "performedBy", as: "performedByUser" });
+// User.hasMany(LeadActivity, { foreignKey: "performedBy", as: "activitiesPerformed" });
+
+LeadActivity.belongsTo(User, { foreignKey: "performedBy", as: "performedByUser" });
+User.hasMany(LeadActivity, { foreignKey: "performedBy", as: "activitiesPerformed" });

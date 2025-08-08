@@ -11,7 +11,6 @@ interface AddNoteParams {
   userId: number;
 }
 
-
 interface AddReminderParams {
   content: string;
   reminderDate?: Date;
@@ -60,7 +59,6 @@ export const addNote = async ({
   return fullNote;
 };
 
-
 interface GetNotesParams {
   notebleId: number;
   notebleType: "lead" | "client_lead";
@@ -79,7 +77,6 @@ export const getNotesForEntity = async ({
   });
 };
 
-
 export const addReminder = async ({
   content,
   reminderDate,
@@ -88,13 +85,27 @@ export const addReminder = async ({
   notebleType,
   userId,
 }: AddReminderParams) => {
+  // === Safe parse of reminderDate ===
+  let parsedDate: Date | undefined = undefined;
+
+  if (reminderDate !== undefined && reminderDate !== null) {
+    if (reminderDate instanceof Date) {
+      parsedDate = reminderDate;
+    } else {
+      const tempDate = new Date(reminderDate);
+      if (!Number.isNaN(tempDate.getTime())) {
+        parsedDate = tempDate;
+      }
+    }
+  }
+
   const reminder = await Note.create({
     content,
     type: "reminder",
     notebleId,
     notebleType,
     createdBy: userId,
-    reminderDate,
+    reminderDate: parsedDate, // ✅ undefined if not valid
     reminderType,
   });
 
@@ -105,12 +116,21 @@ export const addReminder = async ({
   });
 
   // ✅ Log only if reminder is for a lead
-  
+  if (notebleType === "lead") {
+    let datePart = "";
+    if (parsedDate) {
+      datePart = ` (Date: ${parsedDate.toISOString().split("T")[0]})`;
+    }
+    await logLeadActivity({
+      leadId: notebleId,
+      action: "reminder_added",
+      performedBy: userId,
+      details: `Reminder set: "${content}"${datePart}`,
+    });
+  }
 
   return fullReminder;
 };
-
-
 
 export const getRemindersForEntity = async ({
   notebleId,

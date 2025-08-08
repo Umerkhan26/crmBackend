@@ -27,3 +27,24 @@ export const getAllLeadActivities = async () => {
     order: [["createdAt", "DESC"]],
   });
 };
+
+export const updateLeadActivity = async (
+  id: number,
+  data: Partial<LeadActivity>
+) => {
+  const activity = await LeadActivity.findByPk(id);
+  if (!activity) {
+    throw new Error("Lead activity not found");
+  }
+  await activity.update(data);
+  return activity;
+};
+
+export const deleteLeadActivity = async (id: number) => {
+  const activity = await LeadActivity.findByPk(id);
+  if (!activity) {
+    throw new Error("Lead activity not found");
+  }
+  await activity.destroy();
+  return { message: "Lead activity deleted successfully" };
+};

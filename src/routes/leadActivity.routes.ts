@@ -2,8 +2,10 @@
 
 import { Router } from "express";
 import {
+  deleteLeadActivityController,
   getAllLeadActivityLogs,
   getLeadActivities,
+  updateLeadActivityController,
 } from "../controllers/leadActivity.controller";
 import { verifyToken } from "../middleware/verifyToken.middleware";
 
@@ -13,5 +15,11 @@ const router = Router();
 router.get("/getLeadActivityByLeadId/:leadId", verifyToken, getLeadActivities);
 
 router.get("/getAllLeadActivities", verifyToken, getAllLeadActivityLogs);
+
+// UPDATE lead activity
+router.put("/updateLeadActivity/:id", verifyToken, updateLeadActivityController);
+
+// DELETE lead activity
+router.delete("/deleteLeadActivity/:id", verifyToken, deleteLeadActivityController);
 
 export default router;

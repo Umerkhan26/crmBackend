@@ -158,11 +158,47 @@ export const updateCampaign = async (
   }
 };
 
+// export const deleteCampaign = async (
+//   id: number,
+//   userId?: number
+// ): Promise<boolean> => {
+//   try {
+//     const orderExists = await Order.count({ where: { campaign_id: id } });
+//     if (orderExists > 0) {
+//       throw new Error(
+//         "❌ Cannot delete campaign: it is linked to existing orders."
+//       );
+//     }
+
+//     const campaign = await Campaign.findByPk(id);
+//     if (!campaign) throw new Error("Campaign not found");
+
+//     const name = campaign.campaignName;
+//     await Campaign.destroy({ where: { id } });
+
+//     if (userId) {
+//       await logActivity(
+//         userId,
+//         "Campaign Deleted",
+//         `Deleted campaign "${name}"`
+//       );
+//       await sendNotification(userId, `Campaign "${name}" has been deleted.`);
+//     }
+
+//     return true;
+//   } catch (err: any) {
+//     throw new Error(err.message || "Error deleting campaign");
+//   }
+// };
+
+
+
 export const deleteCampaign = async (
   id: number,
   userId?: number
 ): Promise<boolean> => {
   try {
+    // Step 1: Prevent deletion if linked to orders
     const orderExists = await Order.count({ where: { campaign_id: id } });
     if (orderExists > 0) {
       throw new Error(
@@ -170,19 +206,42 @@ export const deleteCampaign = async (
       );
     }
 
+    // Step 2: Find campaign
     const campaign = await Campaign.findByPk(id);
     if (!campaign) throw new Error("Campaign not found");
 
     const name = campaign.campaignName;
+    const resourceType = `campaign-${name}`;
+
+    // Step 3: Find permissions related to this campaign
+    const permissions = await Permission.findAll({
+      where: { resourceType, resourceId: id },
+    });
+
+    if (permissions.length > 0) {
+      const permissionIds = permissions.map((p) => p.id);
+
+      // Step 4: Delete from RolePermission first (to avoid FK constraints)
+      await RolePermission.destroy({ where: { permissionId: permissionIds } });
+
+      // Step 5: Delete the permissions
+      await Permission.destroy({ where: { id: permissionIds } });
+    }
+
+    // Step 6: Delete campaign
     await Campaign.destroy({ where: { id } });
 
+    // Step 7: Log + notify if userId provided
     if (userId) {
       await logActivity(
         userId,
         "Campaign Deleted",
-        `Deleted campaign "${name}"`
+        `Deleted campaign "${name}" and its related permissions.`
       );
-      await sendNotification(userId, `Campaign "${name}" has been deleted.`);
+      await sendNotification(
+        userId,
+        `Campaign "${name}" and its related permissions have been deleted.`
+      );
     }
 
     return true;

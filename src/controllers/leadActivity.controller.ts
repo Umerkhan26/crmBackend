@@ -2,8 +2,10 @@
 
 import { Request, Response } from "express";
 import {
+  deleteLeadActivity,
   getAllLeadActivities,
   getLeadActivitiesByLeadId,
+  updateLeadActivity,
 } from "../services/leadActivity.service";
 
 // src/controllers/leadActivity.controller.ts
@@ -43,5 +45,39 @@ export const getAllLeadActivityLogs = async (req: Request, res: Response) => {
   } catch (error) {
     console.error("Error fetching all lead activity logs:", error);
     res.status(500).json({ message: "Failed to retrieve activity logs" });
+  }
+};
+
+export const updateLeadActivityController = async (
+  req: Request,
+  res: Response
+): Promise<any> => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) {
+      return res.status(400).json({ message: "Invalid activity ID" });
+    }
+
+    const updatedActivity = await updateLeadActivity(id, req.body);
+    res.json(updatedActivity);
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+export const deleteLeadActivityController = async (
+  req: Request,
+  res: Response
+): Promise<any> => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) {
+      return res.status(400).json({ message: "Invalid activity ID" });
+    }
+
+    const result = await deleteLeadActivity(id);
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
   }
 };

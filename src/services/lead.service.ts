@@ -515,46 +515,41 @@ export const updateLeadStatusForUser = async (
 ) => {
   console.log("🔹 Updating lead status request:", { leadId, userId, newStatus });
 
-  // 1️⃣ Validate new status
   if (!ALLOWED_STATUSES.includes(newStatus)) {
     throw new Error(
-      `Invalid status "${newStatus}". Allowed statuses: ${ALLOWED_STATUSES.join(", ")}`
+      `Invalid status. Allowed statuses: ${ALLOWED_STATUSES.join(", ")}`
     );
   }
 
-  // 2️⃣ Find lead
   const lead = await Lead.findByPk(leadId);
   if (!lead) {
-    throw new Error(`❌ Lead with ID ${leadId} not found.`);
+    throw new Error(`Lead with ID ${leadId} not found`);
   }
 
-  // 3️⃣ Parse assignees
   let assignees: AssigneeWithStatus[] = [];
+
   if (Array.isArray(lead.assignees)) {
     assignees = lead.assignees;
   } else if (typeof lead.assignees === "string") {
     try {
-      assignees = JSON.parse(lead.assignees) || [];
-      if (!Array.isArray(assignees)) throw new Error("Parsed value is not an array");
-    } catch (err) {
-      console.warn("⚠️ Failed to parse assignees JSON, resetting to empty array:", err);
+      assignees = JSON.parse(lead.assignees);
+    } catch {
+      console.warn("⚠️ Failed to parse assignees JSON, resetting to empty array");
       assignees = [];
     }
   }
 
-  // 4️⃣ Find user assignment
   const index = assignees.findIndex((a) => a.userId === userId);
   if (index === -1) {
-    throw new Error(`❌ User ID ${userId} is not assigned to lead ID ${leadId}`);
+    throw new Error(`User ID ${userId} is not assigned to lead ID ${leadId}`);
   }
 
-  // 5️⃣ Update status
   const previousStatus = assignees[index].status;
   assignees[index].status = newStatus;
 
   await lead.update({ assignees });
 
-  // 6️⃣ Log the activity
+  // ✅ Log the activity with error handling
   try {
     const logResult = await logLeadActivity({
       leadId,
@@ -562,6 +557,7 @@ export const updateLeadStatusForUser = async (
       performedBy: userId,
       details: `Status changed from "${previousStatus}" to "${newStatus}"`,
     });
+
     console.log("✅ Lead status updated and activity logged:", logResult);
   } catch (err) {
     console.error("❌ Failed to log lead activity:", err);
@@ -569,7 +565,6 @@ export const updateLeadStatusForUser = async (
 
   return lead;
 };
-
 
 
 

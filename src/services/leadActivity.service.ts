@@ -15,9 +15,7 @@ export const getLeadActivitiesByLeadId = async (leadId: number) => {
         attributes: { exclude: ["password"] }, // exclude sensitive fields
       },
       {
-        model: Lead,
-        as: "lead", // alias must match association in your model
-        // You can exclude nothing if you want max info:
+        model: Lead, // You can exclude nothing if you want max info:
         attributes: { exclude: [] },
       },
     ],

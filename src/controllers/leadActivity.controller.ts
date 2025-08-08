@@ -1,12 +1,17 @@
 // src/controllers/leadActivity.controller.ts
 
 import { Request, Response } from "express";
-import { getAllLeadActivities, getLeadActivitiesByLeadId } from "../services/leadActivity.service";
+import {
+  getAllLeadActivities,
+  getLeadActivitiesByLeadId,
+} from "../services/leadActivity.service";
 
 // src/controllers/leadActivity.controller.ts
 
-
-export const getLeadActivities = async (req: Request, res: Response): Promise<Response> => {
+export const getLeadActivities = async (
+  req: Request,
+  res: Response
+): Promise<any> => {
   try {
     const leadIdParam = req.params.leadId;
     const leadId = Number(leadIdParam);
@@ -25,11 +30,11 @@ export const getLeadActivities = async (req: Request, res: Response): Promise<Re
     });
   } catch (error) {
     console.error("Error fetching lead activities:", error);
-    return res.status(500).json({ message: "Failed to fetch lead activities." });
+    return res
+      .status(500)
+      .json({ message: "Failed to fetch lead activities." });
   }
 };
-
-
 
 export const getAllLeadActivityLogs = async (req: Request, res: Response) => {
   try {

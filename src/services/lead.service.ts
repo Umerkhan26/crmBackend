@@ -508,7 +508,6 @@ export type LeadStatus =
   | "do_not_call";
 
 
-
 export const updateLeadStatusForUser = async (
   leadId: number,
   userId: number,
@@ -550,18 +549,23 @@ export const updateLeadStatusForUser = async (
 
   await lead.update({ assignees });
 
-  // ✅ Log the activity
-  await logLeadActivity({
-    leadId,
-    action: "status_updated",
-    performedBy: userId,
-    details: `Status changed from "${previousStatus}" to "${newStatus}"`,
-  });
+  // ✅ Log the activity with error handling
+  try {
+    const logResult = await logLeadActivity({
+      leadId,
+      action: "status_updated",
+      performedBy: userId,
+      details: `Status changed from "${previousStatus}" to "${newStatus}"`,
+    });
 
-  console.log("✅ Lead status updated and activity logged");
+    console.log("✅ Lead status updated and activity logged:", logResult);
+  } catch (err) {
+    console.error("❌ Failed to log lead activity:", err);
+  }
 
   return lead;
 };
+
 
 
  

@@ -105,14 +105,7 @@ export const addReminder = async ({
   });
 
   // ✅ Log only if reminder is for a lead
-  if (notebleType === "lead") {
-    await logLeadActivity({
-      leadId: notebleId,
-      action: "reminder_added",
-      performedBy: userId,
-      details: `Reminder set: "${content}"${reminderDate ? ` (Date: ${reminderDate.toISOString().split("T")[0]})` : ""}`,
-    });
-  }
+  
 
   return fullReminder;
 };

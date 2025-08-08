@@ -4,6 +4,10 @@ import {
   addReminder,
   getNotes,
   getReminders,
+  updateNote,
+  deleteNote,
+  updateReminder,
+  deleteReminder,
 } from "../controllers/note.controller";
 import { verifyToken } from "../middleware/verifyToken.middleware";
 import { checkPermission } from "../middleware/checkPermission";
@@ -11,6 +15,7 @@ import { PERMISSIONS } from "../constants/permissions";
 
 const router = express.Router();
 
+// ---------------- Notes ----------------
 router.post(
   "/add",
   verifyToken,
@@ -19,12 +24,27 @@ router.post(
 );
 
 router.get(
-  "/getNotes/:type/:id", // e.g., /lead/5 or /client_lead/10
+  "/getNotes/:type/:id",
   verifyToken,
   checkPermission(PERMISSIONS.NOTE_VIEW),
   getNotes
 );
 
+router.put(
+  "/update/:id",
+  verifyToken,
+  checkPermission(PERMISSIONS.NOTE_UPDATE),
+  updateNote
+);
+
+router.delete(
+  "/delete/:id",
+  verifyToken,
+  checkPermission(PERMISSIONS.NOTE_DELETE),
+  deleteNote
+);
+
+// ---------------- Reminders ----------------
 router.post(
   "/addReminder",
   verifyToken,
@@ -37,6 +57,20 @@ router.get(
   verifyToken,
   checkPermission(PERMISSIONS.REMINDER_VIEW),
   getReminders
+);
+
+router.put(
+  "/updateReminder/:id",
+  verifyToken,
+  checkPermission(PERMISSIONS.REMINDER_UPDATE),
+  updateReminder
+);
+
+router.delete(
+  "/deleteReminder/:id",
+  verifyToken,
+  checkPermission(PERMISSIONS.REMINDER_DELETE),
+  deleteReminder
 );
 
 export default router;

@@ -148,3 +148,90 @@ export const getRemindersForEntity = async ({
     order: [["createdAt", "DESC"]],
   });
 };
+
+export const updateNote = async (
+  id: number,
+  data: Partial<Note>,
+  userId: number
+) => {
+  const note = await Note.findByPk(id);
+  if (!note) throw new Error("Note not found");
+  if (note.type !== "comment") throw new Error("This is not a note");
+
+  await note.update(data);
+
+  if (note.notebleType === "lead") {
+    await logLeadActivity({
+      leadId: note.notebleId,
+      action: "note_updated",
+      performedBy: userId,
+      details: `Note updated: "${note.content}"`,
+    });
+  }
+
+  return note;
+};
+
+// ✅ Delete a note
+export const deleteNote = async (id: number, userId: number) => {
+  const note = await Note.findByPk(id);
+  if (!note) throw new Error("Note not found");
+  if (note.type !== "comment") throw new Error("This is not a note");
+
+  await note.destroy();
+
+  if (note.notebleType === "lead") {
+    await logLeadActivity({
+      leadId: note.notebleId,
+      action: "note_deleted",
+      performedBy: userId,
+      details: `Note deleted: "${note.content}"`,
+    });
+  }
+
+  return { message: "Note deleted successfully" };
+};
+
+// ✅ Update a reminder
+export const updateReminder = async (
+  id: number,
+  data: Partial<Note>,
+  userId: number
+) => {
+  const reminder = await Note.findByPk(id);
+  if (!reminder) throw new Error("Reminder not found");
+  if (reminder.type !== "reminder") throw new Error("This is not a reminder");
+
+  await reminder.update(data);
+
+  if (reminder.notebleType === "lead") {
+    await logLeadActivity({
+      leadId: reminder.notebleId,
+      action: "reminder_updated",
+      performedBy: userId,
+      details: `Reminder updated: "${reminder.content}"`,
+    });
+  }
+
+  return reminder;
+};
+
+// ✅ Delete a reminder
+export const deleteReminder = async (id: number, userId: number) => {
+  const reminder = await Note.findByPk(id);
+  if (!reminder) throw new Error("Reminder not found");
+  if (reminder.type !== "reminder") throw new Error("This is not a reminder");
+
+  await reminder.destroy();
+
+  if (reminder.notebleType === "lead") {
+    await logLeadActivity({
+      leadId: reminder.notebleId,
+      action: "reminder_deleted",
+      performedBy: userId,
+      details: `Reminder deleted: "${reminder.content}"`,
+    });
+  }
+
+  return { message: "Reminder deleted successfully" };
+};

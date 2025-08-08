@@ -1,35 +1,42 @@
 // src/controllers/leadActivity.controller.ts
 
 import { Request, Response } from "express";
-import { deleteLeadActivity, getAllLeadActivities, getLeadActivitiesByLeadId, updateLeadActivity } from "../services/leadActivity.service";
+import {
+  deleteLeadActivity,
+  getAllLeadActivities,
+  getLeadActivitiesByLeadId,
+  updateLeadActivity,
+} from "../services/leadActivity.service";
 
 // src/controllers/leadActivity.controller.ts
 
+export const getLeadActivities = async (
+  req: Request,
+  res: Response
+): Promise<any> => {
+  try {
+    const leadIdParam = req.params.leadId;
+    const leadId = Number(leadIdParam);
 
-  export const getLeadActivities = async (req: Request, res: Response): Promise<any> => {
-    try {
-      const leadIdParam = req.params.leadId;
-      const leadId = Number(leadIdParam);
-
-      if (!leadIdParam || isNaN(leadId)) {
-        return res.status(400).json({ message: "Invalid lead ID." });
-      }
-
-      // Fetch activities with related info (from updated service)
-      const activities = await getLeadActivitiesByLeadId(leadId);
-
-      return res.status(200).json({
-        success: true,
-        count: activities.length,
-        data: activities,
-      });
-    } catch (error) {
-      console.error("Error fetching lead activities:", error);
-      return res.status(500).json({ message: "Failed to fetch lead activities." });
+    if (!leadIdParam || isNaN(leadId)) {
+      return res.status(400).json({ message: "Invalid lead ID." });
     }
-  };
 
+    // Fetch activities with related info (from updated service)
+    const activities = await getLeadActivitiesByLeadId(leadId);
 
+    return res.status(200).json({
+      success: true,
+      count: activities.length,
+      data: activities,
+    });
+  } catch (error) {
+    console.error("Error fetching lead activities:", error);
+    return res
+      .status(500)
+      .json({ message: "Failed to fetch lead activities." });
+  }
+};
 
 export const getAllLeadActivityLogs = async (req: Request, res: Response) => {
   try {
@@ -44,7 +51,7 @@ export const getAllLeadActivityLogs = async (req: Request, res: Response) => {
 export const updateLeadActivityController = async (
   req: Request,
   res: Response
-):Promise<any> => {
+): Promise<any> => {
   try {
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) {
@@ -61,7 +68,7 @@ export const updateLeadActivityController = async (
 export const deleteLeadActivityController = async (
   req: Request,
   res: Response
-):Promise<any> => {
+): Promise<any> => {
   try {
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) {

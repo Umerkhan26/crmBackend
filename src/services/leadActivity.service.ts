@@ -15,9 +15,7 @@ export const getLeadActivitiesByLeadId = async (leadId: number) => {
         attributes: { exclude: ["password"] }, // exclude sensitive fields
       },
       {
-        model: Lead,
-        as: "lead", // alias must match association in your model
-        // You can exclude nothing if you want max info:
+        model: Lead, // You can exclude nothing if you want max info:
         attributes: { exclude: [] },
       },
     ],
@@ -30,7 +28,10 @@ export const getAllLeadActivities = async () => {
   });
 };
 
-export const updateLeadActivity = async (id: number, data: Partial<LeadActivity>) => {
+export const updateLeadActivity = async (
+  id: number,
+  data: Partial<LeadActivity>
+) => {
   const activity = await LeadActivity.findByPk(id);
   if (!activity) {
     throw new Error("Lead activity not found");

@@ -18,6 +18,7 @@ import { logEmailStatus } from "./emailLog.service";
 import { UserAttributes } from "../interfaces/user.interface";
 import { buildDateFilter, FilterType } from "../utils/dateFilters";
 import { logLeadActivity } from "../utils/logLeadActivity";
+import Campaign from "../models/campaign.model";
 
 interface PaginationParams {
   page?: number;
@@ -163,16 +164,58 @@ export const getAllLeads = async ({
 
 export const getLeadsByCampaign = async (
   campaignName: string
-): Promise<LeadAttributes[]> => {
+): Promise<any[]> => {
   try {
     const leads = await Lead.findAll({ where: { campaignName } });
-    return leads.map((lead) => lead.get());
+
+    // 🔗 Enrich assignees with user details (same as in getAllLeads)
+    const rowsWithAssignees = await Promise.all(
+      leads.map(async (lead) => {
+        let assigneesRaw: AssigneeWithStatus[] = [];
+
+        if (typeof lead.assignees === "string") {
+          try {
+            assigneesRaw = JSON.parse(lead.assignees) as AssigneeWithStatus[];
+          } catch {
+            assigneesRaw = [];
+          }
+        } else if (Array.isArray(lead.assignees)) {
+          assigneesRaw = lead.assignees;
+        }
+
+        const userIds = assigneesRaw
+          .map((a) => a.userId)
+          .filter((id): id is number => typeof id === "number");
+
+        let assigneesData: any[] = [];
+
+        if (userIds.length > 0) {
+          const users = await User.findAll({
+            where: { id: userIds },
+            attributes: ["id", "firstname", "lastname", "email"],
+          });
+
+          assigneesData = users.map((user) => {
+            const assignment = assigneesRaw.find((a) => a.userId === user.id);
+            return {
+              ...user.toJSON(),
+              status: assignment?.status || "pending",
+            };
+          });
+        }
+
+        return { ...lead.toJSON(), assignees: assigneesData };
+      })
+    );
+
+    return rowsWithAssignees;
   } catch (error: any) {
     throw new Error(
       `Error fetching leads for campaign ${campaignName}: ${error.message}`
     );
   }
 };
+
 
 // Update Lead
 export const updateLead = async (
@@ -292,6 +335,18 @@ export const getAllLeadsWithAssignee = async () => {
   try {
     const leads = await Lead.findAll({
       where: Sequelize.literal("JSON_LENGTH(assignees) > 0"), // ✅ At least one assignee
+      include: [
+        {
+          model: User,
+          as: "assignedUsers", // Make sure this alias matches your association
+          attributes: ["id", "name", "email"],
+        },
+        {
+          model: Campaign,
+          as: "campaign",
+          attributes: ["id", "name"],
+        },
+      ],
     });
 
     return leads;
@@ -322,11 +377,27 @@ export const getAssignmentCounts = async () => {
  * Get all unassigned leads
  */
 export const getUnassignedLeads = async () => {
-  const unassignedLeads = await Lead.findAll({
-    where: Sequelize.literal("JSON_LENGTH(assignees) = 0"), // ✅ No assignments
-  });
+  try {
+    const unassignedLeads = await Lead.findAll({
+      where: Sequelize.literal("JSON_LENGTH(assignees) = 0"), // ✅ No assignments
+      include: [
+        {
+          model: User,
+          as: "assignedUsers",
+          attributes: ["id", "name", "email"],
+        },
+        {
+          model: Campaign,
+          as: "campaign",
+          attributes: ["id", "name"],
+        },
+      ],
+    });
 
-  return unassignedLeads;
+    return unassignedLeads;
+  } catch (error: any) {
+    throw new Error(`Error fetching unassigned leads: ${error.message}`);
+  }
 };
 
 /**

@@ -225,7 +225,7 @@ export const deleteCampaign = async (
       await RolePermission.destroy({ where: { permissionId: permissionIds } });
 
       // Step 5: Delete the permissions
-      await Permission.destroy({ where: { id: permissionIds } });
+      await Permission.destroy({ where: { id: permissionIds } });    
     }
 
     // Step 6: Delete campaign

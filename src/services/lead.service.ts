@@ -334,26 +334,31 @@ export const assignLeadToUsers = async (
 export const getAllLeadsWithAssignee = async () => {
   try {
     const leads = await Lead.findAll({
-      where: Sequelize.literal("JSON_LENGTH(assignees) > 0"), // ✅ At least one assignee
-      include: [
-        {
-          model: User,
-          as: "assignedUsers", // Make sure this alias matches your association
-          attributes: ["id", "name", "email"],
-        },
-        {
-          model: Campaign,
-          as: "campaign",
-          attributes: ["id", "name"],
-        },
-      ],
+      where: Sequelize.literal("JSON_LENGTH(assignees) > 0"),
     });
 
-    return leads;
+    const allUserIds = leads
+      .flatMap((lead: any) => lead.assignees) // extract all IDs from JSON array
+      .filter((id: any) => !!id);
+
+    const uniqueUserIds = [...new Set(allUserIds)];
+
+    const users = await User.findAll({
+      where: { id: uniqueUserIds },
+      attributes: ["id", "name", "email", "role"],
+    });
+
+    const leadsWithAssigneeDetails = leads.map((lead: any) => ({
+      ...lead.toJSON(),
+      assigneeDetails: users.filter((u) => lead.assignees.includes(u.id)),
+    }));
+
+    return leadsWithAssigneeDetails;
   } catch (error: any) {
     throw new Error(`Error fetching leads with assignees: ${error.message}`);
   }
 };
+
 
 /**
  * Get counts of assigned and unassigned leads
@@ -383,14 +388,9 @@ export const getUnassignedLeads = async () => {
       include: [
         {
           model: User,
-          as: "assignedUsers",
           attributes: ["id", "name", "email"],
         },
-        {
-          model: Campaign,
-          as: "campaign",
-          attributes: ["id", "name"],
-        },
+      
       ],
     });
 

@@ -98,20 +98,42 @@ export const getAllSales = async ({
 
 // ✅ Get Sale by ID
 export const getSaleById = async (id: number | string) => {
+  console.log("🔍 [getSaleById] Called with ID:", id);
+
   try {
-    const sale = await ProductSale.findByPk(Number(id), {
+    const numericId = Number(id);
+    console.log("➡️ Parsed numeric ID:", numericId);
+
+    if (isNaN(numericId)) {
+      console.error("❌ Invalid ID provided:", id);
+      throw new Error("Invalid sale ID");
+    }
+
+    console.log("📡 Querying ProductSale by PK...");
+    const sale = await ProductSale.findByPk(numericId, {
       include: [
         { model: Lead, attributes: ["id", "campaignName", "leadData"] },
         { model: User, attributes: ["id", "firstname", "email"] },
       ],
     });
 
-    if (!sale) throw new Error("Sale not found");
-    return sale.toJSON();
+    console.log("📦 Sequelize query result:", sale);
+
+    if (!sale) {
+      console.warn("⚠️ Sale not found for ID:", numericId);
+      throw new Error("Sale not found");
+    }
+
+    const plainSale = sale.toJSON();
+    console.log("✅ Final sale object:", plainSale);
+
+    return plainSale;
   } catch (error: any) {
+    console.error("🔥 Error in getSaleById service:", error);
     throw new Error(`Error fetching sale: ${error.message}`);
   }
 };
+
 
 
 // ✅ Update Sale

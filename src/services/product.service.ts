@@ -334,3 +334,43 @@ export const getInvoiceByLeadId = async (leadId: number) => {
     ) ?? 0
   };
 };
+
+
+export const getSalesByAssigneeId = async (assigneeId: number | string):Promise<any> => {
+  console.log("🔍 [getSalesByAssigneeId] Called with assigneeId:", assigneeId);
+
+  try {
+    const numericId = Number(assigneeId);
+    console.log("➡️ Parsed numeric assigneeId:", numericId);
+
+    if (isNaN(numericId)) {
+      console.error("❌ Invalid assigneeId provided:", assigneeId);
+      throw new Error("Invalid assignee ID");
+    }
+
+    console.log("📡 Querying ProductSale by assigneeId...");
+    const sales = await ProductSale.findAll({
+      where: { assigneeId: numericId },
+      include: [
+        { model: Lead, attributes: ["id", "campaignName", "leadData"] },
+        { model: User, attributes: ["id", "firstname", "email"] },
+      ],
+      order: [["createdAt", "DESC"]],
+    });
+
+    console.log("📦 Sequelize query result:", sales);
+
+    if (!sales || sales.length === 0) {
+      console.warn("⚠️ No sales found for assigneeId:", numericId);
+      throw new Error("No sales found for this assignee");
+    }
+
+    const plainSales = sales.map(sale => sale.toJSON());
+    console.log("✅ Final sales array:", plainSales);
+
+    return plainSales;
+  } catch (error: any) {
+    console.error("🔥 Error in getSalesByAssigneeId service:", error);
+    throw new Error(`Error fetching sales by assigneeId: ${error.message}`);
+  }
+};

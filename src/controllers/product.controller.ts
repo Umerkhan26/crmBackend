@@ -304,3 +304,33 @@ export const getInvoice = async (req: Request, res: Response):Promise<any> => {
     });
   }
 };
+
+
+export const getSalesByAssigneeId = async (req: Request, res: Response): Promise<any> => {
+  try {
+    const assigneeId = parseInt(req.params.assigneeId, 10);
+    console.log("🔍 [Controller] Received assigneeId:", assigneeId);
+
+    if (isNaN(assigneeId)) {
+      console.error("❌ Invalid assignee ID:", req.params.assigneeId);
+      return res.status(400).json({ message: "Invalid assignee ID" });
+    }
+
+    const sales = await ProductSaleService.getSalesByAssigneeId(assigneeId);
+    console.log("📦 [Controller] Sales fetched:", sales);
+
+    if (!sales || sales.length === 0) {
+      console.warn("⚠️ No sales found for assigneeId:", assigneeId);
+      return res.status(404).json({ message: "No sales found for this assignee" });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Sales fetched successfully",
+      data: sales,
+    });
+  } catch (error: any) {
+    console.error("🔥 Error in getSalesByAssigneeId controller:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};

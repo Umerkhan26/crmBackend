@@ -16,6 +16,7 @@ import {
   getAllProducts,
   getInvoice, // ✅ new controller
 } from "../controllers/product.controller";
+import { getSalesByAssigneeId } from "../services/product.service";
 
 const router = Router();
 
@@ -42,7 +43,12 @@ router.get(
   checkPermission(PERMISSIONS.PRODUCT_SALE_GET_BY_ID),
   getSaleById
 );
-
+router.get(
+  "/getSalesByAssigneeId/:id",
+  verifyToken,
+  checkPermission(PERMISSIONS.PRODUCT_SALE_GET_BY_ID),
+  getSalesByAssigneeId
+);
 // ✅ Update Sale
 router.put(
   "/updateSalesById/:id",

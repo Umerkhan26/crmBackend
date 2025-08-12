@@ -4,18 +4,20 @@ import Lead from "./lead.model";
 import User from "./user.model";
 import Campaign from "./campaign.model";
 
-// ✅ Step 1: Mark 'price' as optional
 export interface ProductSaleAttributes {
   id: number;
   leadId?: number;
-  productType: string;
-  price?: number; // ✅ Optional
+  productType: string; // Still kept for backward compatibility
+  price?: number;
   notes?: string;
   conversionDate?: Date;
   createdBy?: number;
   status: "pending" | "converted" | "cancelled";
   campaignId: number;
   assigneeId?: number;
+  products?: any[] | null; // allow null as well as array
+  
+  
 }
 
 export interface ProductSaleCreationAttributes
@@ -28,7 +30,8 @@ export interface ProductSaleCreationAttributes
     | "status"
     | "conversionDate"
     | "assigneeId"
-    | "price" // ✅ Include in optional fields
+    | "price"
+    | "products" // ✅ Optional
   > {}
 
 class ProductSale
@@ -38,13 +41,14 @@ class ProductSale
   public id!: number;
   public leadId?: number;
   public productType!: string;
-  public price?: number; // ✅ Optional in model
+  public price?: number;
   public notes?: string;
   public conversionDate?: Date;
   public createdBy?: number;
   public status!: "pending" | "converted" | "cancelled";
   public campaignId!: number;
   public assigneeId?: number;
+  public products?: any[];
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
@@ -73,7 +77,7 @@ ProductSale.init(
     },
     price: {
       type: DataTypes.FLOAT,
-      allowNull: true, // ✅ Allow null in DB
+      allowNull: true,
     },
     notes: {
       type: DataTypes.TEXT,
@@ -117,6 +121,10 @@ ProductSale.init(
       },
       onDelete: "SET NULL",
       onUpdate: "CASCADE",
+    },
+    products: {
+      type: DataTypes.JSON, // ✅ Can store multiple products
+      allowNull: true,
     },
   },
   {

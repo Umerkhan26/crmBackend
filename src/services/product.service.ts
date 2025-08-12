@@ -25,7 +25,7 @@ export const convertLeadToSale = async (
   userId?: number
 ): Promise<any> => {
   try {
-    const { leadId, campaignId, assigneeId } = data;
+    const { leadId, campaignId, assigneeId, products } = data;
 
     const lead = await Lead.findByPk(leadId);
     if (!lead) throw new Error("Lead not found");
@@ -35,6 +35,7 @@ export const convertLeadToSale = async (
 
     const sale = await ProductSale.create({
       ...data,
+      products: products ?? null, // ✅ Store multiple products if given
       status: "converted",
       conversionDate: new Date(),
       createdBy: userId ?? undefined,
@@ -52,7 +53,6 @@ export const convertLeadToSale = async (
     throw new Error(`Error converting lead to sale: ${error.message}`);
   }
 };
-
 // ✅ Get All Sales with Filters, Pagination, and Search
 export const getAllSales = async ({
   page = 1,
@@ -97,28 +97,22 @@ export const getAllSales = async ({
 };
 
 // ✅ Get Sale by ID
-export const getSaleById = async (id: number): Promise<ProductSaleAttributes> => {
+export const getSaleById = async (id: number | string) => {
   try {
-    const sale = await ProductSale.findByPk(id, {
+    const sale = await ProductSale.findByPk(Number(id), {
       include: [
-        {
-          model: Lead,
-          attributes: ["id", "campaignName", "leadData"],
-        },
-        {
-          model: User,
-          attributes: ["id", "firstname", "email"],
-        },
+        { model: Lead, attributes: ["id", "campaignName", "leadData"] },
+        { model: User, attributes: ["id", "firstname", "email"] },
       ],
     });
 
     if (!sale) throw new Error("Sale not found");
-
-    return sale.get();
+    return sale.toJSON();
   } catch (error: any) {
     throw new Error(`Error fetching sale: ${error.message}`);
   }
 };
+
 
 // ✅ Update Sale
 export const updateSale = async (
@@ -132,7 +126,8 @@ export const updateSale = async (
 
     await sale.update({
       ...updatedData,
-      status: updatedData.status || sale.status, // ensure status is not lost
+      products: updatedData.products ?? sale.products, // ✅ Keep existing if not provided
+      status: updatedData.status || sale.status,
     });
 
     if (userId) {
@@ -289,4 +284,31 @@ export const getProductsByCampaignAndAssignee = async (
   } catch (error: any) {
     throw new Error(`Error fetching products: ${error.message}`);
   }
+};
+
+export const getInvoiceByLeadId = async (leadId: number) => {
+  const sale: any = await ProductSale.findOne({
+    where: { leadId },
+    include: [ 
+      { model: Lead, as: "lead" }, // ✅ use alias to match association
+      { model: User, as: "assignee" }, // ✅ salesperson
+      { model: Campaign, as: "campaign" }, // ✅ campaign info
+      { model: ProductSale, as: "products" } // ✅ sold products
+    ]
+  });
+
+  if (!sale) throw new Error("No sale found for this lead");
+
+  return {
+    invoiceNumber: `INV-${sale.id}`,
+    date: sale.conversionDate,
+    lead: sale.lead,
+    assignee: sale.assignee,
+    campaign: sale.campaign,
+    products: sale.products,
+    totalAmount: sale.products?.reduce(
+      (sum: number, p: any) => sum + (p.price || 0),
+      0
+    ) ?? 0
+  };
 };

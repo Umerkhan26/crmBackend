@@ -4,11 +4,15 @@ import * as ProductSaleService from "../services/product.service";
 // ✅ Convert Lead to Sale
 export const convertLeadToSale = async (req: Request, res: Response): Promise<any> => {
   try {
-    const { leadId, productType, price, notes, status, campaignId, assigneeId } = req.body;
+    const { leadId, productType, price, notes, status, campaignId, assigneeId, products } = req.body;
     const createdBy = req.user?.id;
 
-    if (!leadId || !productType || !price || !campaignId || !assigneeId) {
+    // ✅ Validation: allow either single product OR products array
+    if (!leadId || !campaignId || !assigneeId) {
       return res.status(400).json({ message: "Missing required sale data." });
+    }
+    if (!products && (!productType || price === undefined)) {
+      return res.status(400).json({ message: "Either provide productType & price OR products array." });
     }
 
     const sale = await ProductSaleService.convertLeadToSale({
@@ -16,7 +20,8 @@ export const convertLeadToSale = async (req: Request, res: Response): Promise<an
       productType,
       price,
       notes,
-      status: status ?? 'converted',
+      products: products ?? null, // ✅ store multiple products if passed
+      status: status ?? "converted",
       conversionDate: new Date(),
       createdBy: createdBy ?? undefined,
       campaignId,
@@ -32,6 +37,7 @@ export const convertLeadToSale = async (req: Request, res: Response): Promise<an
     return res.status(500).json({ success: false, message: error.message });
   }
 };
+
 
 // ✅ Get All Sales
 export const getAllSales = async (req: Request, res: Response): Promise<any> => {
@@ -95,7 +101,11 @@ export const updateSale = async (req: Request, res: Response): Promise<any> => {
       return res.status(400).json({ message: "Invalid sale ID" });
     }
 
-    const updatedSale = await ProductSaleService.updateSale(saleId, updatedData, userId);
+    // ✅ Allow products array updates
+    const updatedSale = await ProductSaleService.updateSale(saleId, {
+      ...updatedData,
+      products: updatedData.products ?? undefined
+    }, userId);
 
     return res.status(200).json({
       success: true,
@@ -106,6 +116,7 @@ export const updateSale = async (req: Request, res: Response): Promise<any> => {
     return res.status(500).json({ success: false, message: error.message });
   }
 };
+
 
 // ✅ Delete Sale
 export const deleteSale = async (req: Request, res: Response): Promise<any> => {
@@ -266,5 +277,30 @@ export const getProductsByCampaignAndAssignee = async (req: Request, res: Respon
     return res.status(200).json({ success: true, data: products });
   } catch (error: any) {
     return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+
+
+export const getInvoice = async (req: Request, res: Response):Promise<any> => {
+  try {
+    const { leadId } = req.params;
+
+    if (!leadId) {
+      return res.status(400).json({ success: false, message: "Lead ID is required" });
+    }
+
+    const invoice = await ProductSaleService.getInvoiceByLeadId(Number(leadId));
+
+    return res.status(200).json({
+      success: true,
+      message: "Invoice fetched successfully",
+      data: invoice,
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Something went wrong while fetching invoice",
+    });
   }
 };

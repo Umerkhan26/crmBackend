@@ -13,7 +13,8 @@ import {
   updateProduct, // ✅ new controller
   deleteProduct, // ✅ new controller
   getProductById, // ✅ new controller
-  getAllProducts, // ✅ new controller
+  getAllProducts,
+  getInvoice, // ✅ new controller
 } from "../controllers/product.controller";
 
 const router = Router();
@@ -100,6 +101,12 @@ router.delete(
   verifyToken,
   checkPermission(PERMISSIONS.PRODUCT_DELETE),
   deleteProduct
+);
+
+router.get("/invoice/:leadId",
+  verifyToken,
+    // checkPermission(PERMISSIONS.GET_INVOICE),
+  getInvoice
 );
 
 export default router;

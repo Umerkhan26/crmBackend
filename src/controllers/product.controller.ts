@@ -305,8 +305,7 @@ export const getInvoice = async (req: Request, res: Response):Promise<any> => {
   }
 };
 
-
-export const getSalesByAssigneeId = async (req: Request, res: Response): Promise<any> => {
+export const getSalesByAssigneeIdController = async (req: Request, res: Response): Promise<any> => {
   try {
     const assigneeId = parseInt(req.params.assigneeId, 10);
     console.log("🔍 [Controller] Received assigneeId:", assigneeId);

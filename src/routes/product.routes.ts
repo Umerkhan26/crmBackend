@@ -14,9 +14,9 @@ import {
   deleteProduct, // ✅ new controller
   getProductById, // ✅ new controller
   getAllProducts,
-  getInvoice, // ✅ new controller
+  getInvoice,
+  getSalesByAssigneeIdController, // ✅ new controller
 } from "../controllers/product.controller";
-import { getSalesByAssigneeId } from "../services/product.service";
 
 const router = Router();
 
@@ -47,7 +47,7 @@ router.get(
   "/getSalesByAssigneeId/:id",
   verifyToken,
   checkPermission(PERMISSIONS.PRODUCT_SALE_GET_BY_ID),
-  getSalesByAssigneeId
+  getSalesByAssigneeIdController
 );
 // ✅ Update Sale
 router.put(

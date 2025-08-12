@@ -335,8 +335,7 @@ export const getInvoiceByLeadId = async (leadId: number) => {
   };
 };
 
-
-export const getSalesByAssigneeId = async (assigneeId: number | string):Promise<any> => {
+export const getSalesByAssigneeId = async (assigneeId: number | string) => {
   console.log("🔍 [getSalesByAssigneeId] Called with assigneeId:", assigneeId);
 
   try {

@@ -186,16 +186,14 @@ export const getLeadsByAssigneeId = async (
 ): Promise<any> => {
   try {
     const assigneeId = parseInt(req.params.assigneeId, 10);
-    const filterType = req.query.filterType as FilterType || "daily";
+    const filterType = (req.query.filterType as FilterType) || "daily";
     const startDate = req.query.startDate as string | undefined;
     const endDate = req.query.endDate as string | undefined;
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
-
     if (isNaN(assigneeId)) {
       return res.status(400).json({ message: "Invalid assignee ID." });
     }
-
     const leadsResult = await LeadService.getLeadsByAssigneeId(
       assigneeId,
       filterType,
@@ -204,9 +202,7 @@ export const getLeadsByAssigneeId = async (
       page,
       limit
     );
-
     const responseData = getPagingData(leadsResult, page, limit);
-
     return res.status(200).json({
       success: true,
       message: `Leads assigned to user ID ${assigneeId} fetched successfully.`,

@@ -24,11 +24,9 @@ export const convertLeadToSale = async (
       return res.status(400).json({ message: "Missing required sale data." });
     }
     if (!products && (!productType || price === undefined)) {
-      return res
-        .status(400)
-        .json({
-          message: "Either provide productType & price OR products array.",
-        });
+      return res.status(400).json({
+        message: "Either provide productType & price OR products array.",
+      });
     }
 
     const sale = await ProductSaleService.convertLeadToSale(

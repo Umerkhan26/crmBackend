@@ -346,18 +346,18 @@ export const getInvoiceByLeadId = async (leadId: number) => {
 };
 
 export const getSalesByAssigneeId = async (assigneeId: number | string) => {
-  console.log("🔍 [getSalesByAssigneeId] Called with assigneeId:", assigneeId);
-
+  console.log(
+    ":mag: [getSalesByAssigneeId] Called with assigneeId:",
+    assigneeId
+  );
   try {
     const numericId = Number(assigneeId);
-    console.log("➡️ Parsed numeric assigneeId:", numericId);
-
+    console.log(":arrow_right: Parsed numeric assigneeId:", numericId);
     if (isNaN(numericId)) {
-      console.error("❌ Invalid assigneeId provided:", assigneeId);
+      console.error(":x: Invalid assigneeId provided:", assigneeId);
       throw new Error("Invalid assignee ID");
     }
-
-    console.log("📡 Querying ProductSale by assigneeId...");
+    console.log(":satellite_antenna: Querying ProductSale by assigneeId...");
     const sales = await ProductSale.findAll({
       where: { assigneeId: numericId },
       include: [
@@ -366,11 +366,9 @@ export const getSalesByAssigneeId = async (assigneeId: number | string) => {
       ],
       order: [["createdAt", "DESC"]],
     });
-
-    console.log("📦 Sequelize query result:", sales);
-
+    console.log(":package: Sequelize query result:", sales);
     if (!sales || sales.length === 0) {
-      console.warn("⚠️ No sales found for assigneeId:", numericId);
+      console.warn(":warning: No sales found for assigneeId:", numericId);
       throw new Error("No sales found for this assignee");
     }
 
@@ -379,7 +377,7 @@ export const getSalesByAssigneeId = async (assigneeId: number | string) => {
 
     return plainSales;
   } catch (error: any) {
-    console.error("🔥 Error in getSalesByAssigneeId service:", error);
+    console.error(":fire: Error in getSalesByAssigneeId service:", error);
     throw new Error(`Error fetching sales by assigneeId: ${error.message}`);
   }
 };

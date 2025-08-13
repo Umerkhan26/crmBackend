@@ -44,7 +44,7 @@ router.get(
   getSaleById
 );
 router.get(
-  "/getSalesByAssigneeId/:id",
+  "/getSalesByAssigneeId ",
   verifyToken,
   checkPermission(PERMISSIONS.PRODUCT_SALE_GET_BY_ID),
   getSalesByAssigneeIdController

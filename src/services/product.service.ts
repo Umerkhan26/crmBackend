@@ -45,7 +45,10 @@ export const convertLeadToSale = async (
 
     if (userId) {
       await logActivity(userId, "convert", `Lead ${leadId} converted to sale`);
-      await sendNotification(userId, `Lead ${leadId} has been converted to a sale`);
+      await sendNotification(
+        userId,
+        `Lead ${leadId} has been converted to a sale`
+      );
     }
 
     return sale.get();
@@ -134,8 +137,6 @@ export const getSaleById = async (id: number | string) => {
   }
 };
 
-
-
 // ✅ Update Sale
 export const updateSale = async (
   id: number,
@@ -194,10 +195,13 @@ export const getSalesByProductType = async (
     throw new Error(`Error fetching sales by product type: ${error.message}`);
   }
 };
-  
-// pure crud new 
+
+// pure crud new
 export const createProduct = async (
-  data: Omit<ProductSaleCreationAttributes, "leadId" | "conversionDate" | "createdBy">,
+  data: Omit<
+    ProductSaleCreationAttributes,
+    "leadId" | "conversionDate" | "createdBy"
+  >,
   userId?: number
 ): Promise<ProductSaleAttributes> => {
   try {
@@ -209,8 +213,15 @@ export const createProduct = async (
     });
 
     if (userId) {
-      await logActivity(userId, "create", `Product created (Type: ${product.productType})`);
-      await sendNotification(userId, `New product created: ${product.productType}`);
+      await logActivity(
+        userId,
+        "create",
+        `Product created (Type: ${product.productType})`
+      );
+      await sendNotification(
+        userId,
+        `New product created: ${product.productType}`
+      );
     }
 
     // If campaignId is provided, fetch the campaign with alias
@@ -232,7 +243,9 @@ export const createProduct = async (
 };
 
 // ✅ Get Product by ID
-export const getProductById = async (id: number): Promise<ProductSaleAttributes> => {
+export const getProductById = async (
+  id: number
+): Promise<ProductSaleAttributes> => {
   const product = await ProductSale.findByPk(id);
   if (!product) throw new Error("Product not found");
   return product.get();
@@ -311,27 +324,24 @@ export const getProductsByCampaignAndAssignee = async (
 export const getInvoiceByLeadId = async (leadId: number) => {
   const sale: any = await ProductSale.findOne({
     where: { leadId },
-    include: [ 
-      { model: Lead, as: "lead" }, // ✅ use alias to match association
-      { model: User, as: "assignee" }, // ✅ salesperson
-      { model: Campaign, as: "campaign" }, // ✅ campaign info
-      { model: ProductSale, as: "products" } // ✅ sold products
-    ]
+    include: [
+      { model: Lead, attributes: ["id", "campaignName", "leadData"] }, // No alias unless defined in association
+      { model: User, as: "assignee", attributes: ["id", "firstname", "email"] },
+      { model: Campaign, as: "campaign", attributes: ["id", "campaignName"] },
+    ],
   });
-
   if (!sale) throw new Error("No sale found for this lead");
-
   return {
     invoiceNumber: `INV-${sale.id}`,
     date: sale.conversionDate,
-    lead: sale.lead,
+    sale,
+    lead: sale.Lead, // Will match your association name
     assignee: sale.assignee,
     campaign: sale.campaign,
-    products: sale.products,
-    totalAmount: sale.products?.reduce(
-      (sum: number, p: any) => sum + (p.price || 0),
-      0
-    ) ?? 0
+    products: sale.products || [], // This is from JSON column in ProductSale
+    totalAmount:
+      sale.products?.reduce((sum: number, p: any) => sum + (p.price || 0), 0) ||
+      0,
   };
 };
 
@@ -364,7 +374,7 @@ export const getSalesByAssigneeId = async (assigneeId: number | string) => {
       throw new Error("No sales found for this assignee");
     }
 
-    const plainSales = sales.map(sale => sale.toJSON());
+    const plainSales = sales.map((sale) => sale.toJSON());
     console.log("✅ Final sales array:", plainSales);
 
     return plainSales;

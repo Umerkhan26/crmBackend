@@ -224,7 +224,7 @@ export const deleteReminder = async (id: number, userId: number) => {
 
   await reminder.destroy();
 
-  if (reminder.notebleType === "lead") {
+  if (reminder.notebleType === "lead") {    
     await logLeadActivity({
       leadId: reminder.notebleId,
       action: "reminder_deleted",

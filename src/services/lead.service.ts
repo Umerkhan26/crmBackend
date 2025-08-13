@@ -415,7 +415,6 @@ export const getLeadsByAssigneeId = async (
   try {
     const dateFilter = buildDateFilter(filterType, startDate, endDate);
     const { offset } = getPagination({ page, limit });
-
     const leads = await Lead.findAndCountAll({
       where: {
         ...dateFilter,
@@ -423,11 +422,42 @@ export const getLeadsByAssigneeId = async (
           `JSON_SEARCH(JSON_EXTRACT(assignees, '$[*].userId'), 'one', '${assigneeId}') IS NOT NULL`
         ),
       },
+      attributes: [
+        "id",
+        "campaignName",
+        "leadData",
+        "assignees",
+        "createdAt",
+        "updatedAt",
+      ],
       offset,
       limit,
     });
-
-    return leads;
+    // Map leads to include user-specific status
+    const mappedLeads = leads.rows.map((lead) => {
+      let assignees: AssigneeWithStatus[] = [];
+      try {
+        assignees = Array.isArray(lead.assignees)
+          ? lead.assignees
+          : typeof lead.assignees === "string"
+          ? JSON.parse(lead.assignees)
+          : [];
+      } catch (error) {
+        console.warn(`Failed to parse assignees for lead ${lead.id}:`, error);
+        assignees = [];
+      }
+      const userAssignment = assignees.find(
+        (a) => Number(a.userId) === assigneeId
+      );
+      return {
+        ...lead.get(),
+        status: userAssignment?.status || "pending",
+      };
+    });
+    return {
+      count: leads.count,
+      rows: mappedLeads,
+    };
   } catch (error: any) {
     throw new Error(
       `Error fetching leads for assignee ID ${assigneeId}: ${error.message}`

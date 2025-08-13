@@ -311,12 +311,11 @@ export const getProductsByCampaignAndAssignee = async (
 export const getInvoiceByLeadId = async (leadId: number) => {
   const sale: any = await ProductSale.findOne({
     where: { leadId },
-    include: [ 
-      { model: Lead, as: "lead" }, // ✅ use alias to match association
-      { model: User, as: "assignee" }, // ✅ salesperson
-      { model: Campaign, as: "campaign" }, // ✅ campaign info
-      { model: ProductSale, as: "products" } // ✅ sold products
-    ]
+    include: [
+      { model: Lead, attributes: ["id", "campaignName", "leadData"] }, // No alias unless defined in association
+      { model: User, as: "assignee", attributes: ["id", "firstname", "email"] },
+      { model: Campaign, as: "campaign", attributes: ["id", "name"] },
+    ],
   });
 
   if (!sale) throw new Error("No sale found for this lead");
@@ -324,30 +323,26 @@ export const getInvoiceByLeadId = async (leadId: number) => {
   return {
     invoiceNumber: `INV-${sale.id}`,
     date: sale.conversionDate,
-    lead: sale.lead,
+    lead: sale.Lead, // Will match your association name
     assignee: sale.assignee,
     campaign: sale.campaign,
-    products: sale.products,
-    totalAmount: sale.products?.reduce(
-      (sum: number, p: any) => sum + (p.price || 0),
-      0
-    ) ?? 0
+    products: sale.products || [], // This is from JSON column in ProductSale
+    totalAmount:
+      sale.products?.reduce((sum: number, p: any) => sum + (p.price || 0), 0) ||
+      0,
   };
 };
 
 export const getSalesByAssigneeId = async (assigneeId: number | string) => {
-  console.log("🔍 [getSalesByAssigneeId] Called with assigneeId:", assigneeId);
-
+  console.log(":mag: [getSalesByAssigneeId] Called with assigneeId:", assigneeId);
   try {
     const numericId = Number(assigneeId);
-    console.log("➡️ Parsed numeric assigneeId:", numericId);
-
+    console.log(":arrow_right: Parsed numeric assigneeId:", numericId);
     if (isNaN(numericId)) {
-      console.error("❌ Invalid assigneeId provided:", assigneeId);
+      console.error(":x: Invalid assigneeId provided:", assigneeId);
       throw new Error("Invalid assignee ID");
     }
-
-    console.log("📡 Querying ProductSale by assigneeId...");
+    console.log(":satellite_antenna: Querying ProductSale by assigneeId...");
     const sales = await ProductSale.findAll({
       where: { assigneeId: numericId },
       include: [
@@ -356,20 +351,37 @@ export const getSalesByAssigneeId = async (assigneeId: number | string) => {
       ],
       order: [["createdAt", "DESC"]],
     });
-
-    console.log("📦 Sequelize query result:", sales);
-
+    console.log(":package: Sequelize query result:", sales);
     if (!sales || sales.length === 0) {
-      console.warn("⚠️ No sales found for assigneeId:", numericId);
+      console.warn(":warning: No sales found for assigneeId:", numericId);
       throw new Error("No sales found for this assignee");
     }
-
-    const plainSales = sales.map(sale => sale.toJSON());
-    console.log("✅ Final sales array:", plainSales);
-
+    const plainSales = sales.map((sale) => sale.toJSON());
+    console.log(":white_check_mark: Final sales array:", plainSales);
     return plainSales;
   } catch (error: any) {
-    console.error("🔥 Error in getSalesByAssigneeId service:", error);
+    console.error(":fire: Error in getSalesByAssigneeId service:", error);
     throw new Error(`Error fetching sales by assigneeId: ${error.message}`);
   }
 };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

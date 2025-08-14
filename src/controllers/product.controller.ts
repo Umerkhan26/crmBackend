@@ -302,12 +302,12 @@ export const getInvoice = async (req: Request, res: Response):Promise<any> => {
       success: false,
       message: error.message || "Something went wrong while fetching invoice",
     });
-  }
+  }   
 };
 
 export const getSalesByAssigneeIdController = async (req: Request, res: Response): Promise<any> => {
   try {
-const assigneeId = parseInt(req.query.assigneeId as string, 10);
+const assigneeId = parseInt(req.params.id, 10);
     console.log("🔍 [Controller] Received assigneeId:", assigneeId);
 
     if (isNaN(assigneeId)) {

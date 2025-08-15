@@ -7,6 +7,7 @@ import {
   registerUser,
   updateUserController,
   blockOrUnblockUserController,
+  getVendorsAndClientsHandler,
 } from "../controllers/user.controller";
 import { checkPermission } from "../middleware/checkPermission";
 import { PERMISSIONS } from "../constants/permissions";
@@ -60,5 +61,8 @@ router.put(
   checkPermission(PERMISSIONS.USER_UPDATESTATUS),
   blockOrUnblockUserController
 );
+
+router.get("/get-vendors-clients", getVendorsAndClientsHandler);
+
 
 export default router;

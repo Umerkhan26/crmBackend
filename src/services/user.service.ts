@@ -14,6 +14,7 @@ import { buildSearchFilter } from "../utils/filterQuery";
 import Permission from "../models/permission.model";
 import ActivityLog from "../models/activityLog.model";
 import Campaign from "../models/campaign.model";
+import { Op } from "sequelize";
 
 interface PaginationParams {
   page?: number;
@@ -356,4 +357,34 @@ export const blockOrUnblockUser = async (
   } catch (error: any) {
     throw new Error(error.message);
   }
+};
+
+
+
+export const getVendorsAndClients = async ({
+  page = 1,
+  limit = 10,
+  search = "",
+}: PaginationParams & { search?: string }): Promise<any> => {
+  const { offset, limit: pageLimit } = getPagination({ page, limit });
+
+  const whereClause = {
+    ...buildSearchFilter(search, ["firstname", "lastname", "email"]),
+    userrole: { [Op.in]: ["vendor", "client"] },
+  };
+
+  const data = await User.findAndCountAll({
+    where: whereClause,
+    offset,
+    limit: pageLimit,
+    include: [
+      {
+        model: Role,
+        as: "role",
+        attributes: ["id", "name", "description"],
+      },
+    ],
+  });
+
+  return getPagingData(data, page, pageLimit);
 };

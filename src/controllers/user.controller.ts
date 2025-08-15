@@ -6,7 +6,8 @@
     getUserById,
     loginUser,
     updateUser,
-    blockOrUnblockUser
+    blockOrUnblockUser,
+    getVendorsAndClients
   } from "../services/user.service";
   import { UserAttributes } from "../interfaces/user.interface";
 
@@ -143,3 +144,28 @@ export const getUsers = async (req: Request, res: Response): Promise<any> => {
     }
   };
 
+export const getVendorsAndClientsHandler = async (
+  req: Request,
+  res: Response
+): Promise<any> => {
+  try {
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+    const search = (req.query.search as string) || "";
+
+    const paginatedUsers = await getVendorsAndClients({ page, limit, search });
+
+    return res.status(200).json({
+      success: true,
+      message: "Vendors and Clients retrieved successfully!",
+      ...paginatedUsers,
+    });
+  } catch (error) {
+    console.error("Error fetching vendors and clients:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+      error: (error as Error).message,
+    });
+  }
+};

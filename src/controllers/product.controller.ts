@@ -350,6 +350,7 @@ export const getInvoice = async (req: Request, res: Response): Promise<any> => {
     }
 
     const invoice = await ProductSaleService.getInvoiceByLeadId(Number(leadId));
+    console.log(`Invoice fetched for leadId ${leadId}:`, invoice); // Debug log
 
     return res.status(200).json({
       success: true,
@@ -357,13 +358,16 @@ export const getInvoice = async (req: Request, res: Response): Promise<any> => {
       data: invoice,
     });
   } catch (error: any) {
+    console.error(
+      `Error in getInvoice for leadId ${req.params.leadId}:`,
+      error
+    );
     return res.status(500).json({
       success: false,
       message: error.message || "Something went wrong while fetching invoice",
     });
   }
 };
-
 export const getSalesByAssigneeIdController = async (
   req: Request,
   res: Response

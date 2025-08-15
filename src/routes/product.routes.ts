@@ -44,7 +44,7 @@ router.get(
   getSaleById
 );
 router.get(
-  "/getSalesByAssigneeId ",
+  "/getSalesByAssigneeId/:id",
   verifyToken,
   checkPermission(PERMISSIONS.PRODUCT_SALE_GET_BY_ID),
   getSalesByAssigneeIdController
@@ -109,9 +109,10 @@ router.delete(
   deleteProduct
 );
 
-router.get("/invoice/:leadId",
+router.get(
+  "/invoice/:leadId",
   verifyToken,
-    // checkPermission(PERMISSIONS.GET_INVOICE),
+  // checkPermission(PERMISSIONS.GET_INVOICE),
   getInvoice
 );
 

@@ -320,29 +320,77 @@ export const getProductsByCampaignAndAssignee = async (
     throw new Error(`Error fetching products: ${error.message}`);
   }
 };
-
 export const getInvoiceByLeadId = async (leadId: number) => {
-  const sale: any = await ProductSale.findOne({
-    where: { leadId },
-    include: [
-      { model: Lead, attributes: ["id", "campaignName", "leadData"] }, // No alias unless defined in association
-      { model: User, as: "assignee", attributes: ["id", "firstname", "email"] },
-      { model: Campaign, as: "campaign", attributes: ["id", "campaignName"] },
-    ],
-  });
-  if (!sale) throw new Error("No sale found for this lead");
-  return {
-    invoiceNumber: `INV-${sale.id}`,
-    date: sale.conversionDate,
-    sale,
-    lead: sale.Lead, // Will match your association name
-    assignee: sale.assignee,
-    campaign: sale.campaign,
-    products: sale.products || [], // This is from JSON column in ProductSale
-    totalAmount:
-      sale.products?.reduce((sum: number, p: any) => sum + (p.price || 0), 0) ||
-      0,
-  };
+  try {
+    const sale: any = await ProductSale.findOne({
+      where: { leadId },
+      include: [
+        { model: Lead, attributes: ["id", "campaignName", "leadData"] },
+        {
+          model: User,
+          as: "assignee",
+          attributes: ["id", "firstname", "email"],
+        },
+        { model: Campaign, as: "campaign", attributes: ["id", "campaignName"] },
+      ],
+    });
+
+    if (!sale) {
+      throw new Error("No sale found for this lead");
+    }
+
+    // Parse products JSON string if it exists
+    let parsedProducts = [];
+    try {
+      if (sale.products && typeof sale.products === "string") {
+        parsedProducts = JSON.parse(sale.products);
+      } else if (Array.isArray(sale.products)) {
+        parsedProducts = sale.products;
+      } else if (sale.products === null) {
+        // Fallback for single-product sales
+        parsedProducts = [
+          {
+            productType: sale.productType || "N/A",
+            price: sale.price || 0,
+            notes: sale.notes || "N/A",
+          },
+        ];
+      }
+    } catch (error) {
+      console.error(`Error parsing products for sale ID ${sale.id}:`, error);
+      parsedProducts = [
+        {
+          productType: sale.productType || "N/A",
+          price: sale.price || 0,
+          notes: sale.notes || "N/A",
+        },
+      ];
+    }
+
+    // Calculate total amount from parsed products
+    const totalAmount = parsedProducts.reduce(
+      (sum: number, p: any) => sum + (parseFloat(p.price) || 0),
+      0
+    );
+
+    return {
+      invoiceNumber: `INV-${sale.id}`,
+      date: sale.conversionDate,
+      sale: {
+        ...sale.get({ plain: true }),
+        parsedProducts, // Include parsed products for frontend
+      },
+      lead: sale.Lead,
+      assignee: sale.assignee,
+      campaign: sale.campaign,
+      products: parsedProducts,
+      totalAmount,
+      success: true,
+    };
+  } catch (error: any) {
+    console.error(`Error in getInvoiceByLeadId for leadId ${leadId}:`, error);
+    throw new Error(`Failed to fetch invoice: ${error.message}`);
+  }
 };
 
 export const getSalesByAssigneeId = async (assigneeId: number | string) => {

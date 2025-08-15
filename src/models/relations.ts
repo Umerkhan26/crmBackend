@@ -192,3 +192,4 @@ Note.belongsTo(Lead, { foreignKey: "leadId", onDelete: "CASCADE" });
 // 📌 LeadActivity ↔ User
 LeadActivity.belongsTo(User, { foreignKey: "performedBy", as: "performedByUser", onDelete: "CASCADE" });
 User.hasMany(LeadActivity, { foreignKey: "performedBy", as: "activitiesPerformed", onDelete: "CASCADE" });
+ 

@@ -5,7 +5,9 @@ import {
   getOrderByIdController,
   updateOrderByIdController,
   deleteOrderByIdController,
-  setOrderBlockStatusController
+  setOrderBlockStatusController,
+  getOrdersByVendorIdController,
+  getOrdersByClientIdController
 } from "../controllers/order.controller";
 import { verifyToken } from "../middleware/verifyToken.middleware";
 import { checkPermission } from "../middleware/checkPermission";
@@ -54,5 +56,15 @@ router.delete(
   checkPermission(PERMISSIONS.ORDER_DELETE),
   deleteOrderByIdController
 );
+// newly added endpoints
+router.get("/getOrderByVendorId/:vendorId",
+  getOrdersByVendorIdController,
+  verifyToken
+);
+router.get("/getOrderByClientId/:clientId",
+  getOrdersByClientIdController,
+  verifyToken
+);
+
 
 export default router;

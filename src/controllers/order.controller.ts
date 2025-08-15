@@ -6,7 +6,9 @@ import {
   updateOrderById,
   deleteOrderById,
   getAllOrders,
-  setOrderBlockStatus
+  setOrderBlockStatus,
+  getOrdersByVendorId,
+  getOrdersByClientId
 } from "../services/order.service";
 import { CreateOrderDTO } from "../services/order.service";
 
@@ -231,6 +233,50 @@ export const setOrderBlockStatusController = async (req: CustomRequest, res: Res
     return res.status(400).json({
       success: false,
       message: error.message || "An error occurred while updating block status",
+    });
+  }
+};
+
+
+export const getOrdersByVendorIdController = async (req: CustomRequest, res: Response): Promise<any> => {
+  const { vendorId } = req.params;
+  const page = parseInt(req.query.page as string) || 1;
+  const limit = parseInt(req.query.limit as string) || 10;
+  const search = (req.query.search as string) || "";
+
+  try {
+    const orders = await getOrdersByVendorId(Number(vendorId), page, limit, search);
+    return res.status(200).json({
+      success: true,
+      message: "Orders retrieved successfully for vendor",
+      ...orders,
+    });
+  } catch (error: any) {
+    return res.status(400).json({
+      success: false,
+      message: error.message || "An error occurred while fetching vendor orders",
+    });
+  }
+};
+
+// ✅ Get Orders by Client ID
+export const getOrdersByClientIdController = async (req: CustomRequest, res: Response): Promise<any> => {
+  const { clientId } = req.params;
+  const page = parseInt(req.query.page as string) || 1;
+  const limit = parseInt(req.query.limit as string) || 10;
+  const search = (req.query.search as string) || "";
+
+  try {
+    const orders = await getOrdersByClientId(Number(clientId), page, limit, search);
+    return res.status(200).json({
+      success: true,
+      message: "Orders retrieved successfully for client",
+      ...orders,
+    });
+  } catch (error: any) {
+    return res.status(400).json({
+      success: false,
+      message: error.message || "An error occurred while fetching client orders",
     });
   }
 };

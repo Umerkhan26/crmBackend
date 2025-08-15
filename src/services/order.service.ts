@@ -12,6 +12,7 @@ import { emailQueue } from "../queue/emailQueue";
 import { getSmtpConfig } from "../utils/getSmtpConfig";
 import User from "../models/user.model";
 import { buildSearchFilter } from "../utils/filterQuery";
+import { Op, where, json } from "sequelize"; // ✅ import helpers directly
 
 export interface CreateOrderDTO {
   agent: string;
@@ -199,7 +200,6 @@ export const deleteOrderById = async (
     }
 
     await order.destroy();
-
     // 🔔 Notify and 📝 Log
     await sendNotification(deletedBy, `Order ID ${id} has been deleted.`);
     await logActivity(
@@ -207,12 +207,12 @@ export const deleteOrderById = async (
       "Order Deleted",
       `Order Deleted With ID: ${id}`
     );
-
     return true;
   } catch (error: any) {
     throw new Error(error.message || "Failed to delete order");
   }
-};
+}
+
 
 export const getAllOrders = async (
   page: number = 1,
@@ -309,4 +309,73 @@ export const setOrderBlockStatus = async (
   } catch (error: any) {
     throw new Error(error.message || "Failed to update block status");
   }
+};
+
+export const getOrdersByVendorId = async (
+  vendorId: number,
+  page: number = 1,
+  limit: number = 10,
+  search: string = ""
+) => {
+  const { offset, limit: pageLimit } = getPagination({ page, limit });
+
+  const searchFilter = buildSearchFilter(search, ["agent"]);
+
+  const result = await Order.findAndCountAll({
+    where: {
+      ...searchFilter,
+      [Op.and]: [
+        where(
+          json("assign_to_vendor.id") as any, // ✅ json() output is valid for where()
+          vendorId
+        ),
+      ],
+    },
+    offset,
+    limit: pageLimit,
+    include: [
+      {
+        model: Campaign,
+        as: "campaign",
+      },
+    ],
+    order: [["created_at", "DESC"]],
+  });
+
+  return getPagingData(result, page, pageLimit);
+};
+
+// ✅ Get Orders by Client ID
+export const getOrdersByClientId = async (
+  clientId: number,
+  page: number = 1,
+  limit: number = 10,
+  search: string = ""
+) => {
+  const { offset, limit: pageLimit } = getPagination({ page, limit });
+
+  const searchFilter = buildSearchFilter(search, ["agent"]);
+
+  const result = await Order.findAndCountAll({
+    where: {
+      ...searchFilter,
+      [Op.and]: [
+        where(
+          json("assign_to_client.id") as any, // ✅ no Col type needed
+          clientId
+        ),
+      ],
+    },
+    offset,
+    limit: pageLimit,
+    include: [
+      {
+        model: Campaign,
+        as: "campaign",
+      },
+    ],
+    order: [["created_at", "DESC"]],
+  });
+
+  return getPagingData(result, page, pageLimit);
 };

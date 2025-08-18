@@ -199,11 +199,6 @@ export const loginUser = async (userData: {
 
 // services/user.service.ts
 
-
-
-
-
-
 export const getUserById = async (userId: number): Promise<any> => {
   const user = await User.findByPk(userId, {
     include: [
@@ -218,9 +213,6 @@ export const getUserById = async (userId: number): Promise<any> => {
           },
         ],
       },
-    
-   
-  
     ],
   });
 
@@ -230,9 +222,6 @@ export const getUserById = async (userId: number): Promise<any> => {
 
   return user;
 };
-
-
-
 
 export const getAllUsers = async ({
   page = 1,
@@ -358,8 +347,6 @@ export const blockOrUnblockUser = async (
     throw new Error(error.message);
   }
 };
-
-
 
 export const getVendorsAndClients = async ({
   page = 1,

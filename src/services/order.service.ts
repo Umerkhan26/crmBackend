@@ -325,24 +325,22 @@ export const getOrdersByVendorId = async (
     where: {
       ...searchFilter,
       [Op.and]: [
-        where(
-          json("assign_to_vendor.id") as any, // ✅ json() output is valid for where()
-          vendorId
-        ),
+        where(json("assign_to_vendor.id") as any, vendorId),
       ],
     },
     offset,
     limit: pageLimit,
-    include: [
-      {
-        model: Campaign,
-        as: "campaign",
-      },
-    ],
+    include: [{ model: Campaign, as: "campaign" }],
     order: [["created_at", "DESC"]],
   });
 
-  return getPagingData(result, page, pageLimit);
+  const rowsWithRemainingLeads = await attachRemainingLeads(result.rows);
+
+  return getPagingData(
+    { count: result.count, rows: rowsWithRemainingLeads },
+    page,
+    pageLimit
+  );
 };
 
 // ✅ Get Orders by Client ID
@@ -360,22 +358,57 @@ export const getOrdersByClientId = async (
     where: {
       ...searchFilter,
       [Op.and]: [
-        where(
-          json("assign_to_client.id") as any, // ✅ no Col type needed
-          clientId
-        ),
+        where(json("assign_to_client.id") as any, clientId),
       ],
     },
     offset,
     limit: pageLimit,
-    include: [
-      {
-        model: Campaign,
-        as: "campaign",
-      },
-    ],
+    include: [{ model: Campaign, as: "campaign" }],
     order: [["created_at", "DESC"]],
   });
 
-  return getPagingData(result, page, pageLimit);
+  const rowsWithRemainingLeads = await attachRemainingLeads(result.rows);
+
+  return getPagingData(
+    { count: result.count, rows: rowsWithRemainingLeads },
+    page,
+    pageLimit
+  );
+};
+
+
+// helper function
+const attachRemainingLeads = async (orders: any[]) => {
+  const orderIds = orders.map((order) => order.id);
+
+  if (orderIds.length === 0) return orders;
+
+  const leadCounts = await ClientLead.findAll({
+    attributes: [
+      "order_id",
+      [Sequelize.fn("COUNT", Sequelize.col("id")), "leadCount"],
+    ],
+    where: {
+      order_id: orderIds,
+    },
+    group: ["order_id"],
+    raw: true,
+  });
+
+  const leadCountMap = leadCounts.reduce((acc, curr) => {
+    const orderId = curr.order_id as number;
+    const leadCount = parseInt((curr as any).leadCount);
+    acc[orderId] = leadCount;
+    return acc;
+  }, {} as Record<number, number>);
+
+  return orders.map((order) => {
+    const orderJson = order.toJSON() as OrderAttributes & { campaign?: any };
+    const usedLeads = leadCountMap[order.id] || 0;
+    const remainingLeads = Math.max(
+      0,
+      (orderJson.lead_requested || 0) - usedLeads
+    );
+    return { ...orderJson, remainingLeads };
+  });
 };

@@ -3,6 +3,7 @@ import {
   createRole,
   deleteRole,
   getAllRolesWithPermissions,
+  getRoleByUserId,
   updateRolePermissions,
 } from "../services/role.service";
 
@@ -89,5 +90,31 @@ export const deleteRoleController = async (
     return res.status(200).json({ message: result.message });
   } catch (error: any) {
     return res.status(500).json({ message: error.message });
+  }
+};
+
+
+export const getRoleByUserIdController = async (
+  req: Request,
+  res: Response
+): Promise<any> => {
+  try {
+    const userId = parseInt(req.params.userId);
+    if (isNaN(userId)) {
+      return res.status(400).json({ message: "Invalid userId parameter" });
+    }
+
+    const result = await getRoleByUserId(userId);
+
+    if (!result.success) {
+      return res.status(404).json({ message: result.message });
+    }
+
+    return res.status(200).json(result);
+  } catch (error: any) {
+    console.error("Error fetching role by userId:", error);
+    return res.status(500).json({
+      message: error.message || "Failed to fetch user role",
+    });
   }
 };

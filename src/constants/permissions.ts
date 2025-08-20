@@ -18,6 +18,7 @@ export const PERMISSIONS = {
   ORDER_UPDATE: "order:update",
   ORDER_DELETE: "order:delete",
   ORDER_UPDATESTATUS: "order:updateStatus",
+  // ORDER_BY_VENDOR_ID: "order.getOrderByVendorId",
   // Lead permissions
   LEAD_CREATE: "lead:create",
   LEAD_GET_ALL: "lead:getAll",
@@ -49,7 +50,7 @@ export const PERMISSIONS = {
   REMINDER_VIEW: "reminder:view",
   NOTE_UPDATE: "note:update",
   NOTE_DELETE: "note:delete",
-REMINDER_UPDATE: "reminder:update",
+  REMINDER_UPDATE: "reminder:update",
   REMINDER_DELETE: "reminder:delete",
   PRODUCT_CONVERT_LEAD: "PRODUCT_CONVERT_LEAD",
   PRODUCT_SALE_GET_ALL: "PRODUCT_SALE_GET_ALL",
@@ -61,5 +62,5 @@ REMINDER_UPDATE: "reminder:update",
   PRODUCT_GET_BY_ID: "PRODUCT_GET_BY_ID",
   PRODUCT_UPDATE: "PRODUCT_UPDATE",
   PRODUCT_DELETE: "PRODUCT_DELETE",
-  GET_INVOICE:"PRODUCT_INVOICE"
+  GET_INVOICE: "PRODUCT_INVOICE"
 };

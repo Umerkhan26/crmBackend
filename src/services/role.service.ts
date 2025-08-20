@@ -3,6 +3,7 @@ import Permission from "../models/permission.model";
 import RolePermission from "../models/rolePermission.model";
 import { getPagination, getPagingData } from "../utils/paginate";
 import { buildSearchFilter } from "../utils/filterQuery";
+import User from "../models/user.model";
 
 // Service to create a role and associate permissions
 export const createRole = async (roleData: {
@@ -154,6 +155,43 @@ export const deleteRole = async (roleId: number) => {
     console.error("Error deleting role:", error);
     return {
       message: "Error occurred while deleting the role.",
+      success: false,
+      details: error.message,
+    };
+  }
+};
+
+
+export const getRoleByUserId = async (userId: number) => {
+  try {
+    // Fetch the user along with role and permissions
+    const user = await User.findByPk(userId, {
+      include: [
+        {
+          model: Role,
+          include: [
+            {
+              model: Permission,
+              through: { attributes: [] }, // exclude join table data
+            },
+          ],
+        },
+      ],
+    });
+
+    if (!user) {
+      return { message: "User not found", success: false };
+    }
+
+    return {
+      message: "User role with permissions fetched successfully",
+      success: true,
+      data: user,
+    };
+  } catch (error: any) {
+    console.error("Error fetching role by userId:", error);
+    return {
+      message: "Error occurred while fetching role by userId.",
       success: false,
       details: error.message,
     };

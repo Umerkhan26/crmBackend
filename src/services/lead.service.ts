@@ -1,9 +1,8 @@
-import { literal, Op, Sequelize, where, fn, col, } from "sequelize";
+import { literal, Op, Sequelize, where, fn, col } from "sequelize";
 import Lead, {
   AssigneeWithStatus,
   LeadAttributes,
   LeadCreationAttributes,
- 
 } from "../models/lead.model";
 import { buildSearchFilter } from "../utils/filterQuery";
 import { getPagination, getPagingData } from "../utils/paginate";
@@ -29,7 +28,7 @@ interface LeadQueryParams extends PaginationParams {
   search?: string;
 }
 // Create Lead
-export const createLead = async ( 
+export const createLead = async (
   data: LeadCreationAttributes,
   userId?: number
 ): Promise<LeadAttributes> => {
@@ -216,7 +215,6 @@ export const getLeadsByCampaign = async (
   }
 };
 
-
 // Update Lead
 export const updateLead = async (
   id: number,
@@ -263,7 +261,6 @@ export const deleteLead = async (
     throw new Error(`Error deleting lead: ${error.message}`);
   }
 };
-
 
 export const assignLeadToUsers = async (
   leadId: number,
@@ -345,7 +342,7 @@ export const getAllLeadsWithAssignee = async () => {
 
     const users = await User.findAll({
       where: { id: uniqueUserIds },
-      attributes: ["id", "name", "email", "role"],
+      attributes: ["id", "firstname", "lastname", "email"],
     });
 
     const leadsWithAssigneeDetails = leads.map((lead: any) => ({
@@ -358,7 +355,6 @@ export const getAllLeadsWithAssignee = async () => {
     throw new Error(`Error fetching leads with assignees: ${error.message}`);
   }
 };
-
 
 /**
  * Get counts of assigned and unassigned leads
@@ -388,9 +384,8 @@ export const getUnassignedLeads = async () => {
       include: [
         {
           model: User,
-          attributes: ["id", "name", "email"],
+          attributes: ["id", "firstname", "lastname", "email"],
         },
-      
       ],
     });
 
@@ -465,85 +460,205 @@ export const getLeadsByAssigneeId = async (
   }
 };
 // ✅ Corrected function
+// export const sendEmailToLeadUsingTemplate = async (
+//   leadId: number,
+//   templateKey: string,
+//   senderUserId: number
+// ) => {
+//    console.log("🔍 Fetching lead with ID:", leadId, "Type:", typeof leadId);
+
+//   const lead = await Lead.findByPk(leadId);
+//   if (!lead) {
+//     throw new Error("Lead not found");
+//   }
+
+//   let leadData;
+//   if (typeof lead.leadData === "string") {
+//     try {
+//       leadData = JSON.parse(lead.leadData);
+//     } catch (error: any) {
+//       throw new Error("Invalid leadData format");
+//     }
+//   } else {
+//     leadData = lead.leadData;
+//   }
+//   if (!lead) {
+//     console.log("❌ Lead not found in database");
+//     throw new Error("Lead not found");
+//   }
+//   console.log("📋 Lead data:", lead.leadData);
+//   const email = leadData?.email;
+//   if (!email) {
+//     throw new Error("Lead email not found in leadData");
+//   }
+
+//   const sender = await User.findByPk(senderUserId);
+//   const senderRole = String(sender?.role || "guest");
+
+//   const template = await EmailTemplate.findOne({
+//     where: { serviceName: templateKey },
+//   });
+
+//   if (!template) throw new Error("Email template not found");
+
+//   const filledSubject = fillTemplate(template.subjectTemplate, leadData);
+//   const filledBody = fillTemplate(template.bodyTemplate, leadData);
+
+//   const smtpRaw = await getSmtpConfig(senderUserId);
+//   const smtp = {
+//     host: smtpRaw.host || "",
+//     port: smtpRaw.port || 587,
+//     user: smtpRaw.user || "",
+//     pass: smtpRaw.pass || "",
+//   };
+
+//   if (!smtp.host || !smtp.user || !smtp.pass) {
+//     throw new Error("SMTP configuration is incomplete.");
+//   }
+
+//   await sendEmail({
+//     smtp,
+//     to: email,
+//     subject: filledSubject,
+//     body: filledBody,
+//   });
+
+//   await logEmailStatus({
+//     leadId,
+//     to: email,
+//     subject: filledSubject,
+//     body: filledBody,
+//     templateUsed: templateKey,
+//     sentBy: senderUserId,
+//     sentAt: new Date(),
+//     status: "sent",
+//   });
+
+//   // ✅ Log the activity here
+//   await logLeadActivity({
+//     leadId,
+//     action: "email_sent",
+//     performedBy: senderUserId,
+//     details: `Email sent using template "${templateKey}" to ${email}`,
+//   });
+
+//   return { message: "Email sent successfully", to: email };
+// };
+
 export const sendEmailToLeadUsingTemplate = async (
   leadId: number,
   templateKey: string,
   senderUserId: number
 ) => {
-  console.log("Fetching lead with ID:", leadId);
-  const lead = await Lead.findByPk(leadId);
-  if (!lead) {
-    throw new Error("Lead not found");
-  }
+  console.log("🔍 Fetching lead with ID:", leadId, "Type:", typeof leadId);
 
-  let leadData;
-  if (typeof lead.leadData === "string") {
-    try {
-      leadData = JSON.parse(lead.leadData);
-    } catch (error: any) {
-      throw new Error("Invalid leadData format");
+  try {
+    // First, check if the lead exists with detailed logging
+    const lead = await Lead.findByPk(leadId);
+    console.log("✅ Lead query result:", lead);
+
+    if (!lead) {
+      console.log("❌ Lead not found in database");
+
+      // Debug: Check all leads to see what's actually in the database
+      const allLeads = await Lead.findAll();
+      console.log(
+        "📋 All leads in database:",
+        allLeads.map((l) => ({ id: l.id, campaignName: l.campaignName }))
+      );
+
+      throw new Error("Lead not found");
     }
-  } else {
-    leadData = lead.leadData;
+
+    console.log("📋 Lead found:", lead.toJSON());
+
+    let leadData;
+    if (typeof lead.leadData === "string") {
+      try {
+        leadData = JSON.parse(lead.leadData);
+        console.log("📝 Parsed leadData:", leadData);
+      } catch (error: any) {
+        console.error("❌ Error parsing leadData:", error);
+        throw new Error("Invalid leadData format");
+      }
+    } else {
+      leadData = lead.leadData;
+      console.log("📝 leadData (already object):", leadData);
+    }
+
+    const email = leadData?.email;
+    console.log("📧 Extracted email:", email);
+
+    if (!email) {
+      console.log("❌ No email found in leadData");
+      throw new Error("Lead email not found in leadData");
+    }
+
+    // Rest of your code...
+    const sender = await User.findByPk(senderUserId);
+    const senderRole = String(sender?.role || "guest");
+    console.log("👤 Sender:", sender?.id, "Role:", senderRole);
+
+    const template = await EmailTemplate.findOne({
+      where: { serviceName: templateKey },
+    });
+    console.log("📧 Template found:", template ? template.serviceName : "None");
+
+    if (!template) throw new Error("Email template not found");
+
+    const filledSubject = fillTemplate(template.subjectTemplate, leadData);
+    const filledBody = fillTemplate(template.bodyTemplate, leadData);
+    console.log("📨 Email subject:", filledSubject);
+
+    const smtpRaw = await getSmtpConfig(senderUserId);
+    const smtp = {
+      host: smtpRaw.host || "",
+      port: smtpRaw.port || 587,
+      user: smtpRaw.user || "",
+      pass: smtpRaw.pass || "",
+    };
+    console.log("🔧 SMTP config:", {
+      ...smtp,
+      pass: smtp.pass ? "***" : "empty",
+    });
+
+    if (!smtp.host || !smtp.user || !smtp.pass) {
+      throw new Error("SMTP configuration is incomplete.");
+    }
+
+    await sendEmail({
+      smtp,
+      to: email,
+      subject: filledSubject,
+      body: filledBody,
+    });
+
+    await logEmailStatus({
+      leadId,
+      to: email,
+      subject: filledSubject,
+      body: filledBody,
+      templateUsed: templateKey,
+      sentBy: senderUserId,
+      sentAt: new Date(),
+      status: "sent",
+    });
+
+    await logLeadActivity({
+      leadId,
+      action: "email_sent",
+      performedBy: senderUserId,
+      details: `Email sent using template "${templateKey}" to ${email}`,
+    });
+
+    console.log("✅ Email sent successfully to:", email);
+    return { message: "Email sent successfully", to: email };
+  } catch (error) {
+    console.error("💥 Error in sendEmailToLeadUsingTemplate:", error);
+    throw error;
   }
-
-  const email = leadData?.email;
-  if (!email) {
-    throw new Error("Lead email not found in leadData");
-  }
-
-  const sender = await User.findByPk(senderUserId);
-  const senderRole = String(sender?.role || "guest");
-
-  const template = await EmailTemplate.findOne({
-    where: { serviceName: templateKey },
-  });
-
-  if (!template) throw new Error("Email template not found");
-
-  const filledSubject = fillTemplate(template.subjectTemplate, leadData);
-  const filledBody = fillTemplate(template.bodyTemplate, leadData);
-
-  const smtpRaw = await getSmtpConfig(senderUserId);
-  const smtp = {
-    host: smtpRaw.host || "",
-    port: smtpRaw.port || 587,
-    user: smtpRaw.user || "",
-    pass: smtpRaw.pass || "",
-  };
-
-  if (!smtp.host || !smtp.user || !smtp.pass) {
-    throw new Error("SMTP configuration is incomplete.");
-  }
-
-  await sendEmail({
-    smtp,
-    to: email,
-    subject: filledSubject,
-    body: filledBody,
-  });
-
-  await logEmailStatus({
-    leadId,
-    to: email,
-    subject: filledSubject,
-    body: filledBody,
-    templateUsed: templateKey,
-    sentBy: senderUserId,
-    sentAt: new Date(),
-    status: "sent",
-  });
-
-  // ✅ Log the activity here
-  await logLeadActivity({
-    leadId,
-    action: "email_sent",
-    performedBy: senderUserId,
-    details: `Email sent using template "${templateKey}" to ${email}`,
-  });
-
-  return { message: "Email sent successfully", to: email };
 };
+
 // ✅ Helper: replace {{key}} in text with values from leadData
 function fillTemplate(template: string, data: any): string {
   return template.replace(/{{(.*?)}}/g, (_, key) => {
@@ -551,7 +666,6 @@ function fillTemplate(template: string, data: any): string {
     return data?.[trimmedKey] || "";
   });
 }
-
 
 /**
  * Get lead status counts + leads grouped by status
@@ -608,13 +722,16 @@ export type LeadStatus =
   | "not_interested"
   | "do_not_call";
 
-
 export const updateLeadStatusForUser = async (
   leadId: number,
   userId: number,
   newStatus: LeadStatus
 ) => {
-  console.log("🔹 Updating lead status request:", { leadId, userId, newStatus });
+  console.log("🔹 Updating lead status request:", {
+    leadId,
+    userId,
+    newStatus,
+  });
 
   if (!ALLOWED_STATUSES.includes(newStatus)) {
     throw new Error(
@@ -635,7 +752,9 @@ export const updateLeadStatusForUser = async (
     try {
       assignees = JSON.parse(lead.assignees);
     } catch {
-      console.warn("⚠️ Failed to parse assignees JSON, resetting to empty array");
+      console.warn(
+        "⚠️ Failed to parse assignees JSON, resetting to empty array"
+      );
       assignees = [];
     }
   }
@@ -667,9 +786,6 @@ export const updateLeadStatusForUser = async (
   return lead;
 };
 
-
-
- 
 export const getLeadsByCampaignAndAssignee = async (
   campaignName: string,
   assigneeId: number

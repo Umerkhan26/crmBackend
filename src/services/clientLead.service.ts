@@ -4,6 +4,8 @@ import Order from "../models/order.model";
 import { getPagination, getPagingData } from "../utils/paginate";
 import { logActivity } from "./activity.service";
 import { sendNotification } from "./notification.service";
+import LeadActivity from "../models/leadActivity.model"; // ✅ Activity tracking
+import User from "../models/user.model"; // ✅ For joining user info in activities
 
 // ✅ Create a new client lead
 export const createClientLead = async (
@@ -15,6 +17,15 @@ export const createClientLead = async (
   if (userId) {
     await logActivity(userId, "Client Lead Created", `Created lead with ID ${lead.id}`);
     await sendNotification(userId, `Client lead with ID ${lead.id} created successfully.`);
+
+    // ✅ Log into LeadActivity (polymorphic)
+    await LeadActivity.create({
+      entityId: lead.id,
+      entityType: "clientLead",
+      action: "create",
+      details: `Client Lead created by user ID ${userId}`,
+      performedBy: userId,
+    });
   }
 
   return lead;
@@ -43,6 +54,7 @@ export const getClientLeadById = async (id: number) => {
   return lead;
 };
 
+// ✅ Get paginated leads
 export const getAllClientLeads = async (page = 1, limit = 10) => {
   const { offset } = getPagination({ page, limit });
 
@@ -73,6 +85,15 @@ export const updateClientLeadById = async (
   if (userId) {
     await logActivity(userId, "Client Lead Updated", `Updated lead with ID ${lead.id}`);
     await sendNotification(userId, `Client lead with ID ${lead.id} has been updated.`);
+
+    // ✅ Log activity
+    await LeadActivity.create({
+      entityId: lead.id,
+      entityType: "clientLead",
+      action: "update",
+      details: `Client Lead updated by user ID ${userId}`,
+      performedBy: userId,
+    });
   }
 
   return lead;
@@ -91,6 +112,15 @@ export const deleteClientLeadById = async (
   if (userId) {
     await logActivity(userId, "Client Lead Deleted", `Deleted lead with ID ${id}`);
     await sendNotification(userId, `Client lead with ID ${id} has been deleted.`);
+
+    // ✅ Log activity
+    await LeadActivity.create({
+      entityId: id,
+      entityType: "clientLead",
+      action: "delete",
+      details: `Client Lead deleted by user ID ${userId}`,
+      performedBy: userId,
+    });
   }
 
   return { message: "Client lead deleted successfully" };
@@ -110,7 +140,33 @@ export const updateClientLeadStatus = async (
   if (userId) {
     await logActivity(userId, `Lead ${status}`, `Marked lead ID ${id} as ${status}`);
     await sendNotification(userId, `Client lead ID ${id} has been ${status}.`);
+
+    // ✅ Log activity
+    await LeadActivity.create({
+      entityId: lead.id,
+      entityType: "clientLead",
+      action: status,
+      details: `Client Lead marked as ${status} by user ID ${userId}`,
+      performedBy: userId,
+    });
   }
 
   return { message: `Client lead ${status} successfully`, lead };
+};
+
+// ✅ Get activity history of a client lead
+export const getClientLeadActivities = async (clientLeadId: number) => {
+  const activities = await LeadActivity.findAll({
+    where: { entityId: clientLeadId, entityType: "clientLead" },
+    include: [
+      {
+        model: User,
+        as: "performedByUser",
+        attributes: ["id", "firstname", "lastname", "email"],
+      },
+    ],
+    order: [["createdAt", "DESC"]],
+  });
+
+  return activities;
 };

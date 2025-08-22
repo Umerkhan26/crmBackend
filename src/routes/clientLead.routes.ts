@@ -7,6 +7,7 @@ import {
   updateClientLead,
   deleteClientLead,
   updateClientLeadStatusController,
+  getClientLeadActivitiesController,
 } from "../controllers/clientLead.controller";
 import { verifyToken } from "../middleware/verifyToken.middleware";
 import { checkPermission } from "../middleware/checkPermission";
@@ -67,5 +68,13 @@ router.patch(
   verifyToken,
   checkPermission(PERMISSIONS.CLIENT_LEAD_UPDATE_STATUS), // or define a new permission if needed
   updateClientLeadStatusController
+);
+
+
+router.get(
+  "/getClientLeadActivities/:id",
+  verifyToken,
+  // checkPermission(PERMISSIONS.CLIENT_LEAD_GET_ACTIVITIES),
+  getClientLeadActivitiesController
 );
 export default router;

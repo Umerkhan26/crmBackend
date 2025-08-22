@@ -644,8 +644,10 @@ export const sendEmailToLeadUsingTemplate = async (
       status: "sent",
     });
 
+    // ✅ Log the activity here
     await logLeadActivity({
-      leadId,
+      entityId: leadId,
+      entityType: "lead",
       action: "email_sent",
       performedBy: senderUserId,
       details: `Email sent using template "${templateKey}" to ${email}`,
@@ -772,7 +774,8 @@ export const updateLeadStatusForUser = async (
   // ✅ Log the activity with error handling
   try {
     const logResult = await logLeadActivity({
-      leadId,
+      entityId: leadId,
+      entityType: "lead",
       action: "status_updated",
       performedBy: userId,
       details: `Status changed from "${previousStatus}" to "${newStatus}"`,

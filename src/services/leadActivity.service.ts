@@ -6,7 +6,7 @@ import Lead from "../models/lead.model"; // adjust path
 
 export const getLeadActivitiesByLeadId = async (leadId: number) => {
   return await LeadActivity.findAll({
-    where: { leadId },
+    where: { leadId } as any, // 👈 force-cast to avoid TS error
     order: [["createdAt", "DESC"]],
     include: [
       {

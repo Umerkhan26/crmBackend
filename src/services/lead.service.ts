@@ -3,7 +3,7 @@ import Lead, {
   AssigneeWithStatus,
   LeadAttributes,
   LeadCreationAttributes,
- 
+
 } from "../models/lead.model";
 import { buildSearchFilter } from "../utils/filterQuery";
 import { getPagination, getPagingData } from "../utils/paginate";
@@ -29,7 +29,7 @@ interface LeadQueryParams extends PaginationParams {
   search?: string;
 }
 // Create Lead
-export const createLead = async ( 
+export const createLead = async (
   data: LeadCreationAttributes,
   userId?: number
 ): Promise<LeadAttributes> => {
@@ -78,24 +78,24 @@ export const getAllLeads = async ({
     // 🔍 JSON Search
     const searchCondition = search
       ? {
-          [Op.or]: [
-            Sequelize.literal(
-              `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.first_name')) LIKE '%${search}%'`
-            ),
-            Sequelize.literal(
-              `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.last_name')) LIKE '%${search}%'`
-            ),
-            Sequelize.literal(
-              `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.agent_name')) LIKE '%${search}%'`
-            ),
-            Sequelize.literal(
-              `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.phone_number')) LIKE '%${search}%'`
-            ),
-            Sequelize.literal(
-              `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.state')) LIKE '%${search}%'`
-            ),
-          ],
-        }
+        [Op.or]: [
+          Sequelize.literal(
+            `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.first_name')) LIKE '%${search}%'`
+          ),
+          Sequelize.literal(
+            `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.last_name')) LIKE '%${search}%'`
+          ),
+          Sequelize.literal(
+            `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.agent_name')) LIKE '%${search}%'`
+          ),
+          Sequelize.literal(
+            `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.phone_number')) LIKE '%${search}%'`
+          ),
+          Sequelize.literal(
+            `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.state')) LIKE '%${search}%'`
+          ),
+        ],
+      }
       : {};
 
     // 🚀 Fetch leads
@@ -390,7 +390,7 @@ export const getUnassignedLeads = async () => {
           model: User,
           attributes: ["id", "name", "email"],
         },
-      
+
       ],
     });
 
@@ -440,8 +440,8 @@ export const getLeadsByAssigneeId = async (
         assignees = Array.isArray(lead.assignees)
           ? lead.assignees
           : typeof lead.assignees === "string"
-          ? JSON.parse(lead.assignees)
-          : [];
+            ? JSON.parse(lead.assignees)
+            : [];
       } catch (error) {
         console.warn(`Failed to parse assignees for lead ${lead.id}:`, error);
         assignees = [];
@@ -536,7 +536,8 @@ export const sendEmailToLeadUsingTemplate = async (
 
   // ✅ Log the activity here
   await logLeadActivity({
-    leadId,
+    entityId: leadId,
+    entityType: "lead",
     action: "email_sent",
     performedBy: senderUserId,
     details: `Email sent using template "${templateKey}" to ${email}`,
@@ -653,7 +654,8 @@ export const updateLeadStatusForUser = async (
   // ✅ Log the activity with error handling
   try {
     const logResult = await logLeadActivity({
-      leadId,
+      entityId: leadId,
+      entityType: "lead",
       action: "status_updated",
       performedBy: userId,
       details: `Status changed from "${previousStatus}" to "${newStatus}"`,
@@ -669,7 +671,7 @@ export const updateLeadStatusForUser = async (
 
 
 
- 
+
 export const getLeadsByCampaignAndAssignee = async (
   campaignName: string,
   assigneeId: number

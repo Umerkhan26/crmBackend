@@ -49,7 +49,8 @@ export const addNote = async ({
   // ✅ Log only if note is for a lead
   if (notebleType === "lead") {
     await logLeadActivity({
-      leadId: notebleId,
+      entityId: notebleId,
+      entityType: "lead",
       action: "note_added",
       performedBy: userId,
       details: `Note added: "${content}"`,
@@ -122,7 +123,8 @@ export const addReminder = async ({
       datePart = ` (Date: ${parsedDate.toISOString().split("T")[0]})`;
     }
     await logLeadActivity({
-      leadId: notebleId,
+      entityId: notebleId,
+      entityType: "lead",
       action: "reminder_added",
       performedBy: userId,
       details: `Reminder set: "${content}"${datePart}`,
@@ -162,7 +164,8 @@ export const updateNote = async (
 
   if (note.notebleType === "lead") {
     await logLeadActivity({
-      leadId: note.notebleId,
+      entityId: note.notebleId,
+      entityType: "lead",
       action: "note_updated",
       performedBy: userId,
       details: `Note updated: "${note.content}"`,
@@ -182,7 +185,8 @@ export const deleteNote = async (id: number, userId: number) => {
 
   if (note.notebleType === "lead") {
     await logLeadActivity({
-      leadId: note.notebleId,
+      entityId: note.notebleId,
+      entityType: "lead",
       action: "note_deleted",
       performedBy: userId,
       details: `Note deleted: "${note.content}"`,
@@ -206,7 +210,8 @@ export const updateReminder = async (
 
   if (reminder.notebleType === "lead") {
     await logLeadActivity({
-      leadId: reminder.notebleId,
+      entityId: reminder.notebleId,
+      entityType: "lead",
       action: "reminder_updated",
       performedBy: userId,
       details: `Reminder updated: "${reminder.content}"`,
@@ -224,9 +229,10 @@ export const deleteReminder = async (id: number, userId: number) => {
 
   await reminder.destroy();
 
-  if (reminder.notebleType === "lead") {    
+  if (reminder.notebleType === "lead") {
     await logLeadActivity({
-      leadId: reminder.notebleId,
+      entityId: reminder.notebleId,
+      entityType: "lead",
       action: "reminder_deleted",
       performedBy: userId,
       details: `Reminder deleted: "${reminder.content}"`,

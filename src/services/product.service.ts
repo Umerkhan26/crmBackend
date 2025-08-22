@@ -19,7 +19,7 @@ interface SaleQueryParams extends PaginationParams {
   search?: string;
   filters?: Record<string, any>;
 }
-
+ 
 export const convertLeadToSale = async (
   data: ProductSaleCreationAttributes,
   userId?: number

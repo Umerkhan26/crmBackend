@@ -21,6 +21,103 @@ interface PaginationParams {
   limit?: number;
 }
 
+// export const createUser = async (
+//   userData: Partial<UserAttributes>
+// ): Promise<any> => {
+//   const { email, password, roleId } = userData;
+
+//   if (!email || !password || !roleId) {
+//     throw new Error("Email, password, and user role are required!");
+//   }
+
+//   const existingUser = await User.findOne({ where: { email } });
+//   if (existingUser) {
+//     throw new Error("Email already in use!");
+//   }
+
+//   const salt = await bcrypt.genSalt(10);
+//   userData.password = await bcrypt.hash(password, salt);
+
+//   const newUserData: UserAttributes = {
+//     ...userData,
+//     roleId,
+//     status: "active",
+//     token: userData.token || "",
+//     created_at: new Date(),
+//     updated_at: new Date(),
+//     userImage: userData.userImage || null,
+//   };
+
+//   const user = await User.create(newUserData);
+
+//   if (!user.id) {
+//     throw new Error("User ID not found after creation");
+//   }
+
+//   // ✅ Log activity + notification
+//   await logActivity(user.id, "Registration", "User registered successfully");
+//   await sendNotification(
+//     user.id,
+//     "Welcome! Your account has been successfully created."
+//   );
+//   console.log("➡️ Checking if user can receive email...");
+//   // ✅ Check permission to send email on 'user:create'
+
+//   const roleName = user.role?.name || "client";
+
+//   const canSendEmail = await checkEmailPermission("user:create", roleName);
+
+//   console.log("➡️ Email permission result:", canSendEmail);
+//   console.log("➡️ Role used for permission check:", roleName);
+
+//   if (canSendEmail) {
+//     const smtpConfig = await getSmtpConfig(user.id);
+
+//     const { subject, body } = await getCompiledTemplate("user:create", {
+//       firstname: user.firstname || "",
+//       lastname: user.lastname || "",
+//       email: user.email,
+//     });
+
+//     console.log("📧 Preparing to send email:");
+//     console.log("Service:", "user:create");
+//     console.log("Recipient:", user.email);
+//     console.log("Subject:", subject);
+//     console.log("Body Preview:", body.substring(0, 200)); // log first 200 chars
+//     console.log("SMTP Config:", smtpConfig);
+
+//     await emailQueue.add("user:create", {
+//       to: user.email,
+//       subject,
+//       body,
+//       smtpConfig,
+//       serviceName: "user:create",
+//     });
+
+//     console.log("✅ Email queued successfully for", user.email);
+//   }
+
+//   const userWithRole = await User.findOne({
+//     where: { email },
+//     include: [
+//       {
+//         model: Role,
+//         as: "role",
+//         attributes: ["id", "name", "description"],
+//         include: [
+//           {
+//             model: Permission,
+//             // as: "permissions",
+//             attributes: ["id", "name", "resourceType", "resourceId"],
+//           },
+//         ],
+//       },
+//     ],
+//   });
+
+//   return userWithRole;
+// };
+
 export const createUser = async (
   userData: Partial<UserAttributes>
 ): Promise<any> => {
@@ -35,6 +132,7 @@ export const createUser = async (
     throw new Error("Email already in use!");
   }
 
+  // Hash password
   const salt = await bcrypt.genSalt(10);
   userData.password = await bcrypt.hash(password, salt);
 
@@ -54,39 +152,62 @@ export const createUser = async (
     throw new Error("User ID not found after creation");
   }
 
-  // ✅ Log activity + notification
+  // Log activity + notification
   await logActivity(user.id, "Registration", "User registered successfully");
   await sendNotification(
     user.id,
     "Welcome! Your account has been successfully created."
   );
 
-  // ✅ Check permission to send email on 'user:create'
-  const canSendEmail = await checkEmailPermission(
-    "user:create",
-    user.userrole || "client"
-  );
+  // ✅ Fetch user with role to check email permission
+  const userWithRole = await User.findOne({
+    where: { id: user.id },
+    include: [
+      {
+        model: Role,
+        as: "role",
+        attributes: ["id", "name", "description"],
+      },
+    ],
+  });
+
+  const roleName = userWithRole?.role?.name || "client";
+  console.log("➡️ Role used for permission check:", roleName);
+
+  const canSendEmail = await checkEmailPermission("user:create", roleName);
+  console.log("➡️ Checking if user can receive email...");
+  console.log("➡️ Email permission result:", canSendEmail);
 
   if (canSendEmail) {
     const smtpConfig = await getSmtpConfig(user.id);
 
     const { subject, body } = await getCompiledTemplate("user:create", {
-      firstname: user.firstname || "",
-      lastname: user.lastname || "",
-      email: user.email,
+      firstname: userWithRole?.firstname || "",
+      lastname: userWithRole?.lastname || "",
+      email: userWithRole?.email || "",
     });
 
+    console.log("📧 Preparing to send email:");
+    console.log("Service:", "user:create");
+    console.log("Recipient:", userWithRole?.email);
+    console.log("Subject:", subject);
+    console.log("Body Preview:", body.substring(0, 200));
+    console.log("SMTP Config:", smtpConfig);
+
     await emailQueue.add("user:create", {
-      to: user.email,
+      to: userWithRole?.email,
       subject,
       body,
       smtpConfig,
       serviceName: "user:create",
     });
+
+    console.log("✅ Email queued successfully for", userWithRole?.email);
   }
 
-  const userWithRole = await User.findOne({
-    where: { email },
+  // Fetch full user with permissions if needed
+  const userFull = await User.findOne({
+    where: { id: user.id },
     include: [
       {
         model: Role,
@@ -95,7 +216,6 @@ export const createUser = async (
         include: [
           {
             model: Permission,
-            // as: "permissions",
             attributes: ["id", "name", "resourceType", "resourceId"],
           },
         ],
@@ -103,7 +223,7 @@ export const createUser = async (
     ],
   });
 
-  return userWithRole;
+  return userFull;
 };
 
 export const loginUser = async (userData: {

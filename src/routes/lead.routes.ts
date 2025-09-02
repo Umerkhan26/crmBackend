@@ -72,7 +72,7 @@ router.get(
 router.get(
   "/assignment-stats",
   verifyToken,
-  checkPermission(PERMISSIONS.LEAD_VIEW_ASSIGNMENT_STATS),
+  // checkPermission(PERMISSIONS.LEAD_VIEW_ASSIGNMENT_STATS),
   LeadController.getAssignmentStats
 );
 
@@ -109,7 +109,7 @@ router.get(
 router.put(
   "/getAssignedLeadsByStatus/:leadId/status",
   verifyToken,
-  checkPermission(PERMISSIONS.LEAD_UPDATE_STATUS),
+  checkPermission(PERMISSIONS.ASSIGNED_LEAD_UPDATE_STATUS),
   LeadController.updateLeadStatus
 );
 

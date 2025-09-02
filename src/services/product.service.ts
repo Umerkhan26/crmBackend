@@ -173,16 +173,22 @@ export const deleteSale = async (
     const sale = await ProductSale.findByPk(id);
     if (!sale) throw new Error("Sale not found");
 
+    // ✅ Only allow deletion if status is "converted"
+    if (sale.status !== "converted") {
+      throw new Error("Only converted sales can be deleted");
+    }
+
     await sale.destroy();
 
     if (userId) {
-      await logActivity(userId, "delete", `Sale deleted with ID ${id}`);
-      await sendNotification(userId, `Sale deleted with ID ${id}`);
+      await logActivity(userId, "delete", `Converted sale deleted with ID ${id}`);
+      await sendNotification(userId, `Converted sale deleted with ID ${id}`);
     }
   } catch (error: any) {
     throw new Error(`Error deleting sale: ${error.message}`);
   }
 };
+
 
 // ✅ Get Sales by Product Type
 export const getSalesByProductType = async (
@@ -253,10 +259,13 @@ export const getProductById = async (
 
 export const getAllProducts = async (): Promise<ProductSaleAttributes[]> => {
   const products = await ProductSale.findAll({
+    where: {
+      status: "pending", // ✅ only fetch pending products
+    },
     include: [
       {
         model: Campaign,
-        as: "campaign", // match the alias used in the association
+        as: "campaign", // match alias in association
       },
     ],
     order: [["createdAt", "DESC"]],
@@ -264,6 +273,7 @@ export const getAllProducts = async (): Promise<ProductSaleAttributes[]> => {
 
   return products.map((p) => p.get({ plain: true }));
 };
+
 
 // ✅ Update Product
 export const updateProduct = async (
@@ -292,13 +302,19 @@ export const deleteProduct = async (
   const product = await ProductSale.findByPk(id);
   if (!product) throw new Error("Product not found");
 
+  // ✅ Only allow deletion if product is pending
+  if (product.status !== "pending") {
+    throw new Error("Only pending products can be deleted");
+  }
+
   await product.destroy();
 
   if (userId) {
-    await logActivity(userId, "delete", `Product deleted with ID ${id}`);
-    await sendNotification(userId, `Product deleted: ID ${id}`);
+    await logActivity(userId, "delete", `Pending product deleted with ID ${id}`);
+    await sendNotification(userId, `Pending product deleted: ID ${id}`);
   }
 };
+
 
 // ✅ Get Products by campaignName and assigneeId (NEW)
 // ✅ Get Products by campaignId and assigneeId

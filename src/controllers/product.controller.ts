@@ -150,7 +150,7 @@ export const deleteSale = async (req: Request, res: Response): Promise<any> => {
     const userId = req.user?.id;
 
     if (isNaN(saleId)) {
-      return res.status(400).json({ message: "Invalid sale ID" });
+      return res.status(400).json({ success: false, message: "Invalid sale ID" });
     }
 
     await ProductSaleService.deleteSale(saleId, userId);
@@ -160,9 +160,18 @@ export const deleteSale = async (req: Request, res: Response): Promise<any> => {
       message: "Sale deleted successfully",
     });
   } catch (error: any) {
+    if (error.message === "Sale not found") {
+      return res.status(404).json({ success: false, message: error.message });
+    }
+    if (error.message === "Only converted sales can be deleted") {
+      return res.status(400).json({ success: false, message: error.message });
+    }
+
+    // unexpected errors
     return res.status(500).json({ success: false, message: error.message });
   }
 };
+
 
 // ✅ Get Sales by Product Type
 export const getSalesByProductType = async (
@@ -292,8 +301,9 @@ export const deleteProduct = async (
 ): Promise<any> => {
   try {
     const id = parseInt(req.params.id, 10);
-    if (isNaN(id))
-      return res.status(400).json({ message: "Invalid product ID" });
+    if (isNaN(id)) {
+      return res.status(400).json({ success: false, message: "Invalid product ID" });
+    }
 
     const userId = req.user?.id;
     await ProductSaleService.deleteProduct(id, userId);
@@ -303,9 +313,18 @@ export const deleteProduct = async (
       message: "Product deleted successfully",
     });
   } catch (error: any) {
+    if (error.message === "Product not found") {
+      return res.status(404).json({ success: false, message: error.message });
+    }
+    if (error.message === "Only pending products can be deleted") {
+      return res.status(400).json({ success: false, message: error.message });
+    }
+
+    // fallback for unexpected errors
     return res.status(500).json({ success: false, message: error.message });
   }
 };
+
 
 // ✅ Get Products by Campaign & Assignee
 export const getProductsByCampaignAndAssignee = async (

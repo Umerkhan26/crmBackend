@@ -328,29 +328,87 @@ export const assignLeadToUsers = async (
 /**
  * Get all leads that have at least one assignee
  */
+// export const getAllLeadsWithAssignee = async () => {
+//   try {
+//     const leads = await Lead.findAll({
+//       where: Sequelize.literal("JSON_LENGTH(assignees) > 0"),
+//     });
+
+//     const allUserIds = leads
+//       .flatMap((lead: any) => lead.assignees) // extract all IDs from JSON array
+//       .filter((id: any) => !!id);
+
+//     const uniqueUserIds = [...new Set(allUserIds)];
+
+//     const users = await User.findAll({
+//       where: { id: uniqueUserIds },
+//       attributes: ["id", "firstname", "lastname", "email"],
+//     });
+
+//     const leadsWithAssigneeDetails = leads.map((lead: any) => ({
+//       ...lead.toJSON(),
+//       assigneeDetails: users.filter((u) => lead.assignees.includes(u.id)),
+//     }));
+
+//     return leadsWithAssigneeDetails;
+//   } catch (error: any) {
+//     throw new Error(`Error fetching leads with assignees: ${error.message}`);
+//   }
+// };
+
 export const getAllLeadsWithAssignee = async () => {
   try {
     const leads = await Lead.findAll({
       where: Sequelize.literal("JSON_LENGTH(assignees) > 0"),
+      order: [["createdAt", "DESC"]],
     });
 
-    const allUserIds = leads
-      .flatMap((lead: any) => lead.assignees) // extract all IDs from JSON array
-      .filter((id: any) => !!id);
+    const enrichedLeads = await Promise.all(
+      leads.map(async (lead: any) => {
+        let assigneesRaw: any[] = [];
 
-    const uniqueUserIds = [...new Set(allUserIds)];
+        // Parse assignees field (could be stringified JSON or array)
+        if (typeof lead.assignees === "string") {
+          try {
+            assigneesRaw = JSON.parse(lead.assignees);
+          } catch {
+            assigneesRaw = [];
+          }
+        } else if (Array.isArray(lead.assignees)) {
+          assigneesRaw = lead.assignees;
+        }
 
-    const users = await User.findAll({
-      where: { id: uniqueUserIds },
-      attributes: ["id", "firstname", "lastname", "email"],
-    });
+        const userIds = assigneesRaw
+          .map((a) => a.userId ?? a) // support [{userId, status}] or [id]
+          .filter((id: any) => typeof id === "number");
 
-    const leadsWithAssigneeDetails = leads.map((lead: any) => ({
-      ...lead.toJSON(),
-      assigneeDetails: users.filter((u) => lead.assignees.includes(u.id)),
-    }));
+        let assigneesData: any[] = [];
 
-    return leadsWithAssigneeDetails;
+        if (userIds.length > 0) {
+          const users = await User.findAll({
+            where: { id: userIds },
+            attributes: ["id", "firstname", "lastname", "email"],
+          });
+
+          assigneesData = users.map((user) => {
+            const assignment = assigneesRaw.find(
+              (a) => a.userId === user.id || a === user.id
+            );
+            return {
+              ...user.toJSON(),
+              status: assignment?.status || "pending", // fallback if no status
+            };
+          });
+        }
+
+        return {
+          ...lead.toJSON(),
+          assignees: assigneesData,
+        };
+      })
+    );
+
+    return enrichedLeads;
   } catch (error: any) {
     throw new Error(`Error fetching leads with assignees: ${error.message}`);
   }

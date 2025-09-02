@@ -21,102 +21,6 @@ interface PaginationParams {
   limit?: number;
 }
 
-// export const createUser = async (
-//   userData: Partial<UserAttributes>
-// ): Promise<any> => {
-//   const { email, password, roleId } = userData;
-
-//   if (!email || !password || !roleId) {
-//     throw new Error("Email, password, and user role are required!");
-//   }
-
-//   const existingUser = await User.findOne({ where: { email } });
-//   if (existingUser) {
-//     throw new Error("Email already in use!");
-//   }
-
-//   const salt = await bcrypt.genSalt(10);
-//   userData.password = await bcrypt.hash(password, salt);
-
-//   const newUserData: UserAttributes = {
-//     ...userData,
-//     roleId,
-//     status: "active",
-//     token: userData.token || "",
-//     created_at: new Date(),
-//     updated_at: new Date(),
-//     userImage: userData.userImage || null,
-//   };
-
-//   const user = await User.create(newUserData);
-
-//   if (!user.id) {
-//     throw new Error("User ID not found after creation");
-//   }
-
-//   // ✅ Log activity + notification
-//   await logActivity(user.id, "Registration", "User registered successfully");
-//   await sendNotification(
-//     user.id,
-//     "Welcome! Your account has been successfully created."
-//   );
-//   console.log("➡️ Checking if user can receive email...");
-//   // ✅ Check permission to send email on 'user:create'
-
-//   const roleName = user.role?.name || "client";
-
-//   const canSendEmail = await checkEmailPermission("user:create", roleName);
-
-//   console.log("➡️ Email permission result:", canSendEmail);
-//   console.log("➡️ Role used for permission check:", roleName);
-
-//   if (canSendEmail) {
-//     const smtpConfig = await getSmtpConfig(user.id);
-
-//     const { subject, body } = await getCompiledTemplate("user:create", {
-//       firstname: user.firstname || "",
-//       lastname: user.lastname || "",
-//       email: user.email,
-//     });
-
-//     console.log("📧 Preparing to send email:");
-//     console.log("Service:", "user:create");
-//     console.log("Recipient:", user.email);
-//     console.log("Subject:", subject);
-//     console.log("Body Preview:", body.substring(0, 200)); // log first 200 chars
-//     console.log("SMTP Config:", smtpConfig);
-
-//     await emailQueue.add("user:create", {
-//       to: user.email,
-//       subject,
-//       body,
-//       smtpConfig,
-//       serviceName: "user:create",
-//     });
-
-//     console.log("✅ Email queued successfully for", user.email);
-//   }
-
-//   const userWithRole = await User.findOne({
-//     where: { email },
-//     include: [
-//       {
-//         model: Role,
-//         as: "role",
-//         attributes: ["id", "name", "description"],
-//         include: [
-//           {
-//             model: Permission,
-//             // as: "permissions",
-//             attributes: ["id", "name", "resourceType", "resourceId"],
-//           },
-//         ],
-//       },
-//     ],
-//   });
-
-//   return userWithRole;
-// };
 
 export const createUser = async (
   userData: Partial<UserAttributes>
@@ -299,25 +203,6 @@ export const loginUser = async (userData: {
   };
 };
 
-// export const getUserById = async (userId: number): Promise<any> => {
-//   const user = await User.findByPk(userId, {
-//     include: [
-//       {
-//         model: Role,
-//         as: "role",
-//         attributes: ["id", "name", "description"],
-//       },
-//     ],
-//   });
-
-//   if (!user) {
-//     throw new Error("User not found!");
-//   }
-
-//   return user;
-// };
-
-// services/user.service.ts
 
 export const getUserById = async (userId: number): Promise<any> => {
   const user = await User.findByPk(userId, {
@@ -382,15 +267,17 @@ export const updateUser = async (
       throw new Error("User not found!");
     }
 
+    // ✅ Hash password if being updated
     if (updatedData.password) {
       const salt = await bcrypt.genSalt(10);
       updatedData.password = await bcrypt.hash(updatedData.password, salt);
     }
 
+    // ✅ Only update image if explicitly provided
     if (updatedData.userImage === undefined) {
-      // do nothing
+      delete updatedData.userImage; // not sent → leave old one
     } else if (updatedData.userImage === null) {
-      updatedData.userImage = null;
+      updatedData.userImage = null; // explicitly sent null → clear
     }
 
     await user.update(updatedData);
@@ -399,6 +286,7 @@ export const updateUser = async (
     throw new Error(error.message);
   }
 };
+
 
 export const deleteUser = async (userId: string): Promise<string> => {
   try {

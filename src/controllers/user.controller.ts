@@ -98,19 +98,30 @@ export const getUsers = async (req: Request, res: Response): Promise<any> => {
   };
 
   // Update user
-  export const updateUserController = async (req: Request, res: Response): Promise<any> => {
-    try {
-      const userId = req.params.id;
-      const updatedData = req.body;
+export const updateUserController = async (req: Request, res: Response): Promise<any> => {
+  try {
+    const userId = req.params.id;
+    const updatedData = req.body;
 
-      const updatedUser = await updateUser(userId, updatedData);
-
-      return res.status(200).json({ message: "User updated successfully!", user: updatedUser });
-    } catch (error: any) {
-      console.error("Update Error:", error);
-      return res.status(500).json({ message: "Something went wrong during the update.", error: error.message });
+    if (!userId) {
+      return res.status(400).json({ message: "User ID is required" });
     }
-  };
+
+    const updatedUser = await updateUser(userId, updatedData);
+
+    return res.status(200).json({ 
+      message: "User updated successfully!", 
+      user: updatedUser 
+    });
+  } catch (error: any) {
+    console.error("Update Error:", error);
+    return res.status(500).json({ 
+      message: "Something went wrong during the update.", 
+      error: error.message 
+    });
+  }
+};
+
 
   // Delete user
   export const deleteUserController = async (req: Request, res: Response): Promise<any> => {

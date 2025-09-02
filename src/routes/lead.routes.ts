@@ -80,7 +80,7 @@ router.get(
 router.get(
   "/getLeadsWithUnassigned",
   verifyToken,
-  checkPermission(PERMISSIONS.LEAD_VIEW_UNASSIGNED_USERS),
+  // checkPermission(PERMISSIONS.LEAD_VIEW_UNASSIGNED_USERS),
   LeadController.getUnassignedLeads
 );
 router.get(

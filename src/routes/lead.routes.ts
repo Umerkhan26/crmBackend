@@ -86,7 +86,8 @@ router.get(
 router.get(
   "/getLeadsByAssigneeId/:assigneeId",
   verifyToken,
-  checkPermission(PERMISSIONS.LEAD_GET_BY_ASSIGNEE),
+  // checkPermission(PERMISSIONS.LEAD_GET_BY_ASSIGNEE),
+  checkPermission(PERMISSIONS.ASSIGNED_LEAD_GET_BY_ASSIGNEE),
   LeadController.getLeadsByAssigneeId
 );
 
@@ -99,7 +100,8 @@ router.post(
 router.get(
   "/status-summary",
   verifyToken,
-  checkPermission(PERMISSIONS.LEAD_GET_STATUS_SUMMARY),
+  // checkPermission(PERMISSIONS.LEAD_GET_STATUS_SUMMARY),
+  checkPermission(PERMISSIONS.ASSIGNED_LEAD_GET_STATUS_SUMMARY),
   LeadController.getLeadStatusSummary
 );
 
@@ -114,7 +116,8 @@ router.put(
 router.get(
   "/lead-get-by-campaign-and-assignee/:campaignName",
   verifyToken,
-  checkPermission(PERMISSIONS.LEAD_GET_BY_CAMPAIGN_AND_ASSIGNEE),
+  // checkPermission(PERMISSIONS.LEAD_GET_BY_CAMPAIGN_AND_ASSIGNEE),
+  checkPermission(PERMISSIONS.ASSIGNED_LEAD_GET_BY_CAMPAIGN_AND_ASSIGNEE),
   LeadController.getLeadsByCampaignAndAssignee
 );
 export default router;

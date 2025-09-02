@@ -211,8 +211,7 @@ export const deleteOrderById = async (
   } catch (error: any) {
     throw new Error(error.message || "Failed to delete order");
   }
-}
-
+};
 
 export const getAllOrders = async (
   page: number = 1,
@@ -284,7 +283,6 @@ export const getAllOrders = async (
   }
 };
 
-
 export const setOrderBlockStatus = async (
   id: number,
   blockStatus: boolean,
@@ -324,9 +322,7 @@ export const getOrdersByVendorId = async (
   const result = await Order.findAndCountAll({
     where: {
       ...searchFilter,
-      [Op.and]: [
-        where(json("assign_to_vendor.id") as any, vendorId),
-      ],
+      [Op.and]: [where(json("assign_to_vendor.id") as any, vendorId)],
     },
     offset,
     limit: pageLimit,
@@ -357,9 +353,7 @@ export const getOrdersByClientId = async (
   const result = await Order.findAndCountAll({
     where: {
       ...searchFilter,
-      [Op.and]: [
-        where(json("assign_to_client.id") as any, clientId),
-      ],
+      [Op.and]: [where(json("assign_to_client.id") as any, clientId)],
     },
     offset,
     limit: pageLimit,
@@ -375,7 +369,6 @@ export const getOrdersByClientId = async (
     pageLimit
   );
 };
-
 
 // helper function
 const attachRemainingLeads = async (orders: any[]) => {

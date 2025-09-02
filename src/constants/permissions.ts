@@ -25,14 +25,20 @@ export const PERMISSIONS = {
   LEAD_GET_BY_CAMPAIGN: "lead:getByCampaign",
   LEAD_UPDATE: "lead:update",
   LEAD_DELETE: "lead:delete",
-  LEAD_GET_BY_ASSIGNEE: "lead:getByAssignee",
+  // LEAD_GET_BY_ASSIGNEE: "lead:getByAssignee",
   LEAD_ASSIGN_USER: "lead:assign",
   LEAD_VIEW_ASSIGNED_USERS: "lead:view_assigned_users",
   LEAD_VIEW_ASSIGNMENT_STATS: "lead:view_assignment_stats",
   LEAD_VIEW_UNASSIGNED_USERS: "lead:view_unassigned_users",
-  LEAD_GET_STATUS_SUMMARY: "lead:get_status_summary", // View leads grouped by status with counts
+  // LEAD_GET_STATUS_SUMMARY: "lead:get_status_summary", // View leads grouped by status with counts
   LEAD_UPDATE_STATUS: "lead:update_status", // Update status for a specific assigned lead
-  LEAD_GET_BY_CAMPAIGN_AND_ASSIGNEE: "lead:get_by_campaign_and_assignee",
+  // LEAD_GET_BY_CAMPAIGN_AND_ASSIGNEE: "lead:get_by_campaign_and_assignee",
+
+  // Assigned Leads
+  ASSIGNED_LEAD_GET_BY_ASSIGNEE: "assignedLead:getByAssignee",
+  ASSIGNED_LEAD_GET_BY_CAMPAIGN_AND_ASSIGNEE:
+    "assignedLead:getByCampaignAndAssignee",
+  ASSIGNED_LEAD_GET_STATUS_SUMMARY: "assignedLead:get_status_summary",
 
   // ✅ Client Lead permissions
   CLIENT_LEAD_CREATE: "clientLead:create",
@@ -62,5 +68,5 @@ export const PERMISSIONS = {
   PRODUCT_GET_BY_ID: "PRODUCT_GET_BY_ID",
   PRODUCT_UPDATE: "PRODUCT_UPDATE",
   PRODUCT_DELETE: "PRODUCT_DELETE",
-  GET_INVOICE: "PRODUCT_INVOICE"
+  GET_INVOICE: "PRODUCT_INVOICE",
 };

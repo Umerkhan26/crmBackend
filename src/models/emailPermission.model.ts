@@ -10,10 +10,13 @@ export interface EmailPermissionAttributes {
 }
 
 // Optional ID for creation
-interface EmailPermissionCreationAttributes extends Optional<EmailPermissionAttributes, "id"> {}
+interface EmailPermissionCreationAttributes
+  extends Optional<EmailPermissionAttributes, "id"> {}
 
-export class EmailPermission extends Model<EmailPermissionAttributes, EmailPermissionCreationAttributes>
-  implements EmailPermissionAttributes {
+export class EmailPermission
+  extends Model<EmailPermissionAttributes, EmailPermissionCreationAttributes>
+  implements EmailPermissionAttributes
+{
   public id!: number;
   public serviceName!: string;
   public canSend!: boolean;

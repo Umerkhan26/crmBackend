@@ -40,9 +40,17 @@ export const createClientLead = async (
   leadData: ClientLeadCreationAttributes,
   userId?: number
 ) => {
-  const lead = await ClientLead.create(leadData);
+  console.log("👉 Incoming leadData:", JSON.stringify(leadData, null, 2));
+  console.log("👉 Incoming userId:", userId);
 
+  // 1️⃣ Create Lead in DB
+  const lead = await ClientLead.create(leadData);
+  console.log("✅ Lead created in DB with ID:", lead.id);
+
+  // 2️⃣ Log + Notify + LeadActivity if user exists
   if (userId) {
+    console.log("📌 Logging activity & notification for user:", userId);
+
     await logActivity(userId, "Client Lead Created", `Created lead with ID ${lead.id}`);
     await sendNotification(userId, `Client lead with ID ${lead.id} created successfully.`);
 
@@ -53,28 +61,47 @@ export const createClientLead = async (
       details: `Client Lead created by user ID ${userId}`,
       performedBy: userId,
     });
+
+    console.log("✅ LeadActivity record created");
+  } else {
+    console.warn("⚠️ No userId provided → skipping activity log/notification");
   }
 
-  // ✅ Check if email exists in leadData JSON
+  // 3️⃣ Send email if leadData has email field
   if (leadData.leadData && leadData.leadData.email) {
+    console.log("📧 Preparing to send email to:", leadData.leadData.email);
+
     const smtpConfig = {
-      host: process.env.DEFAULT_SMTP_PORT!,
-      port: Number(process.env.DEFAULT_SMTP_HOST!),
-      user: process.env.DEFAULT_SMTP_EMAIL!,
-      pass: process.env.DEFAULT_SMTP_PASSWORD!,
+      host: process.env.DEFAULT_SMTP_HOST!,       // e.g. smtp.gmail.com
+      port: Number(process.env.DEFAULT_SMTP_PORT!), // e.g. 587
+      user: process.env.DEFAULT_SMTP_EMAIL!,      // your Gmail
+      pass: process.env.DEFAULT_SMTP_PASSWORD!,   // Gmail App Password
     };
 
-    await sendEmail({
-      smtp: smtpConfig,
-      to: leadData.leadData.email,
-      subject: "New Lead Assigned",
-      body: `You have been assigned ${lead.id ? `lead ID ${lead.id}` : "a new lead"}.`,
+    console.log("🔧 SMTP Config (sanitized):", {
+      host: smtpConfig.host,
+      port: smtpConfig.port,
+      user: smtpConfig.user,
+      // ❌ Do not log password for security
     });
+
+    try {
+      await sendEmail({
+        smtp: smtpConfig,
+        to: leadData.leadData.email,
+        subject: "New Lead Assigned",
+        body: `You have been assigned ${lead.id ? `lead ID ${lead.id}` : "a new lead"}.`,
+      });
+      console.log("✅ Email sent successfully to:", leadData.leadData.email);
+    } catch (err: any) {
+      console.error("❌ Error sending email:", err.message, err.stack);
+    }
+  } else {
+    console.warn("⚠️ No email found in leadData → skipping email notification");
   }
 
   return lead;
 };
-
 
 
 

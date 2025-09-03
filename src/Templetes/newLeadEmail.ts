@@ -7,27 +7,29 @@ export const newLeadEmailTemplate = (leadId?: number) => {
     <title>New Lead Assigned</title>
   </head>
   <body style="margin:0; padding:0; font-family: Arial, sans-serif; background:#f4f4f4;">
-    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0; padding:20px;">
+    <table width="100%" cellpadding="0" cellspacing="0" border="0">
       <tr>
         <td align="center">
-          <table width="600" cellpadding="0" cellspacing="0" border="0" style="background:#fff; border-radius:8px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,0.1);">
+          <table width="600" cellpadding="0" cellspacing="0" border="0" style="background:#fff; border-radius:8px; overflow:hidden;">
             <tr>
-              <td style="background:#4CAF50; padding:20px; text-align:center; color:#fff;">
-                <h1 style="margin:0; padding:0; font-size:24px; line-height:28px;">New Lead Assigned</h1>
+              <td style="background:#4CAF50; text-align:center; color:#fff;">
+                <div style="padding:10px 15px; line-height:1;">
+                  <span style="font-size:22px; font-weight:bold; display:block;">New Lead Assigned</span>
+                </div>
               </td>
             </tr>
             <tr>
-              <td style="padding:30px; text-align:left; color:#333;">
-                <p style="font-size:16px; margin:0 0 16px 0;">Hello,</p>
-                <p style="font-size:16px; margin:0 0 16px 0;">
+              <td style="padding:20px; text-align:left; color:#333;">
+                <p style="margin:0 0 12px 0; font-size:16px;">Hello,</p>
+                <p style="margin:0 0 12px 0; font-size:16px;">
                   You have been assigned 
                   <strong>${leadId ? `Lead ID: ${leadId}` : "a new lead"}</strong>.
                 </p>
-                <p style="font-size:14px; color:#666; margin:0;">Please check your dashboard for more details.</p>
+                <p style="margin:0; font-size:14px; color:#666;">Please check your dashboard for more details.</p>
               </td>
             </tr>
             <tr>
-              <td style="padding:20px; background:#f4f4f4; text-align:center; font-size:12px; color:#777;">
+              <td style="padding:10px; background:#f4f4f4; text-align:center; font-size:12px; color:#777;">
                 &copy; ${new Date().getFullYear()} Your Company. All rights reserved.
               </td>
             </tr>

@@ -16,8 +16,10 @@ export const userCreateEmailTemplate = (data: {
         <td align="center">
           <table width="600" cellpadding="0" cellspacing="0" border="0" style="background:#fff; border-radius:8px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,0.1);">
             <tr>
-              <td style="background:#4CAF50; padding:20px; text-align:center; color:#fff;">
-                <h1 style="margin:0; padding:0; font-size:22px; line-height:28px;">Welcome Aboard!</h1>
+              <td style="background:#4CAF50; text-align:center; color:#fff;">
+                <div style="padding:15px 20px; line-height:1;">
+                  <span style="font-size:22px; font-weight:bold; display:block;">Welcome Aboard!</span>
+                </div>
               </td>
             </tr>
             <tr>

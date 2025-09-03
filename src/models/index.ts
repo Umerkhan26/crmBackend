@@ -13,6 +13,7 @@ import "./lead.model";
 import "./campaign.model";
 
 import "./activityLog.model";
+import "./notification.model"
 import "./emailLog.model";
 // Apply associations
 associateModels();

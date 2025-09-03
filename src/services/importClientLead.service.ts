@@ -4,7 +4,9 @@ import ClientLead, { ClientLeadCreationAttributes } from "../models/clientLead.m
 import Order from "../models/order.model";
 import { sendEmail } from "../utils/email";
 
-// Helper function to convert Excel serial date to YYYY-MM-DD
+/**
+ * Convert Excel serial date to YYYY-MM-DD string
+ */
 const excelSerialDateToDate = (serial: number): string => {
   if (!serial || isNaN(serial)) return "";
   const excelEpoch = new Date(1899, 11, 31);
@@ -18,23 +20,32 @@ export const importClientLeadsFromFile = async (
   createdBy: number,
   mappedData?: any[]
 ) => {
-  console.log("Received mappedData:", mappedData);
+  console.log("📥 Starting client lead import...");
+  console.log("➡️ Created By (userId):", createdBy);
+  console.log("➡️ Received mappedData:", mappedData ? "Provided" : "Not Provided");
+
+  // ✅ Use mappedData if passed, otherwise parse file
   const rows = mappedData || parseFileBuffer(fileBuffer);
-  console.log("Rows to process:", rows);
+  console.log(`➡️ Total rows to process: ${rows.length}`);
 
   const validLeads: ClientLeadCreationAttributes[] = [];
   const skippedRows: { row: number; reason: string }[] = [];
 
   for (let [index, row] of rows.entries()) {
     try {
+      console.log(`\n🔎 Processing row ${index + 2}:`, row);
+
       if (!row.leadData || typeof row.leadData !== "object") {
         throw new Error("Missing or invalid 'leadData'");
       }
 
+      // Convert Excel serial date to string if needed
       if (row.leadData.date && typeof row.leadData.date === "number") {
         row.leadData.date = excelSerialDateToDate(row.leadData.date);
+        console.log(`   📅 Converted Excel date: ${row.leadData.date}`);
       }
 
+      // Validate required fields
       if (
         !row.leadData.first_name ||
         !row.leadData.last_name ||
@@ -45,6 +56,7 @@ export const importClientLeadsFromFile = async (
         );
       }
 
+      // Check order validity
       if (row.order_id) {
         const orderExists = await Order.findByPk(row.order_id);
         if (!orderExists) {
@@ -52,21 +64,27 @@ export const importClientLeadsFromFile = async (
         }
       }
 
+      // Map and prepare lead
       const lead = mapClientLeadRow(row);
-
-      validLeads.push({
+      const preparedLead: ClientLeadCreationAttributes = {
         ...lead,
         created_by: createdBy,
         order_id: row.order_id || null,
-      } as ClientLeadCreationAttributes);
+        leadData: row.leadData as Record<string, any>, // ✅ force required
+      };
+
+      console.log("   ✅ Valid lead prepared:", preparedLead);
+
+      validLeads.push(preparedLead);
     } catch (err: any) {
-      console.error(`Error processing row ${index + 2}:`, err.message);
+      console.error(`   ❌ Error processing row ${index + 2}:`, err.message);
       skippedRows.push({ row: index + 2, reason: err.message });
     }
   }
 
-  console.log("Valid leads to insert:", validLeads);
-  console.log("Skipped rows:", skippedRows);
+  console.log("\n📊 Summary before DB insert:");
+  console.log("   ✅ Valid leads:", validLeads.length);
+  console.log("   ❌ Skipped rows:", skippedRows.length);
 
   let insertedCount = 0;
 
@@ -74,10 +92,9 @@ export const importClientLeadsFromFile = async (
     try {
       await ClientLead.bulkCreate(validLeads, { validate: true });
       insertedCount = validLeads.length;
+      console.log(`\n✅ Successfully inserted ${insertedCount} leads into DB`);
 
-      console.log(`✅ Successfully inserted ${insertedCount} leads`);
-
-      // 📧 Send one summary email (to uploader or leads, depending on use case)
+      // 📧 Setup SMTP config
       const smtpConfig = {
         host: process.env.DEFAULT_SMTP_HOST!,
         port: Number(process.env.DEFAULT_SMTP_PORT!),
@@ -85,24 +102,27 @@ export const importClientLeadsFromFile = async (
         pass: process.env.DEFAULT_SMTP_PASSWORD!,
       };
 
-      // Option A: Notify uploader
-      await sendEmail({
-        smtp: smtpConfig,
-        to: process.env.NOTIFY_EMAIL || "uploader@example.com", // fallback
-        subject: "Lead Import Summary",
-        body: `✅ Successfully imported ${insertedCount} leads.\n❌ Skipped: ${skippedRows.length} rows.`,
-      });
-
-      // Option B: Notify each lead by email (if email present)
+      // 🔔 Collect all unique emails from leadData
+      const emailMap: Record<string, number> = {};
       for (const lead of validLeads) {
-        if (lead.leadData && lead.leadData.email) {
+        const email = (lead.leadData as any)?.email;
+        if (email) {
+          emailMap[email] = (emailMap[email] || 0) + 1;
+        }
+      }
+
+      if (Object.keys(emailMap).length > 0) {
+        for (const [email, count] of Object.entries(emailMap)) {
+          console.log(`📧 Sending summary email to ${email} for ${count} leads`);
           await sendEmail({
             smtp: smtpConfig,
-            to: lead.leadData.email,
-            subject: "You Have Been Assigned a Lead",
-            body: `You have been assigned lead ID ${lead.id || "N/A"}.`,
+            to: email,
+            subject: "Lead Import Summary",
+            body: `✅ You have been assigned ${count} new leads.\n❌ Skipped: ${skippedRows.length} rows.`,
           });
         }
+      } else {
+        console.warn("⚠️ No lead emails found → skipping email notifications");
       }
     } catch (dbError: any) {
       console.error("❌ Database error during bulkCreate:", dbError);
@@ -111,7 +131,13 @@ export const importClientLeadsFromFile = async (
         reason: `Database error: ${dbError.message}`,
       });
     }
+  } else {
+    console.warn("⚠️ No valid leads found. Skipping DB insert.");
   }
+
+  console.log("\n📦 Import completed.");
+  console.log("   ✅ Imported:", insertedCount);
+  console.log("   ❌ Skipped:", skippedRows.length);
 
   return {
     imported: insertedCount,

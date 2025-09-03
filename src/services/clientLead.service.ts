@@ -244,3 +244,132 @@ export const getClientLeadActivities = async (clientLeadId: number) => {
 
   return activities;
 };
+
+
+
+import EmailTemplate from "../models/emailTemplate.model";
+import { getSmtpConfig } from "../utils/getSmtpConfig";
+import { logEmailStatus } from "./emailLog.service";
+import { logLeadActivity } from "../utils/logLeadActivity";
+
+
+// ✅ Send email to ClientLead using template
+export const sendEmailToClientLeadUsingTemplate = async (
+  clientLeadId: number,
+  templateKey: string,
+  senderUserId: number
+) => {
+  console.log("🔍 Fetching clientLead with ID:", clientLeadId);
+
+  try {
+    // 1️⃣ Find the client lead
+    const lead = await ClientLead.findByPk(clientLeadId);
+    console.log("✅ ClientLead query result:", lead);
+
+    if (!lead) {
+      console.log("❌ ClientLead not found in database");
+      throw new Error("ClientLead not found");
+    }
+
+    console.log("📋 ClientLead found:", lead.toJSON());
+
+    // 2️⃣ Parse leadData
+    let leadData;
+    if (typeof lead.leadData === "string") {
+      try {
+        leadData = JSON.parse(lead.leadData);
+        console.log("📝 Parsed leadData:", leadData);
+      } catch (error: any) {
+        console.error("❌ Error parsing leadData:", error);
+        throw new Error("Invalid leadData format");
+      }
+    } else {
+      leadData = lead.leadData;
+      console.log("📝 leadData (already object):", leadData);
+    }
+
+    const email = leadData?.email;
+    console.log("📧 Extracted email:", email);
+
+    if (!email) {
+      throw new Error("ClientLead email not found in leadData");
+    }
+
+    // 3️⃣ Sender info
+    const sender = await User.findByPk(senderUserId);
+    const senderRole = String(sender?.role || "guest");
+    console.log("👤 Sender:", sender?.id, "Role:", senderRole);
+
+    // 4️⃣ Template
+    const template = await EmailTemplate.findOne({
+      where: { serviceName: templateKey },
+    });
+    console.log("📧 Template found:", template ? template.serviceName : "None");
+
+    if (!template) throw new Error("Email template not found");
+
+    const filledSubject = fillTemplate(template.subjectTemplate, leadData);
+    const filledBody = fillTemplate(template.bodyTemplate, leadData);
+    console.log("📨 Email subject:", filledSubject);
+
+    // 5️⃣ SMTP Config
+    const smtpRaw = await getSmtpConfig(senderUserId);
+    const smtp = {
+      host: smtpRaw.host || "",
+      port: smtpRaw.port || 587,
+      user: smtpRaw.user || "",
+      pass: smtpRaw.pass || "",
+    };
+    console.log("🔧 SMTP config:", {
+      ...smtp,
+      pass: smtp.pass ? "***" : "empty",
+    });
+
+    if (!smtp.host || !smtp.user || !smtp.pass) {
+      throw new Error("SMTP configuration is incomplete.");
+    }
+
+    // 6️⃣ Send Email
+    await sendEmail({
+      smtp,
+      to: email,
+      subject: filledSubject,
+      body: filledBody,
+    });
+
+    // 7️⃣ Log email status
+    await logEmailStatus({
+      clientLeadId,
+      to: email,
+      subject: filledSubject,
+      body: filledBody,
+      templateUsed: templateKey,
+      sentBy: senderUserId,
+      sentAt: new Date(),
+      status: "sent",
+    });
+
+    // 8️⃣ Log activity
+    await logLeadActivity({
+      entityId: clientLeadId,
+      entityType: "clientLead",
+      action: "email_sent",
+      performedBy: senderUserId,
+      details: `Email sent using template "${templateKey}" to ${email}`,
+    });
+
+    console.log("✅ Email sent successfully to:", email);
+    return { message: "Email sent successfully", to: email };
+  } catch (error) {
+    console.error("💥 Error in sendEmailToClientLeadUsingTemplate:", error);
+    throw error;
+  }
+};
+
+// ✅ Helper: replace {{key}} in text with values from leadData
+function fillTemplate(template: string, data: any): string {
+  return template.replace(/{{(.*?)}}/g, (_, key) => {
+    const trimmedKey = key.trim();
+    return data?.[trimmedKey] || "";
+  });
+}

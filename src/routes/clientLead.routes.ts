@@ -8,6 +8,7 @@ import {
   deleteClientLead,
   updateClientLeadStatusController,
   getClientLeadActivitiesController,
+  sendEmailToClientLeadController,
 } from "../controllers/clientLead.controller";
 import { verifyToken } from "../middleware/verifyToken.middleware";
 import { checkPermission } from "../middleware/checkPermission";
@@ -76,5 +77,12 @@ router.get(
   verifyToken,
   // checkPermission(PERMISSIONS.CLIENT_LEAD_GET_ACTIVITIES),
   getClientLeadActivitiesController
+);
+
+
+router.post(
+  "/sendEmailToClientLead/:clientLeadId",
+  verifyToken,
+  sendEmailToClientLeadController
 );
 export default router;

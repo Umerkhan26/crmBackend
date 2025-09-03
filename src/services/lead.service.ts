@@ -325,36 +325,7 @@ export const assignLeadToUsers = async (
     throw new Error(`Error assigning lead: ${error.message}`);
   }
 };
-/**
- * Get all leads that have at least one assignee
- */
-// export const getAllLeadsWithAssignee = async () => {
-//   try {
-//     const leads = await Lead.findAll({
-//       where: Sequelize.literal("JSON_LENGTH(assignees) > 0"),
-//     });
 
-//     const allUserIds = leads
-//       .flatMap((lead: any) => lead.assignees) // extract all IDs from JSON array
-//       .filter((id: any) => !!id);
-
-//     const uniqueUserIds = [...new Set(allUserIds)];
-
-//     const users = await User.findAll({
-//       where: { id: uniqueUserIds },
-//       attributes: ["id", "firstname", "lastname", "email"],
-//     });
-
-//     const leadsWithAssigneeDetails = leads.map((lead: any) => ({
-//       ...lead.toJSON(),
-//       assigneeDetails: users.filter((u) => lead.assignees.includes(u.id)),
-//     }));
-
-//     return leadsWithAssigneeDetails;
-//   } catch (error: any) {
-//     throw new Error(`Error fetching leads with assignees: ${error.message}`);
-//   }
-// };
 
 export const getAllLeadsWithAssignee = async () => {
   try {

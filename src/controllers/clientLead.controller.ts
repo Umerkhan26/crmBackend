@@ -8,6 +8,7 @@ import {
   deleteClientLeadById,
   updateClientLeadStatus,
   getClientLeadActivities,
+  sendEmailToClientLeadUsingTemplate,
 } from "../services/clientLead.service";
 import { CustomRequest } from "../types/custom";
 
@@ -228,6 +229,52 @@ export const getClientLeadActivitiesController = async (
     return res.status(500).json({
       success: false,
       message: error.message || "Failed to fetch client lead activities",
+    });
+  }
+};
+
+export const sendEmailToClientLeadController = async (
+  req: CustomRequest,
+  res: Response
+): Promise<any> => {
+  try {
+    const clientLeadId = parseInt(req.params.clientLeadId, 10);
+    const templateKey = req.body.templateKey; // e.g., "user:create"
+    const senderUserId = req.user?.id; // assumes verifyToken middleware sets req.user
+
+    if (isNaN(clientLeadId)) {
+      return res.status(400).json({ message: "Invalid clientLead ID." });
+    }
+
+    if (!templateKey) {
+      return res
+        .status(400)
+        .json({ message: "Email template key is required." });
+    }
+
+    if (!senderUserId) {
+      return res
+        .status(401)
+        .json({ message: "Unauthorized. User not authenticated." });
+    }
+
+    const result = await sendEmailToClientLeadUsingTemplate(
+      clientLeadId,
+      templateKey,
+      senderUserId
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: result.message,
+      to: result.to,
+    });
+  } catch (error: any) {
+    console.error("Error sending email to clientLead:", error.message);
+    return res.status(500).json({
+      success: false,
+      message:
+        error.message || "An error occurred while sending email to clientLead.",
     });
   }
 };

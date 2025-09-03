@@ -118,7 +118,7 @@ export const importClientLeadsFromFile = async (
             smtp: smtpConfig,
             to: email,
             subject: "Lead Import Summary",
-            body: `✅ You have been assigned ${count} new leads.\n❌ Skipped: ${skippedRows.length} rows.`,
+            body: `You have been assigned ${count} new leads`,
           });
         }
       } else {

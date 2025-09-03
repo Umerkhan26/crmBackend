@@ -95,7 +95,7 @@ router.get(
 
 // ✅ Update Product by ID
 router.put(
-  "/update/:id",
+  "/updateProduct/:id",
   verifyToken,
   checkPermission(PERMISSIONS.PRODUCT_UPDATE),
   updateProduct
@@ -103,7 +103,7 @@ router.put(
 
 // ✅ Delete Product by ID
 router.delete(
-  "/delete/:id",
+  "/deleteProduct/:id",
   verifyToken,
   checkPermission(PERMISSIONS.PRODUCT_DELETE),
   deleteProduct

@@ -387,11 +387,15 @@ export const updateUser = async (
       updatedData.password = await bcrypt.hash(updatedData.password, salt);
     }
 
+    // Handle userImage properly
     if (updatedData.userImage === undefined) {
-      // do nothing
-    } else if (updatedData.userImage === null) {
+      // Remove userImage from update data to preserve existing image
+      delete updatedData.userImage;
+    } else if (updatedData.userImage === null || updatedData.userImage === "") {
+      // Explicitly set to null if empty string or null is provided
       updatedData.userImage = null;
     }
+    // If userImage has a value (new image path), it will be updated normally
 
     await user.update(updatedData);
     return user;
@@ -399,7 +403,6 @@ export const updateUser = async (
     throw new Error(error.message);
   }
 };
-
 export const deleteUser = async (userId: string): Promise<string> => {
   try {
     const user = await User.findByPk(userId);

@@ -42,7 +42,7 @@ router.get(
 router.put(
   "/updateUserById/:id",
   verifyToken,
-  uploadImageMiddleware("userImage"),
+  uploadImageMiddleware("userImage", true),
   checkPermission(PERMISSIONS.USER_UPDATE),
   updateUserController
 );
@@ -63,6 +63,5 @@ router.put(
 );
 
 router.get("/get-vendors-clients", getVendorsAndClientsHandler);
-
 
 export default router;

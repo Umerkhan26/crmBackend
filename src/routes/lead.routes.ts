@@ -49,13 +49,7 @@ router.delete(
 router.post(
   "/assign/:leadId",
   verifyToken,
-  checkPermission(PERMISSIONS.LEAD_ASSIGN_USER),
-  LeadController.assignUserToLead
-);
-router.post(
-  "/assign/:leadId",
-  verifyToken,
-  checkPermission(PERMISSIONS.LEAD_ASSIGN_USER),
+  // checkPermission(PERMISSIONS.LEAD_ASSIGN_USER),
   LeadController.assignUserToLead
 );
 
@@ -63,7 +57,7 @@ router.post(
 router.get(
   "/getLeadsWithAssignee",
   verifyToken,
-  checkPermission(PERMISSIONS.LEAD_VIEW_ASSIGNED_USERS),
+  // checkPermission(PERMISSIONS.LEAD_VIEW_ASSIGNED_USERS),
   LeadController.getAllLeadsWithAssignee
 );
 

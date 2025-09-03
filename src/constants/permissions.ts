@@ -26,8 +26,8 @@ export const PERMISSIONS = {
   LEAD_UPDATE: "lead:update",
   LEAD_DELETE: "lead:delete",
   // LEAD_GET_BY_ASSIGNEE: "lead:getByAssignee",
-  LEAD_ASSIGN_USER: "lead:assign",
-  LEAD_VIEW_ASSIGNED_USERS: "lead:view_assigned_users",
+  // LEAD_ASSIGN_USER: "lead:assign",
+  // LEAD_VIEW_ASSIGNED_USERS: "lead:view_assigned_users",
   // LEAD_VIEW_ASSIGNMENT_STATS: "lead:view_assignment_stats",
   // LEAD_VIEW_UNASSIGNED_USERS: "lead:view_unassigned_users",
   // LEAD_GET_STATUS_SUMMARY: "lead:get_status_summary", // View leads grouped by status with counts

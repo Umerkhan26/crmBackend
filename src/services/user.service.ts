@@ -22,7 +22,6 @@ interface PaginationParams {
   limit?: number;
 }
 
-
 export const createUser = async (
   userData: Partial<UserAttributes>
 ): Promise<any> => {
@@ -58,12 +57,18 @@ export const createUser = async (
   }
 
   // Log activity + notification
-  await logActivity(user.id, "Registration", "User registered successfully");
-  await sendNotification(
-    user.id,
-    "Welcome! Your account has been successfully created."
-  );
+await logActivity(
+  user.id,
+  "Registration",
+  "User registered successfully",
+  user.firstname + " " + user.lastname
+);
 
+await sendNotification(
+  user.id,
+  "Welcome! Your account has been successfully created.",
+  user.firstname + " " + user.lastname
+);
   // ✅ Fetch user with role to check email permission
   const userWithRole = await User.findOne({
     where: { id: user.id },
@@ -185,8 +190,20 @@ export const loginUser = async (userData: {
   );
 
   if (user.id) {
-    await logActivity(user.id, "Login", "User logged in successfully");
-    await sendNotification(user.id, "You have successfully logged in!");
+    const fullName = `${user.firstname || ""} ${user.lastname || ""}`.trim();
+
+    await logActivity(
+      user.id,
+      "Login",
+      "User logged in successfully",
+      fullName
+    );
+
+    await sendNotification(
+      user.id,
+      "You have successfully logged in!",
+      fullName
+    );
   } else {
     throw new Error("User ID is missing!");
   }
@@ -276,22 +293,38 @@ export const updateUser = async (
       updatedData.password = await bcrypt.hash(updatedData.password, salt);
     }
 
-    // Handle userImage properly
+    // ✅ Handle userImage properly
     if (updatedData.userImage === undefined) {
-      // Remove userImage from update data to preserve existing image
-      delete updatedData.userImage;
+      delete updatedData.userImage; // preserve existing
     } else if (updatedData.userImage === null || updatedData.userImage === "") {
-      // Explicitly set to null if empty string or null is provided
-      updatedData.userImage = null;
+      updatedData.userImage = null; // clear image
     }
-    // If userImage has a value (new image path), it will be updated normally
 
+    // ✅ Apply updates
     await user.update(updatedData);
+
+    const fullName = `${user.firstname ?? ""} ${user.lastname ?? ""}`.trim();
+
+    // ✅ Log activity & send notification with non-null assertion
+    await logActivity(
+      user.id!, // assert that id exists
+      "Profile Update",
+      "User updated profile information",
+      fullName
+    );
+
+    await sendNotification(
+      user.id!,
+      "Your profile has been successfully updated.",
+      fullName
+    );
+
     return user;
   } catch (error: any) {
     throw new Error(error.message);
   }
 };
+
 export const deleteUser = async (userId: string): Promise<string> => {
   try {
     const user = await User.findByPk(userId);
@@ -299,12 +332,30 @@ export const deleteUser = async (userId: string): Promise<string> => {
       throw new Error("User not found!");
     }
 
+    const fullName = `${user.firstname ?? ""} ${user.lastname ?? ""}`.trim();
+
+    // ✅ Log activity & notification before deletion
+    await logActivity(
+      user.id!, // non-null assertion
+      "Account Deletion",
+      "User account has been deleted",
+      fullName
+    );
+
+    await sendNotification(
+      user.id!,
+      "Your account has been deleted by the administrator.",
+      fullName
+    );
+
     await user.destroy();
+
     return "User deleted successfully!";
   } catch (error: any) {
     throw new Error(error.message);
   }
 };
+
 
 export const blockOrUnblockUser = async (
   userId: string,

@@ -6,6 +6,8 @@ export interface NotificationAttributes {
   id?: number;
   userId: number;
   message: string;
+  userName?: string | null;   // ✅ new field (nullable)
+
   isRead: boolean;
   created_at?: Date;
 }
@@ -24,6 +26,10 @@ export const Notification = db.define<Model<NotificationAttributes>>("Notificati
     type: DataTypes.STRING(255),
     allowNull: false,
   },
+     userName: {
+      type: DataTypes.STRING(255),  // ✅ new column
+      allowNull: true,
+    },
   isRead: {
     type: DataTypes.BOOLEAN,
     defaultValue: false,

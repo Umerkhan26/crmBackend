@@ -6,8 +6,36 @@ import { logActivity } from "./activity.service";
 import { sendNotification } from "./notification.service";
 import LeadActivity from "../models/leadActivity.model"; // ✅ Activity tracking
 import User from "../models/user.model"; // ✅ For joining user info in activities
+import { sendEmail } from "../utils/email";
 
 // ✅ Create a new client lead
+// export const createClientLead = async (
+//   leadData: ClientLeadCreationAttributes,
+//   userId?: number
+// ) => {
+//   const lead = await ClientLead.create(leadData);
+
+//   if (userId) {
+//     await logActivity(userId, "Client Lead Created", `Created lead with ID ${lead.id}`);
+//     await sendNotification(userId, `Client lead with ID ${lead.id} created successfully.`);
+
+//     // ✅ Log into LeadActivity (polymorphic)
+//     await LeadActivity.create({
+//       entityId: lead.id,
+//       entityType: "clientLead",
+//       action: "create",
+//       details: `Client Lead created by user ID ${userId}`,
+//       performedBy: userId,
+//     });
+//   }
+
+//   return lead;
+// };
+
+
+
+
+
 export const createClientLead = async (
   leadData: ClientLeadCreationAttributes,
   userId?: number
@@ -18,7 +46,6 @@ export const createClientLead = async (
     await logActivity(userId, "Client Lead Created", `Created lead with ID ${lead.id}`);
     await sendNotification(userId, `Client lead with ID ${lead.id} created successfully.`);
 
-    // ✅ Log into LeadActivity (polymorphic)
     await LeadActivity.create({
       entityId: lead.id,
       entityType: "clientLead",
@@ -28,8 +55,28 @@ export const createClientLead = async (
     });
   }
 
+  // ✅ Check if email exists in leadData JSON
+  if (leadData.leadData && leadData.leadData.email) {
+    const smtpConfig = {
+      host: process.env.SMTP_HOST!,
+      port: Number(process.env.SMTP_PORT!),
+      user: process.env.SMTP_USER!,
+      pass: process.env.SMTP_PASS!,
+    };
+
+    await sendEmail({
+      smtp: smtpConfig,
+      to: leadData.leadData.email,
+      subject: "New Lead Assigned",
+      body: `You have been assigned ${lead.id ? `lead ID ${lead.id}` : "a new lead"}.`,
+    });
+  }
+
   return lead;
 };
+
+
+
 
 // ✅ Get all leads by order ID
 export const getClientLeadsByOrderId = async (orderId: number) => {

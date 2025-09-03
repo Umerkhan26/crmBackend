@@ -1,0 +1,42 @@
+export const assignedBulkLeadEmailTemplate = (count: number) => {
+  return `
+  <!DOCTYPE html>
+  <html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Bulk Lead Assignment</title>
+  </head>
+  <body style="font-family: Arial, sans-serif; background:#f9f9f9; padding:20px;">
+    <table width="100%" cellpadding="0" cellspacing="0">
+      <tr>
+        <td align="center">
+          <table width="600" style="background:#ffffff; border-radius:8px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,0.1);">
+            <tr>
+              <td style="background:#1976D2; padding:20px; text-align:center; color:#ffffff;">
+                <h1 style="margin:0; font-size:22px;">Bulk Lead Assignment</h1>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:30px; text-align:left; color:#333333;">
+                <p style="font-size:16px;">Hello,</p>
+                <p style="font-size:16px;">
+                  You have been assigned <strong>${count}</strong> new ${count === 1 ? "lead" : "leads"} from the latest import.
+                </p>
+                <p style="font-size:14px; color:#666666;">
+                  Please log in to your dashboard to review them.
+                </p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:20px; background:#f4f4f4; text-align:center; font-size:12px; color:#777777;">
+                &copy; ${new Date().getFullYear()} Your Company. All rights reserved.
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+  </html>
+  `;
+};

@@ -3,6 +3,7 @@ import { mapClientLeadRow } from "../utils/clientLeadMapper";
 import ClientLead, { ClientLeadCreationAttributes } from "../models/clientLead.model";
 import Order from "../models/order.model";
 import { sendEmail } from "../utils/email";
+import { assignedBulkLeadEmailTemplate } from "../Templetes/assignedBulkLeadEmail";
 
 /**
  * Convert Excel serial date to YYYY-MM-DD string
@@ -117,8 +118,8 @@ export const importClientLeadsFromFile = async (
           await sendEmail({
             smtp: smtpConfig,
             to: email,
-            subject: "Lead Import Summary",
-            body: `You have been assigned ${count} new leads`,
+      subject: "Lead Assignment",
+      body: assignedBulkLeadEmailTemplate(count), // 👈 new template
           });
         }
       } else {

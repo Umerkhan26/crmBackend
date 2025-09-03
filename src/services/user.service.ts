@@ -15,11 +15,13 @@ import Permission from "../models/permission.model";
 import ActivityLog from "../models/activityLog.model";
 import Campaign from "../models/campaign.model";
 import { Op } from "sequelize";
+import { userCreateEmailTemplate } from "../Templetes/userCreateEmailTemplate";
 
 interface PaginationParams {
   page?: number;
   limit?: number;
 }
+
 
 export const createUser = async (
   userData: Partial<UserAttributes>
@@ -84,7 +86,9 @@ export const createUser = async (
   if (canSendEmail) {
     const smtpConfig = await getSmtpConfig(user.id);
 
-    const { subject, body } = await getCompiledTemplate("user:create", {
+    // ✅ Use your new template instead of getCompiledTemplate
+    const subject = "Welcome to Our Platform!";
+    const body = userCreateEmailTemplate({
       firstname: userWithRole?.firstname || "",
       lastname: userWithRole?.lastname || "",
       email: userWithRole?.email || "",
@@ -128,6 +132,7 @@ export const createUser = async (
 
   return userFull;
 };
+
 
 export const loginUser = async (userData: {
   email: string;

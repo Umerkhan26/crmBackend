@@ -90,7 +90,7 @@ export const createClientLead = async (
         smtp: smtpConfig,
         to: leadData.leadData.email,
         subject: "New Lead Assigned",
-        body: `You have been assigned ${lead.id ? `lead ID ${lead.id}` : "a new lead"}.`,
+        body: newLeadEmailTemplate(lead.id), // 👈 dynamic HTML template
       });
       console.log("✅ Email sent successfully to:", leadData.leadData.email);
     } catch (err: any) {
@@ -251,6 +251,7 @@ import EmailTemplate from "../models/emailTemplate.model";
 import { getSmtpConfig } from "../utils/getSmtpConfig";
 import { logEmailStatus } from "./emailLog.service";
 import { logLeadActivity } from "../utils/logLeadActivity";
+import { newLeadEmailTemplate } from "../Templetes/newLeadEmail";
 
 
 // ✅ Send email to ClientLead using template

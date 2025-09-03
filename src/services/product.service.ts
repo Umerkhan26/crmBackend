@@ -257,8 +257,13 @@ export const getProductById = async (
   return product.get();
 };
 
-export const getAllProducts = async (): Promise<ProductSaleAttributes[]> => {
-  const products = await ProductSale.findAll({
+export const getAllProducts = async (
+  page: number = 1,
+  limit: number = 10
+): Promise<any> => {
+  const { offset, limit: pageLimit } = getPagination({ page, limit });
+
+  const data = await ProductSale.findAndCountAll({
     where: {
       status: "pending", // ✅ only fetch pending products
     },
@@ -269,9 +274,11 @@ export const getAllProducts = async (): Promise<ProductSaleAttributes[]> => {
       },
     ],
     order: [["createdAt", "DESC"]],
+    offset,
+    limit: pageLimit,
   });
 
-  return products.map((p) => p.get({ plain: true }));
+  return getPagingData(data, page, pageLimit);
 };
 
 

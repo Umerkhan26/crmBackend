@@ -255,15 +255,26 @@ export const getProductById = async (
 };
 
 // ✅ Get All Products
+
 export const getAllProducts = async (
-  _req: Request,
+  req: Request,
   res: Response
 ): Promise<any> => {
   try {
-    const products = await ProductSaleService.getAllProducts();
-    return res.status(200).json({ success: true, data: products });
+    // ✅ get page & limit from query params, default to 1 and 10
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+
+    const products = await ProductSaleService.getAllProducts(page, limit);
+
+    return res.status(200).json({
+      success: true,
+      ...products, // already contains totalItems, data, totalPages, currentPage
+    });
   } catch (error: any) {
-    return res.status(500).json({ success: false, message: error.message });
+    return res
+      .status(500)
+      .json({ success: false, message: error.message });
   }
 };
 

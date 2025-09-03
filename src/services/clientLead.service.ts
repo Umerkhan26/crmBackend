@@ -58,10 +58,10 @@ export const createClientLead = async (
   // ✅ Check if email exists in leadData JSON
   if (leadData.leadData && leadData.leadData.email) {
     const smtpConfig = {
-      host: process.env.SMTP_HOST!,
-      port: Number(process.env.SMTP_PORT!),
-      user: process.env.SMTP_USER!,
-      pass: process.env.SMTP_PASS!,
+      host: process.env.DEFAULT_SMTP_PORT!,
+      port: Number(process.env.DEFAULT_SMTP_HOST!),
+      user: process.env.DEFAULT_SMTP_EMAIL!,
+      pass: process.env.DEFAULT_SMTP_PASSWORD!,
     };
 
     await sendEmail({

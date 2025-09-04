@@ -1,7 +1,7 @@
 import express, { Application } from "express";
 import dotenv from "dotenv";
 import db from "./db"; // Sequelize instance
-import "./src/models";
+import "./src/models/index";
 import http from "http";
 import { Server as SocketIOServer } from "socket.io";
 import app from './app'; // Your main Express app

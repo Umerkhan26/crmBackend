@@ -132,16 +132,29 @@ export const getClientLeadById = async (id: number) => {
 export const getAllClientLeads = async (
   page = 1,
   limit = 10,
-  orderId?: number // optional filter
+  filters: { orderId?: number; status?: string; search?: string } = {}
 ) => {
   const { offset } = getPagination({ page, limit });
-
-  // Build dynamic where clause
+  // Build where clause for filtering
   const whereClause: any = {};
-  if (orderId) {
-    whereClause.order_id = orderId;
+  if (filters.orderId) {
+    whereClause.order_id = filters.orderId;
   }
-
+  if (filters.status && filters.status !== "all") {
+    whereClause.status = filters.status;
+  }
+  // For search functionality (if needed)
+  if (filters.search) {
+    whereClause.leadData = {
+      [Op.or]: [
+        { agent_name: { [Op.like]: `%${filters.search}%` } },
+        { first_name: { [Op.like]: `%${filters.search}%` } },
+        { last_name: { [Op.like]: `%${filters.search}%` } },
+        { state: { [Op.like]: `%${filters.search}%` } },
+        { phone_number: { [Op.like]: `%${filters.search}%` } },
+      ],
+    };
+  }
   const data = await ClientLead.findAndCountAll({
     where: whereClause,
     offset,
@@ -152,7 +165,6 @@ export const getAllClientLeads = async (
     ],
     order: [["createdAt", "DESC"]],
   });
-
   return getPagingData(data, page, limit);
 };
 
@@ -263,6 +275,7 @@ import { getSmtpConfig } from "../utils/getSmtpConfig";
 import { logEmailStatus } from "./emailLog.service";
 import { logLeadActivity } from "../utils/logLeadActivity";
 import { newLeadEmailTemplate } from "../Templetes/newLeadEmail";
+import { Op } from "sequelize";
 
 
 // ✅ Send email to ClientLead using template

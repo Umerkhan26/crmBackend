@@ -3,6 +3,7 @@
 import { Router } from "express";
 import {
   deleteLeadActivityController,
+  getActivityLogsByEntity,
   getAllLeadActivityLogs,
   getLeadActivities,
   updateLeadActivityController,
@@ -16,6 +17,11 @@ router.get("/getLeadActivityByLeadId/:leadId", verifyToken, getLeadActivities);
 
 router.get("/getAllLeadActivities", verifyToken, getAllLeadActivityLogs);
 
+router.get(
+  "/getActivitiesByEntity/:entityType/:entityId",
+  verifyToken,
+  getActivityLogsByEntity
+);
 // UPDATE lead activity
 router.put("/updateLeadActivity/:id", verifyToken, updateLeadActivityController);
 

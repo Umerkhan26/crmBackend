@@ -24,7 +24,7 @@ const router = Router();
 router.post(
   "/convertLeadToSale",
   verifyToken,
-  checkPermission(PERMISSIONS.PRODUCT_CONVERT_LEAD),
+  checkPermission(PERMISSIONS.SALE_CONVERT_LEAD),
   convertLeadToSale
 );
 
@@ -32,7 +32,7 @@ router.post(
 router.get(
   "/getAllSales",
   verifyToken,
-  checkPermission(PERMISSIONS.PRODUCT_SALE_GET_ALL),
+  checkPermission(PERMISSIONS.SALE_GET_ALL),
   getAllSales
 );
 
@@ -40,20 +40,20 @@ router.get(
 router.get(
   "/getSalesById/:id",
   verifyToken,
-  checkPermission(PERMISSIONS.PRODUCT_SALE_GET_BY_ID),
+  checkPermission(PERMISSIONS.SALE_GET_BY_ID),
   getSaleById
 );
 router.get(
   "/getSalesByAssigneeId/:id",
   verifyToken,
-  checkPermission(PERMISSIONS.PRODUCT_SALE_GET_BY_ID),
+  checkPermission(PERMISSIONS.SALE_GET_BY_ASSIGNEE),
   getSalesByAssigneeIdController
 );
 // ✅ Update Sale
 router.put(
   "/updateSalesById/:id",
   verifyToken,
-  checkPermission(PERMISSIONS.PRODUCT_SALE_UPDATE),
+  checkPermission(PERMISSIONS.SALE_UPDATE),
   updateSale
 );
 
@@ -61,7 +61,7 @@ router.put(
 router.delete(
   "/deleteSalesById/:id",
   verifyToken,
-  checkPermission(PERMISSIONS.PRODUCT_SALE_DELETE),
+  checkPermission(PERMISSIONS.SALE_DELETE),
   deleteSale
 );
 

@@ -129,10 +129,21 @@ export const getClientLeadById = async (id: number) => {
 };
 
 // ✅ Get paginated leads
-export const getAllClientLeads = async (page = 1, limit = 10) => {
+export const getAllClientLeads = async (
+  page = 1,
+  limit = 10,
+  orderId?: number // optional filter
+) => {
   const { offset } = getPagination({ page, limit });
 
+  // Build dynamic where clause
+  const whereClause: any = {};
+  if (orderId) {
+    whereClause.order_id = orderId;
+  }
+
   const data = await ClientLead.findAndCountAll({
+    where: whereClause,
     offset,
     limit,
     include: [

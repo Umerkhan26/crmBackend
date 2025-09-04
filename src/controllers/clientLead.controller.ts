@@ -62,8 +62,9 @@ export const getAllClientLeadsController = async (
   try {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
+    const orderId = req.query.orderId ? parseInt(req.query.orderId as string) : undefined; // new
 
-    const leads = await getAllClientLeads(page, limit);
+    const leads = await getAllClientLeads(page, limit, orderId); // pass filter
 
     return res.status(200).json({
       success: true,
@@ -77,6 +78,7 @@ export const getAllClientLeadsController = async (
     });
   }
 };
+
 // Get client leads by order ID
 export const getClientLeadsByOrder = async (
   req: Request,

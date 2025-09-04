@@ -142,6 +142,8 @@ interface PaginationParams {
 
 
 
+
+
 export const createUser = async (
   userData: Partial<UserAttributes>
 ): Promise<any> => {
@@ -226,35 +228,20 @@ export const createUser = async (
       email: userWithRole?.email || "",
     });
 
-    console.log("📧 Preparing to send email:");
+    console.log("📧 Sending email directly:");
     console.log("Recipient:", userWithRole?.email);
     console.log("Subject:", subject);
 
     try {
-      // Try to add to queue first
-      await emailQueue.add("user:create", {
-        to: userWithRole?.email,
+      await sendEmail({
+        smtp: smtpConfig,
+        to: userWithRole?.email!,
         subject,
         body,
-        smtpConfig,
-        serviceName: "user:create",
       });
-      console.log("✅ Email queued successfully for", userWithRole?.email);
-    } catch (queueErr) {
-      console.error("❌ Email queue failed, sending directly...", queueErr);
-
-      // Fallback: send email directly
-      try {
-        await sendEmail({
-          smtp: smtpConfig,
-          to: userWithRole?.email!,
-          subject,
-          body,
-        });
-        console.log("✅ Email sent directly to", userWithRole?.email);
-      } catch (directErr) {
-        console.error("❌ Direct email sending also failed:", directErr);
-      }
+      console.log("✅ Email sent directly to", userWithRole?.email);
+    } catch (err) {
+      console.error("❌ Direct email sending failed:", err);
     }
   }
 
@@ -278,6 +265,7 @@ export const createUser = async (
 
   return userFull;
 };
+
 
 
 export const loginUser = async (userData: {

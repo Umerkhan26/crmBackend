@@ -1,4 +1,4 @@
-import { Op } from "sequelize";
+import { Op, Sequelize } from "sequelize";
 import ProductSale, {
   ProductSaleAttributes,
   ProductSaleCreationAttributes,
@@ -68,13 +68,40 @@ export const getAllSales = async ({
 
     const where: any = { ...filters };
 
-    if (search) {
-      where[Op.or] = [
-        { productType: { [Op.like]: `%${search}%` } },
-        { notes: { [Op.like]: `%${search}%` } },
-        { status: { [Op.like]: `%${search}%` } },
-      ];
-    }
+   if (search) {
+    where[Op.or] = [
+      // Product info
+      { productType: { [Op.like]: `%${search}%` } },
+      Sequelize.where(
+        Sequelize.cast(Sequelize.col("ProductSale.products"), "CHAR"),
+        { [Op.like]: `%${search}%` }
+      ),
+      { price: { [Op.like]: `%${search}%` } },
+      { notes: { [Op.like]: `%${search}%` } },
+      { status: { [Op.like]: `%${search}%` } },
+      // Campaign name
+      { "$Campaign.name$": { [Op.like]: `%${search}%` } },
+      { "$Lead.campaignName$": { [Op.like]: `%${search}%` } },
+      // Created By (User)
+      { "$User.firstname$": { [Op.like]: `%${search}%` } },
+      { "$User.email$": { [Op.like]: `%${search}%` } },
+      // Lead info (JSON search by casting leadData to string)
+      Sequelize.where(
+        Sequelize.cast(Sequelize.col("Lead.leadData"), "CHAR"),
+        { [Op.like]: `%${search}%` }
+      ),
+      // Conversion Date
+      Sequelize.where(
+        Sequelize.fn(
+          "DATE_FORMAT",
+          Sequelize.col("ProductSale.conversionDate"),
+          "%Y-%m-%d"
+        ),
+        { [Op.like]: `%${search}%` }
+      ),
+    ];
+  }
+
 
     const data = await ProductSale.findAndCountAll({
       offset,

@@ -8,7 +8,7 @@ import { syncEmailPermissionsToDB } from "./src/utils/syncEmailPermissions"; // 
 
 import db from "./db"; // Sequelize instance
 import "./src/models/associations"; // 🔥 This ensures associations are defined
-
+import "./src/models/index"
 dotenv.config();
 
 const app: Application = express();

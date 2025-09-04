@@ -315,7 +315,7 @@ export const loginUser = async (userData: {
   const token = jwt.sign(
     { id: user.id, email: user.email, userrole: user.userrole },
     process.env.JWT_SECRET as string,
-    { expiresIn: "1h" }
+    { expiresIn: "24h" }
   );
 
   if (user.id) {

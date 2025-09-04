@@ -4,7 +4,7 @@ export const assignedBulkLeadEmailTemplate = (count: number) => {
   <html>
   <head>
     <meta charset="UTF-8" />
-    <title>Bulk Lead Assignment</title>
+    <title>Lead Assignment</title>
   </head>
   <body style="margin:0; padding:0; font-family: Arial, sans-serif; background:#f9f9f9; -webkit-text-size-adjust:100%; -ms-text-size-adjust:100%;">
     <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0; padding:0; border-collapse:collapse; border-spacing:0; line-height:100%;">
@@ -16,7 +16,7 @@ export const assignedBulkLeadEmailTemplate = (count: number) => {
             <tr>
               <td style="background:#1976D2; text-align:center; color:#ffffff;">
                 <div style="padding:15px 20px; line-height:1;">
-                  <span style="font-size:22px; font-weight:bold; display:block;">Bulk Lead Assignment</span>
+                  <span style="font-size:22px; font-weight:bold; display:block;">Lead Assignment</span>
                 </div>
               </td>
             </tr>
@@ -26,7 +26,7 @@ export const assignedBulkLeadEmailTemplate = (count: number) => {
               <td style="padding:30px; text-align:left; color:#333333;">
                 <p style="font-size:16px; margin:0 0 16px 0;">Hello,</p>
                 <p style="font-size:16px; margin:0 0 16px 0;">
-                  You have been assigned <strong>${count}</strong> new ${count === 1 ? "lead" : "leads"} from the latest import.
+                  You have been assigned <strong>${count}</strong> new ${count === 1 ? "lead" : "leads"}.
                 </p>
                 <p style="font-size:14px; color:#666666; margin:0;">Please log in to your dashboard to review them.</p>
               </td>

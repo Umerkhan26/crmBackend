@@ -146,13 +146,15 @@
 //   };
 // };
 
-
 import { parseFileBuffer } from "../utils/fileParser";
 import { mapClientLeadRow } from "../utils/clientLeadMapper";
-import ClientLead, { ClientLeadCreationAttributes } from "../models/clientLead.model";
+import ClientLead, {
+  ClientLeadCreationAttributes,
+} from "../models/clientLead.model";
 import Order from "../models/order.model";
 import { sendEmail } from "../utils/email";
 import { assignedBulkLeadEmailTemplate } from "../Templetes/assignedBulkLeadEmail";
+import Campaign from "../models/campaign.model";
 
 /**
  * Convert Excel serial date to YYYY-MM-DD string
@@ -172,7 +174,10 @@ export const importClientLeadsFromFile = async (
 ) => {
   console.log("📥 Starting client lead import...");
   console.log("➡️ Created By (userId):", createdBy);
-  console.log("➡️ Received mappedData:", mappedData ? "Provided" : "Not Provided");
+  console.log(
+    "➡️ Received mappedData:",
+    mappedData ? "Provided" : "Not Provided"
+  );
 
   // ✅ Use mappedData if passed, otherwise parse file
   const rows = mappedData || parseFileBuffer(fileBuffer);
@@ -219,12 +224,20 @@ export const importClientLeadsFromFile = async (
         }
       }
 
+      if (row.campaign_id) {
+        const campaignExists = await Campaign.findByPk(row.campaign_id);
+        if (!campaignExists) {
+          throw new Error(`Invalid campaign_id: ${row.campaign_id}`);
+        }
+      }
+
       // Map and prepare lead
       const lead = mapClientLeadRow(row);
       const preparedLead: ClientLeadCreationAttributes = {
         ...lead,
         created_by: createdBy,
         order_id: row.order_id || null,
+        campaign_id: row.campaign_id || null,
         leadData: {
           ...row.leadData,
           campaignName: row.leadData.campaignName || null, // 👈 ensure campaignName is stored
@@ -271,7 +284,9 @@ export const importClientLeadsFromFile = async (
 
       if (Object.keys(emailMap).length > 0) {
         for (const [email, count] of Object.entries(emailMap)) {
-          console.log(`📧 Sending summary email to ${email} for ${count} leads`);
+          console.log(
+            `📧 Sending summary email to ${email} for ${count} leads`
+          );
           await sendEmail({
             smtp: smtpConfig,
             to: email,
@@ -302,5 +317,3 @@ export const importClientLeadsFromFile = async (
     skipped: skippedRows,
   };
 };
-
-

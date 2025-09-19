@@ -4,10 +4,9 @@ import dotenv from "dotenv";
 import path from "path";
 import fs from "fs";
 import { syncPermissionsToDB } from "./src/utils/syncPermissions";
-import { syncEmailPermissionsToDB } from "./src/utils/syncEmailPermissions"; // ✅ Import email permissions sync
-
-import db from "./db"; // Sequelize instance
-import "./src/models/associations"; // 🔥 This ensures associations are defined
+import { syncEmailPermissionsToDB } from "./src/utils/syncEmailPermissions"; 
+import db from "./db"; 
+import "./src/models/associations";
 import "./src/models/index"
 dotenv.config();
 

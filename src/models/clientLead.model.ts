@@ -54,7 +54,7 @@
         },
       },
       leadData: {
-        type: DataTypes.JSON,
+        type: DataTypes.JSON, 
         allowNull: false,
       },
       created_by: {

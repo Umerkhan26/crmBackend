@@ -10,3 +10,4 @@ router.get("/getAllPermissions", PermissionController.getAllPermissionsControlle
 router.get("/getPermissionsById/:id", PermissionController.getPermissionByIdController);
 
 export default router;
+    

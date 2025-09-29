@@ -2,15 +2,16 @@ import nodemailer from "nodemailer";
 
 interface SendEmailOptions {
   smtp: {
-    host: string;
+    host?: string;
     port: number;
-    user: string;
-    pass: string;
+    user?: string;
+    pass?: string;
   };
-  to: string;
+  to?: string;
   subject: string;
   body: string;
 }
+
 
 export const sendEmail = async ({
   smtp,

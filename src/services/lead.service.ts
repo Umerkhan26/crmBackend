@@ -428,66 +428,84 @@ export const getUnassignedLeads = async () => {
  * Get all leads assigned to a specific user
  */
 
-export const getLeadsByAssigneeId = async (
-  assigneeId: number,
-  filterType: FilterType = "daily",
-  startDate?: string,
-  endDate?: string,
-  page: number = 1,
-  limit: number = 10
-) => {
-  try {
-    const dateFilter = buildDateFilter(filterType, startDate, endDate);
-    const { offset } = getPagination({ page, limit });
-    const leads = await Lead.findAndCountAll({
-      where: {
-        ...dateFilter,
-        [Op.and]: Sequelize.literal(
-          `JSON_SEARCH(JSON_EXTRACT(assignees, '$[*].userId'), 'one', '${assigneeId}') IS NOT NULL`
-        ),
-      },
-      attributes: [
-        "id",
-        "campaignName",
-        "leadData",
-        "assignees",
-        "createdAt",
-        "updatedAt",
-      ],
-      offset,
-      limit,
-    });
-    // Map leads to include user-specific status
-    const mappedLeads = leads.rows.map((lead) => {
-      let assignees: AssigneeWithStatus[] = [];
-      try {
-        assignees = Array.isArray(lead.assignees)
-          ? lead.assignees
-          : typeof lead.assignees === "string"
-          ? JSON.parse(lead.assignees)
-          : [];
-      } catch (error) {
-        console.warn(`Failed to parse assignees for lead ${lead.id}:`, error);
-        assignees = [];
-      }
-      const userAssignment = assignees.find(
-        (a) => Number(a.userId) === assigneeId
-      );
-      return {
-        ...lead.get(),
-        status: userAssignment?.status || "pending",
-      };
-    });
-    return {
-      count: leads.count,
-      rows: mappedLeads,
-    };
-  } catch (error: any) {
-    throw new Error(
-      `Error fetching leads for assignee ID ${assigneeId}: ${error.message}`
-    );
-  }
-};
+// export const getLeadsByAssigneeId = async (
+//   assigneeId: number,
+//   filterType: FilterType = "daily",
+//   startDate?: string,
+//   endDate?: string,
+//   page: number = 1,
+//   limit: number = 10
+// ) => {
+//   try {
+//     const dateFilter = buildDateFilter(filterType, startDate, endDate);
+//     const { offset } = getPagination({ page, limit });
+//     const leads = await Lead.findAndCountAll({
+//       where: {
+//         ...dateFilter,
+//         [Op.and]: Sequelize.literal(
+//           `JSON_SEARCH(JSON_EXTRACT(assignees, '$[*].userId'), 'one', '${assigneeId}') IS NOT NULL`
+//         ),
+//       },
+//       attributes: [
+//         "id",
+//         "campaignName",
+//         "leadData",
+//         "assignees",
+//         "createdAt",
+//         "updatedAt",
+//       ],
+//       offset,
+//       limit,
+//     });
+//     // Map leads to include user-specific status
+//     const mappedLeads = leads.rows.map((lead) => {
+//       let assignees: AssigneeWithStatus[] = [];
+//       try {
+//         assignees = Array.isArray(lead.assignees)
+//           ? lead.assignees
+//           : typeof lead.assignees === "string"
+//           ? JSON.parse(lead.assignees)
+//           : [];
+//       } catch (error) {
+//         console.warn(`Failed to parse assignees for lead ${lead.id}:`, error);
+//         assignees = [];
+//       }
+//       const userAssignment = assignees.find(
+//         (a) => Number(a.userId) === assigneeId
+//       );
+//       return {
+//         ...lead.get(),
+//         status: userAssignment?.status || "pending",
+//       };
+//     });
+//     return {
+//       count: leads.count,
+//       rows: mappedLeads,
+//     };
+//   } catch (error: any) {
+//     throw new Error(
+//       `Error fetching leads for assignee ID ${assigneeId}: ${error.message}`
+//     );
+//   }
+// };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // ✅ Corrected function
 // export const sendEmailToLeadUsingTemplate = async (
 //   leadId: number,
@@ -573,6 +591,85 @@ export const getLeadsByAssigneeId = async (
 
 //   return { message: "Email sent successfully", to: email };
 // };
+
+
+
+
+
+
+
+export const getLeadsByAssigneeId = async (
+  assigneeId: number,
+  filterType: FilterType = "daily",
+  startDate?: string,
+  endDate?: string,
+  page: number = 1,
+  limit: number = 10
+) => {
+  try {
+    const dateFilter = buildDateFilter(filterType, startDate, endDate);
+    const { offset } = getPagination({ page, limit });
+
+    // ✅ Use JSON_CONTAINS to query assignees JSON array
+    const leads = await Lead.findAndCountAll({
+      where: {
+        ...dateFilter,
+        [Op.and]: Sequelize.literal(
+          `JSON_CONTAINS(assignees, '{"userId": ${assigneeId}}', '$')`
+        ),
+      },
+      attributes: [
+        "id",
+        "campaignName",
+        "leadData",
+        "assignees",
+        "createdAt",
+        "updatedAt",
+      ],
+      offset,
+      limit,
+    });
+
+    // ✅ Map leads and extract status for current assignee
+    const mappedLeads = leads.rows.map((lead) => {
+      let assignees: AssigneeWithStatus[] = [];
+
+      try {
+        if (Array.isArray(lead.assignees)) {
+          assignees = lead.assignees;
+        } else if (typeof lead.assignees === "string") {
+          // In case column is TEXT locally
+          assignees = JSON.parse(lead.assignees);
+        } else if (lead.assignees && typeof lead.assignees === "object") {
+          assignees = lead.assignees as AssigneeWithStatus[];
+        }
+      } catch (error) {
+        console.warn(`Failed to parse assignees for lead ${lead.id}:`, error);
+        assignees = [];
+      }
+
+      const userAssignment = assignees.find(
+        (a) => Number(a.userId) === assigneeId
+      );
+
+      return {
+        ...lead.get(),
+        status: userAssignment?.status || "pending",
+      };
+    });
+
+    return {
+      count: leads.count,
+      rows: mappedLeads,
+    };
+  } catch (error: any) {
+    throw new Error(
+      `Error fetching leads for assignee ID ${assigneeId}: ${error.message}`
+    );
+  }
+};
+
+
 
 export const sendEmailToLeadUsingTemplate = async (
   leadId: number,

@@ -12,38 +12,109 @@
   import { UserAttributes } from "../interfaces/user.interface";
 
   // Register a new user
-  export const registerUser = async (req: Request, res: Response): Promise<any> => {
-    try {
-      const userData: Partial<UserAttributes> = req.body;
+export const registerUser = async (req: Request, res: Response): Promise<any> => {
+  try {
+    const userData: Partial<UserAttributes> = req.body;
 
-      if (!userData.email || !userData.password) {
-        return res.status(400).json({ message: "Email and password are required!" });
-      }
-
-      const user = await createUser(userData);
-      return res.status(201).json({ message: "User registered successfully!", user });
-    } catch (error) {
-      console.error("Registration Error:", error);
-      return res.status(500).json({ message: "Internal Server Error", error: (error as Error).message });
+    // Validation checks
+    if (!userData.email || !userData.password) {
+      return res.status(400).json({
+        success: false,
+        message: "Email and password are required!",
+      });
     }
-  };
+
+    // Try creating user
+    const user = await createUser(userData);
+    return res.status(201).json({
+      success: true,
+      message: "User registered successfully!",
+      user,
+    });
+  } catch (error: any) {
+    console.error("Registration Error:", error);
+
+    // Handle Sequelize unique constraint (duplicate email, username, etc.)
+    if (error.name === "SequelizeUniqueConstraintError") {
+      return res.status(400).json({
+        success: false,
+        message: "This email is already registered. Please use another one.",
+      });
+    }
+
+    // Handle Sequelize validation errors (wrong data format, etc.)
+    if (error.name === "SequelizeValidationError") {
+      return res.status(400).json({
+        success: false,
+        message: error.errors?.[0]?.message || "Invalid input data.",
+      });
+    }
+
+    // Default error
+    return res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+      error: error.message,
+    });
+  }
+};
+
 
   // Login controller
-  export const login = async (req: Request, res: Response): Promise<any> => {
-    try {
-      const { email, password } = req.body;
+export const login = async (req: Request, res: Response): Promise<any> => {
+  try {
+    const { email, password } = req.body;
 
-      if (!email || !password) {
-        return res.status(400).json({ message: "Email and password are required!" });
-      }
-
-      const result = await loginUser({ email, password });
-      return res.status(200).json(result);
-    } catch (error: any) {
-      console.error("Login Error:", error.message);
-      return res.status(500).json({ message: "Something went wrong during login." });
+    // Input validation
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: "Email and password are required!",
+      });
     }
-  };
+
+    // Call service
+    const result = await loginUser({ email, password });
+
+    // If service didn't return a user/token, handle gracefully
+    if (!result || !result.user) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid email or password.",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Login successful!",
+      ...result,
+    });
+  } catch (error: any) {
+    console.error("Login Error:", error);
+
+    // Handle specific known errors (if service throws them)
+    if (error.name === "SequelizeDatabaseError") {
+      return res.status(500).json({
+        success: false,
+        message: "Database error occurred during login.",
+      });
+    }
+
+    if (error.message?.toLowerCase().includes("invalid credentials")) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid email or password.",
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: "Something went wrong during login.",
+      error: error.message,
+    });
+  }
+};
+
 
   // Get all users
 

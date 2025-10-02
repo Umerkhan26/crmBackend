@@ -327,6 +327,68 @@ export const assignLeadToUsers = async (
 };
 
 
+// export const getAllLeadsWithAssignee = async () => {
+//   try {
+//     const leads = await Lead.findAll({
+//       where: Sequelize.literal("JSON_LENGTH(assignees) > 0"),
+//       order: [["createdAt", "DESC"]],
+//     });
+
+//     const enrichedLeads = await Promise.all(
+//       leads.map(async (lead: any) => {
+//         let assigneesRaw: any[] = [];
+
+//         // Parse assignees field (could be stringified JSON or array)
+//         if (typeof lead.assignees === "string") {
+//           try {
+//             assigneesRaw = JSON.parse(lead.assignees);
+//           } catch {
+//             assigneesRaw = [];
+//           }
+//         } else if (Array.isArray(lead.assignees)) {
+//           assigneesRaw = lead.assignees;
+//         }
+
+//         const userIds = assigneesRaw
+//           .map((a) => a.userId ?? a) // support [{userId, status}] or [id]
+//           .filter((id: any) => typeof id === "number");
+
+//         let assigneesData: any[] = [];
+
+//         if (userIds.length > 0) {
+//           const users = await User.findAll({
+//             where: { id: userIds },
+//             attributes: ["id", "firstname", "lastname", "email"],
+//           });
+
+//           assigneesData = users.map((user) => {
+//             const assignment = assigneesRaw.find(
+//               (a) => a.userId === user.id || a === user.id
+//             );
+//             return {
+//               ...user.toJSON(),
+//               status: assignment?.status || "pending", // fallback if no status
+//             };
+//           });
+//         }
+
+//         return {
+//           ...lead.toJSON(),
+//           assignees: assigneesData,
+//         };
+//       })
+//     );
+
+//     return enrichedLeads;
+//   } catch (error: any) {
+//     throw new Error(`Error fetching leads with assignees: ${error.message}`);
+//   }
+// };
+
+
+
+
+
 export const getAllLeadsWithAssignee = async () => {
   try {
     const leads = await Lead.findAll({
@@ -338,17 +400,29 @@ export const getAllLeadsWithAssignee = async () => {
       leads.map(async (lead: any) => {
         let assigneesRaw: any[] = [];
 
-        // Parse assignees field (could be stringified JSON or array)
-        if (typeof lead.assignees === "string") {
-          try {
-            assigneesRaw = JSON.parse(lead.assignees);
-          } catch {
+        // Robust parsing of assignees field
+        if (lead.assignees) {
+          if (typeof lead.assignees === "string") {
+            try {
+              const temp = JSON.parse(lead.assignees);
+              assigneesRaw = Array.isArray(temp) ? temp : [temp];
+            } catch (err) {
+              console.warn(
+                `⚠️ Failed to parse assignees string for lead ${lead.id}, fallback to empty array`,
+                err
+              );
+              assigneesRaw = [];
+            }
+          } else if (Array.isArray(lead.assignees)) {
+            assigneesRaw = lead.assignees;
+          } else if (typeof lead.assignees === "object") {
+            assigneesRaw = [lead.assignees]; // single object -> wrap in array
+          } else {
             assigneesRaw = [];
           }
-        } else if (Array.isArray(lead.assignees)) {
-          assigneesRaw = lead.assignees;
         }
 
+        // Extract user IDs
         const userIds = assigneesRaw
           .map((a) => a.userId ?? a) // support [{userId, status}] or [id]
           .filter((id: any) => typeof id === "number");
@@ -385,6 +459,8 @@ export const getAllLeadsWithAssignee = async () => {
   }
 };
 
+
+
 /**
  * Get counts of assigned and unassigned leads
  */
@@ -406,23 +482,78 @@ export const getAssignmentCounts = async () => {
 /**
  * Get all unassigned leads
  */
+// export const getUnassignedLeads = async () => {
+//   try {
+//     const unassignedLeads = await Lead.findAll({
+//       where: Sequelize.literal("JSON_LENGTH(assignees) = 0"), // ✅ No assignments
+//       include: [
+//         {
+//           model: User,
+//           attributes: ["id", "firstname", "lastname", "email"],
+//         },
+//       ],
+//     });
+
+//     return unassignedLeads;
+//   } catch (error: any) {
+//     throw new Error(`Error fetching unassigned leads: ${error.message}`);
+//   }
+// };
+
+
+
+
 export const getUnassignedLeads = async () => {
   try {
+    // Fetch leads where assignees is empty or null
     const unassignedLeads = await Lead.findAll({
-      where: Sequelize.literal("JSON_LENGTH(assignees) = 0"), // ✅ No assignments
+      where: Sequelize.literal(
+        "assignees IS NULL OR JSON_LENGTH(assignees) = 0"
+      ),
       include: [
         {
           model: User,
           attributes: ["id", "firstname", "lastname", "email"],
         },
       ],
+      order: [["createdAt", "DESC"]],
     });
 
-    return unassignedLeads;
+    // Normalize assignees for each lead
+    const normalizedLeads = unassignedLeads.map((lead: any) => {
+      let assigneesRaw: any[] = [];
+
+      if (lead.assignees) {
+        if (typeof lead.assignees === "string") {
+          try {
+            const temp = JSON.parse(lead.assignees);
+            assigneesRaw = Array.isArray(temp) ? temp : [temp];
+          } catch (err) {
+            console.warn(
+              `⚠️ Failed to parse assignees for lead ${lead.id}, fallback to empty array`,
+              err
+            );
+            assigneesRaw = [];
+          }
+        } else if (Array.isArray(lead.assignees)) {
+          assigneesRaw = lead.assignees;
+        } else if (typeof lead.assignees === "object") {
+          assigneesRaw = [lead.assignees]; // wrap single object
+        }
+      }
+
+      return {
+        ...lead.toJSON(),
+        assignees: assigneesRaw,
+      };
+    });
+
+    return normalizedLeads;
   } catch (error: any) {
     throw new Error(`Error fetching unassigned leads: ${error.message}`);
   }
 };
+
 
 /**
  * Get all leads assigned to a specific user

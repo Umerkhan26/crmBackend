@@ -171,14 +171,32 @@ export const assignUserToLead = async (
   }
 };
 
-export const getAllLeadsWithAssignee = async (req: Request, res: Response) => {
+// export const getAllLeadsWithAssignee = async (req: Request, res: Response) => {
+//   try {
+//     const leads = await LeadService.getAllLeadsWithAssignee();
+//     res.status(200).json({ success: true, data: leads });
+//   } catch (error: any) {
+//     res.status(500).json({ success: false, message: error.message });
+//   }
+// };
+
+
+
+export const getAllLeadsWithAssignee = async (req: Request, res: Response):Promise<any> => {
   try {
     const leads = await LeadService.getAllLeadsWithAssignee();
+
+    if (!leads || leads.length === 0) {
+      return res.status(404).json({ success: false, message: "No leads found" });
+    }
+
     res.status(200).json({ success: true, data: leads });
   } catch (error: any) {
+    console.error("Error in getAllLeadsWithAssignee controller:", error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
 
 export const getLeadsByAssigneeId = async (
   req: Request,
@@ -225,11 +243,31 @@ export const getAssignmentStats = async (req: Request, res: Response) => {
   }
 };
 
-export const getUnassignedLeads = async (req: Request, res: Response) => {
+// export const getUnassignedLeads = async (req: Request, res: Response) => {
+//   try {
+//     const leads = await LeadService.getUnassignedLeads();
+//     res.status(200).json({ success: true, data: leads });
+//   } catch (error: any) {
+//     res.status(500).json({ success: false, message: error.message });
+//   }
+// };
+
+
+
+
+export const getUnassignedLeads = async (req: Request, res: Response):Promise<any> => {
   try {
     const leads = await LeadService.getUnassignedLeads();
+
+    if (!leads || leads.length === 0) {
+      return res
+        .status(404)
+        .json({ success: false, message: "No unassigned leads found" });
+    }
+
     res.status(200).json({ success: true, data: leads });
   } catch (error: any) {
+    console.error("Error in getUnassignedLeads controller:", error);
     res.status(500).json({ success: false, message: error.message });
   }
 };

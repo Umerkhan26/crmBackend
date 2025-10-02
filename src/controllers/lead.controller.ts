@@ -306,6 +306,55 @@ export const getLeadStatusSummary = async (
     });
   }
 };
+// export const updateLeadStatus = async (
+//   req: Request,
+//   res: Response
+// ): Promise<any> => {
+//   try {
+//     const leadId = Number(req.params.leadId);
+//     const userId = Number(req.body.userId);
+//     const status = req.body.status as LeadStatus;
+
+//     console.log("📌 Update Lead Status Request:", { leadId, userId, status });
+
+//     // ✅ Validate input
+//     if (!leadId || !userId || !status) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Lead ID, user ID, and status are required",
+//       });
+//     }
+
+//     // ✅ Call service function
+//     const updatedLead = await LeadService.updateLeadStatusForUser(
+//       leadId,
+//       userId,
+//       status
+//     );
+
+//     return res.status(200).json({
+//       success: true,
+//       message: `Status updated to "${status}" for user ${userId} on lead ${leadId}`,
+//       lead: updatedLead,
+//     });
+//   } catch (error: any) {
+//     console.error("🔥 Error in updateLeadStatus controller:", {
+//       message: error.message,
+//       stack: error.stack,
+//     });
+
+//     return res.status(500).json({
+//       success: false,
+//       message: error.message || "An error occurred while updating lead status",
+//     });
+//   }
+// };
+const ALLOWED_STATUSES: LeadStatus[] = [
+  "pending",
+  "sold",
+  "most_interested",
+  "to_call",
+];
 export const updateLeadStatus = async (
   req: Request,
   res: Response
@@ -317,11 +366,19 @@ export const updateLeadStatus = async (
 
     console.log("📌 Update Lead Status Request:", { leadId, userId, status });
 
-    // ✅ Validate input
+    // ✅ Validate input existence
     if (!leadId || !userId || !status) {
       return res.status(400).json({
         success: false,
         message: "Lead ID, user ID, and status are required",
+      });
+    }
+
+    // ✅ Validate status value
+    if (!ALLOWED_STATUSES.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid status. Allowed statuses: ${ALLOWED_STATUSES.join(", ")}`,
       });
     }
 
@@ -349,6 +406,7 @@ export const updateLeadStatus = async (
     });
   }
 };
+
 export const getLeadsByCampaignAndAssignee = async (
   req: Request,
   res: Response

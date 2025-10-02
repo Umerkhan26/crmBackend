@@ -850,6 +850,72 @@ export type LeadStatus =
   | "not_interested"
   | "do_not_call";
 
+// export const updateLeadStatusForUser = async (
+//   leadId: number,
+//   userId: number,
+//   newStatus: LeadStatus
+// ) => {
+//   console.log("🔹 Updating lead status request:", {
+//     leadId,
+//     userId,
+//     newStatus,
+//   });
+
+//   if (!ALLOWED_STATUSES.includes(newStatus)) {
+//     throw new Error(
+//       `Invalid status. Allowed statuses: ${ALLOWED_STATUSES.join(", ")}`
+//     );
+//   }
+
+//   const lead = await Lead.findByPk(leadId);
+//   if (!lead) {
+//     throw new Error(`Lead with ID ${leadId} not found`);
+//   }
+
+//   let assignees: AssigneeWithStatus[] = [];
+
+//   if (Array.isArray(lead.assignees)) {
+//     assignees = lead.assignees;
+//   } else if (typeof lead.assignees === "string") {
+//     try {
+//       assignees = JSON.parse(lead.assignees);
+//     } catch {
+//       console.warn(
+//         "⚠️ Failed to parse assignees JSON, resetting to empty array"
+//       );
+//       assignees = [];
+//     }
+//   }
+
+//   const index = assignees.findIndex((a) => a.userId === userId);
+//   if (index === -1) {
+//     throw new Error(`User ID ${userId} is not assigned to lead ID ${leadId}`);
+//   }
+
+//   const previousStatus = assignees[index].status;
+//   assignees[index].status = newStatus;
+
+//   await lead.update({ assignees });
+
+//   // ✅ Log the activity with error handling
+//   try {
+//     const logResult = await logLeadActivity({
+//       entityId: leadId,
+//       entityType: "lead",
+//       action: "status_updated",
+//       performedBy: userId,
+//       details: `Status changed from "${previousStatus}" to "${newStatus}"`,
+//     });
+
+//     console.log("✅ Lead status updated and activity logged:", logResult);
+//   } catch (err) {
+//     console.error("❌ Failed to log lead activity:", err);
+//   }
+
+//   return lead;
+// };
+
+
 export const updateLeadStatusForUser = async (
   leadId: number,
   userId: number,
@@ -874,20 +940,27 @@ export const updateLeadStatusForUser = async (
 
   let assignees: AssigneeWithStatus[] = [];
 
-  if (Array.isArray(lead.assignees)) {
-    assignees = lead.assignees;
-  } else if (typeof lead.assignees === "string") {
-    try {
+  try {
+    if (Array.isArray(lead.assignees)) {
+      assignees = lead.assignees;
+    } else if (typeof lead.assignees === "string") {
       assignees = JSON.parse(lead.assignees);
-    } catch {
-      console.warn(
-        "⚠️ Failed to parse assignees JSON, resetting to empty array"
-      );
-      assignees = [];
+    } else if (lead.assignees && typeof lead.assignees === "object") {
+      assignees = lead.assignees as AssigneeWithStatus[];
     }
+  } catch (err) {
+    console.warn(
+      `⚠️ Failed to parse assignees for lead ${lead.id}, resetting to empty array`,
+      err
+    );
+    assignees = [];
   }
 
-  const index = assignees.findIndex((a) => a.userId === userId);
+  // ✅ Normalize userId comparison
+  const index = assignees.findIndex(
+    (a) => Number(a.userId) === Number(userId)
+  );
+
   if (index === -1) {
     throw new Error(`User ID ${userId} is not assigned to lead ID ${leadId}`);
   }
@@ -895,9 +968,10 @@ export const updateLeadStatusForUser = async (
   const previousStatus = assignees[index].status;
   assignees[index].status = newStatus;
 
+  // ✅ Directly update JSON column
   await lead.update({ assignees });
 
-  // ✅ Log the activity with error handling
+  // ✅ Log the activity
   try {
     const logResult = await logLeadActivity({
       entityId: leadId,

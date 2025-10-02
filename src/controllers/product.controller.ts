@@ -369,6 +369,36 @@ export const getProductsByCampaignAndAssignee = async (
   }
 };
 
+// export const getInvoice = async (req: Request, res: Response): Promise<any> => {
+//   try {
+//     const { leadId } = req.params;
+
+//     if (!leadId) {
+//       return res
+//         .status(400)
+//         .json({ success: false, message: "Lead ID is required" });
+//     }
+
+//     const invoice = await ProductSaleService.getInvoiceByLeadId(Number(leadId));
+//     console.log(`Invoice fetched for leadId ${leadId}:`, invoice); // Debug log
+
+//     return res.status(200).json({
+//       success: true,
+//       message: "Invoice fetched successfully",
+//       data: invoice,
+//     });
+//   } catch (error: any) {
+//     console.error(
+//       `Error in getInvoice for leadId ${req.params.leadId}:`,
+//       error
+//     );
+//     return res.status(500).json({
+//       success: false,
+//       message: error.message || "Something went wrong while fetching invoice",
+//     });
+//   }   
+// };
+
 export const getInvoice = async (req: Request, res: Response): Promise<any> => {
   try {
     const { leadId } = req.params;
@@ -379,8 +409,15 @@ export const getInvoice = async (req: Request, res: Response): Promise<any> => {
         .json({ success: false, message: "Lead ID is required" });
     }
 
-    const invoice = await ProductSaleService.getInvoiceByLeadId(Number(leadId));
-    console.log(`Invoice fetched for leadId ${leadId}:`, invoice); // Debug log
+    const leadIdNum = Number(leadId);
+    if (isNaN(leadIdNum)) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Lead ID must be a valid number" });
+    }
+
+    const invoice = await ProductSaleService.getInvoiceByLeadId(leadIdNum);
+    console.log(`Invoice fetched for leadId ${leadIdNum}:`, invoice); // Debug log
 
     return res.status(200).json({
       success: true,
@@ -398,6 +435,9 @@ export const getInvoice = async (req: Request, res: Response): Promise<any> => {
     });
   }   
 };
+
+
+
 export const getSalesByAssigneeIdController = async (
   req: Request,
   res: Response

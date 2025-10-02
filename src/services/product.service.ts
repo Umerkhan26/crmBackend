@@ -370,6 +370,82 @@ export const getProductsByCampaignAndAssignee = async (
     throw new Error(`Error fetching products: ${error.message}`);
   }
 };
+// export const getInvoiceByLeadId = async (leadId: number) => {
+//   try {
+//     const sale: any = await ProductSale.findOne({
+//       where: { leadId },
+//       include: [
+//         { model: Lead, attributes: ["id", "campaignName", "leadData"] },
+//         {
+//           model: User,
+//           as: "assignee",
+//           attributes: ["id", "firstname", "email"],
+//         },
+//         { model: Campaign, as: "campaign", attributes: ["id", "campaignName"] },
+//       ],
+//     });
+
+//     if (!sale) {
+//       throw new Error("No sale found for this lead");
+//     }
+
+//     // Parse products JSON string if it exists
+//     let parsedProducts = [];
+//     try {
+//       if (sale.products && typeof sale.products === "string") {
+//         parsedProducts = JSON.parse(sale.products);
+//       } else if (Array.isArray(sale.products)) {
+//         parsedProducts = sale.products;
+//       } else if (sale.products === null) {
+//         // Fallback for single-product sales
+//         parsedProducts = [
+//           {
+//             productType: sale.productType || "N/A",
+//             price: sale.price || 0,
+//             notes: sale.notes || "N/A",
+//           },
+//         ];
+//       }
+//     } catch (error) {
+//       console.error(`Error parsing products for sale ID ${sale.id}:`, error);
+//       parsedProducts = [
+//         {
+//           productType: sale.productType || "N/A",
+//           price: sale.price || 0,
+//           notes: sale.notes || "N/A",
+//         },
+//       ];
+//     }
+
+//     // Calculate total amount from parsed products
+//     const totalAmount = parsedProducts.reduce(
+//       (sum: number, p: any) => sum + (parseFloat(p.price) || 0),
+//       0
+//     );
+
+//     return {
+//       invoiceNumber: `INV-${sale.id}`,
+//       date: sale.conversionDate,
+//       sale: {
+//         ...sale.get({ plain: true }),
+//         parsedProducts, // Include parsed products for frontend
+//       },
+//       lead: sale.Lead,
+//       assignee: sale.assignee,
+//       campaign: sale.campaign,
+//       products: parsedProducts,
+//       totalAmount,
+//       success: true,
+//     };
+//   } catch (error: any) {
+//     console.error(`Error in getInvoiceByLeadId for leadId ${leadId}:`, error);
+//     throw new Error(`Failed to fetch invoice: ${error.message}`);
+//   }
+// };
+
+
+
+
 export const getInvoiceByLeadId = async (leadId: number) => {
   try {
     const sale: any = await ProductSale.findOne({
@@ -389,15 +465,33 @@ export const getInvoiceByLeadId = async (leadId: number) => {
       throw new Error("No sale found for this lead");
     }
 
-    // Parse products JSON string if it exists
-    let parsedProducts = [];
-    try {
-      if (sale.products && typeof sale.products === "string") {
-        parsedProducts = JSON.parse(sale.products);
+    // Robust products parsing
+    let parsedProducts: any[] = [];
+
+    if (sale.products) {
+      if (typeof sale.products === "string") {
+        // Parse string
+        try {
+          const temp = JSON.parse(sale.products);
+          parsedProducts = Array.isArray(temp) ? temp : [temp];
+        } catch (err) {
+          console.warn(`Failed to parse products string for sale ID ${sale.id}:`, err);
+          parsedProducts = [
+            {
+              productType: sale.productType || "N/A",
+              price: sale.price || 0,
+              notes: sale.notes || "N/A",
+            },
+          ];
+        }
       } else if (Array.isArray(sale.products)) {
+        // Already an array
         parsedProducts = sale.products;
-      } else if (sale.products === null) {
-        // Fallback for single-product sales
+      } else if (typeof sale.products === "object") {
+        // Single object
+        parsedProducts = [sale.products];
+      } else {
+        // Fallback
         parsedProducts = [
           {
             productType: sale.productType || "N/A",
@@ -406,8 +500,8 @@ export const getInvoiceByLeadId = async (leadId: number) => {
           },
         ];
       }
-    } catch (error) {
-      console.error(`Error parsing products for sale ID ${sale.id}:`, error);
+    } else {
+      // Null or undefined
       parsedProducts = [
         {
           productType: sale.productType || "N/A",
@@ -417,7 +511,7 @@ export const getInvoiceByLeadId = async (leadId: number) => {
       ];
     }
 
-    // Calculate total amount from parsed products
+    // Calculate total amount
     const totalAmount = parsedProducts.reduce(
       (sum: number, p: any) => sum + (parseFloat(p.price) || 0),
       0
@@ -428,7 +522,7 @@ export const getInvoiceByLeadId = async (leadId: number) => {
       date: sale.conversionDate,
       sale: {
         ...sale.get({ plain: true }),
-        parsedProducts, // Include parsed products for frontend
+        parsedProducts, // Parsed products ready for frontend
       },
       lead: sale.Lead,
       assignee: sale.assignee,
@@ -442,7 +536,6 @@ export const getInvoiceByLeadId = async (leadId: number) => {
     throw new Error(`Failed to fetch invoice: ${error.message}`);
   }
 };
-
 export const getSalesByAssigneeId = async (assigneeId: number | string) => {
   console.log(
     ":mag: [getSalesByAssigneeId] Called with assigneeId:",

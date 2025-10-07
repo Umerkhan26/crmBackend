@@ -3,9 +3,12 @@ import * as LeadController from "../controllers/lead.controller";
 import { verifyToken } from "../middleware/verifyToken.middleware";
 import { checkPermission } from "../middleware/checkPermission";
 import { PERMISSIONS } from "../constants/permissions";
+import multer from "multer";
+import { importLeads } from "../controllers/importLead.controller";
 
 const router = Router();
-
+const storage = multer.memoryStorage(); // store file in memory buffer
+export const upload = multer({ storage });
 // Create Lead
 router.post(
   "/leads",
@@ -113,5 +116,12 @@ router.get(
   // checkPermission(PERMISSIONS.LEAD_GET_BY_CAMPAIGN_AND_ASSIGNEE),
   checkPermission(PERMISSIONS.ASSIGNED_LEAD_GET_BY_CAMPAIGN_AND_ASSIGNEE),
   LeadController.getLeadsByCampaignAndAssignee
+);
+
+router.post(
+  "/import-leads",
+  verifyToken,
+  upload.single("file"), // file input field name: 'file'
+  importLeads
 );
 export default router;

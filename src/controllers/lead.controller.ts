@@ -180,14 +180,17 @@ export const assignUserToLead = async (
 //   }
 // };
 
-
-
-export const getAllLeadsWithAssignee = async (req: Request, res: Response):Promise<any> => {
+export const getAllLeadsWithAssignee = async (
+  req: Request,
+  res: Response
+): Promise<any> => {
   try {
     const leads = await LeadService.getAllLeadsWithAssignee();
 
     if (!leads || leads.length === 0) {
-      return res.status(404).json({ success: false, message: "No leads found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "No leads found" });
     }
 
     res.status(200).json({ success: true, data: leads });
@@ -196,7 +199,6 @@ export const getAllLeadsWithAssignee = async (req: Request, res: Response):Promi
     res.status(500).json({ success: false, message: error.message });
   }
 };
-
 
 export const getLeadsByAssigneeId = async (
   req: Request,
@@ -252,10 +254,10 @@ export const getAssignmentStats = async (req: Request, res: Response) => {
 //   }
 // };
 
-
-
-
-export const getUnassignedLeads = async (req: Request, res: Response):Promise<any> => {
+export const getUnassignedLeads = async (
+  req: Request,
+  res: Response
+): Promise<any> => {
   try {
     const leads = await LeadService.getUnassignedLeads();
 
@@ -316,7 +318,6 @@ export const sendEmailToLead = async (
       message:
         error.message || "An error occurred while sending email to lead.",
     });
-    
   }
 };
 
@@ -392,6 +393,7 @@ const ALLOWED_STATUSES: LeadStatus[] = [
   "sold",
   "most_interested",
   "to_call",
+  "not_interested",
 ];
 export const updateLeadStatus = async (
   req: Request,
@@ -416,7 +418,9 @@ export const updateLeadStatus = async (
     if (!ALLOWED_STATUSES.includes(status)) {
       return res.status(400).json({
         success: false,
-        message: `Invalid status. Allowed statuses: ${ALLOWED_STATUSES.join(", ")}`,
+        message: `Invalid status. Allowed statuses: ${ALLOWED_STATUSES.join(
+          ", "
+        )}`,
       });
     }
 

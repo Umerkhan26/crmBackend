@@ -894,25 +894,68 @@ function fillTemplate(template: string, data: any): string {
  * Get lead status counts + leads grouped by status
  * @param assigneeId optional filter by specific user
  */
+// export const getLeadStatusSummary = async (assigneeId?: number) => {
+//   try {
+//     const statuses = ["pending", "sold", "most_interested", "to_call"]; // Default statuses
+//     const statusCounts: Record<string, number> = {};
+//     const leadsByStatus: Record<string, any[]> = {};
+
+//     // Loop over each status and fetch only those leads
+//     for (const status of statuses) {
+//       // Build WHERE clause for filtering JSON array of assignees
+//       let whereCondition;
+//       if (assigneeId) {
+//         whereCondition = Sequelize.literal(
+//           `JSON_SEARCH(JSON_EXTRACT(assignees, '$[*].status'), 'one', '${status}') IS NOT NULL
+//            AND JSON_SEARCH(JSON_EXTRACT(assignees, '$[*].userId'), 'one', '${assigneeId}') IS NOT NULL`
+//         );
+//       } else {
+//         whereCondition = Sequelize.literal(
+//           `JSON_SEARCH(JSON_EXTRACT(assignees, '$[*].status'), 'one', '${status}') IS NOT NULL`
+//         );
+//       }
+
+//       const leads = await Lead.findAll({
+//         where: whereCondition,
+//         order: [["createdAt", "DESC"]],
+//       });
+
+//       statusCounts[status] = leads.length;
+//       leadsByStatus[status] = leads;
+//     }
+
+//     return { statusCounts, leadsByStatus };
+//   } catch (error: any) {
+//     throw new Error(`Error getting lead status summary: ${error.message}`);
+//   }
+// };
+
 export const getLeadStatusSummary = async (assigneeId?: number) => {
   try {
-    const statuses = ["pending", "sold", "most_interested", "to_call"]; // Default statuses
+    const statuses = [
+      "pending",
+      "sold",
+      "most_interested",
+      "to_call",
+      "not_interested",
+    ];
     const statusCounts: Record<string, number> = {};
     const leadsByStatus: Record<string, any[]> = {};
 
-    // Loop over each status and fetch only those leads
     for (const status of statuses) {
-      // Build WHERE clause for filtering JSON array of assignees
       let whereCondition;
+
       if (assigneeId) {
-        whereCondition = Sequelize.literal(
-          `JSON_SEARCH(JSON_EXTRACT(assignees, '$[*].status'), 'one', '${status}') IS NOT NULL
-           AND JSON_SEARCH(JSON_EXTRACT(assignees, '$[*].userId'), 'one', '${assigneeId}') IS NOT NULL`
-        );
+        // ✅ PROVEN WORKING: Simple JSON_CONTAINS approach
+        whereCondition = Sequelize.literal(`
+          JSON_CONTAINS(assignees, JSON_OBJECT('userId', ${assigneeId}))
+          AND JSON_CONTAINS(assignees, JSON_OBJECT('status', '${status}'))
+        `);
       } else {
-        whereCondition = Sequelize.literal(
-          `JSON_SEARCH(JSON_EXTRACT(assignees, '$[*].status'), 'one', '${status}') IS NOT NULL`
-        );
+        // For no assigneeId filter
+        whereCondition = Sequelize.literal(`
+          JSON_CONTAINS(assignees, JSON_OBJECT('status', '${status}'))
+        `);
       }
 
       const leads = await Lead.findAll({
@@ -926,9 +969,11 @@ export const getLeadStatusSummary = async (assigneeId?: number) => {
 
     return { statusCounts, leadsByStatus };
   } catch (error: any) {
+    console.error("Error in getLeadStatusSummary:", error);
     throw new Error(`Error getting lead status summary: ${error.message}`);
   }
 };
+
 const ALLOWED_STATUSES: LeadStatus[] = [
   "pending",
   "sold",

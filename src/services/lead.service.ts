@@ -326,7 +326,6 @@ export const assignLeadToUsers = async (
   }
 };
 
-
 // export const getAllLeadsWithAssignee = async () => {
 //   try {
 //     const leads = await Lead.findAll({
@@ -384,10 +383,6 @@ export const assignLeadToUsers = async (
 //     throw new Error(`Error fetching leads with assignees: ${error.message}`);
 //   }
 // };
-
-
-
-
 
 export const getAllLeadsWithAssignee = async () => {
   try {
@@ -459,8 +454,6 @@ export const getAllLeadsWithAssignee = async () => {
   }
 };
 
-
-
 /**
  * Get counts of assigned and unassigned leads
  */
@@ -499,9 +492,6 @@ export const getAssignmentCounts = async () => {
 //     throw new Error(`Error fetching unassigned leads: ${error.message}`);
 //   }
 // };
-
-
-
 
 export const getUnassignedLeads = async () => {
   try {
@@ -553,7 +543,6 @@ export const getUnassignedLeads = async () => {
     throw new Error(`Error fetching unassigned leads: ${error.message}`);
   }
 };
-
 
 /**
  * Get all leads assigned to a specific user
@@ -619,23 +608,6 @@ export const getUnassignedLeads = async () => {
 //     );
 //   }
 // };
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 // ✅ Corrected function
 // export const sendEmailToLeadUsingTemplate = async (
@@ -723,12 +695,6 @@ export const getUnassignedLeads = async () => {
 //   return { message: "Email sent successfully", to: email };
 // };
 
-
-
-
-
-
-
 export const getLeadsByAssigneeId = async (
   assigneeId: number,
   filterType: FilterType = "daily",
@@ -799,8 +765,6 @@ export const getLeadsByAssigneeId = async (
     );
   }
 };
-
-
 
 export const sendEmailToLeadUsingTemplate = async (
   leadId: number,
@@ -970,6 +934,7 @@ const ALLOWED_STATUSES: LeadStatus[] = [
   "sold",
   "most_interested",
   "to_call",
+  "not_interested",
 ];
 
 export type LeadStatus =
@@ -1046,7 +1011,6 @@ export type LeadStatus =
 //   return lead;
 // };
 
-
 export const updateLeadStatusForUser = async (
   leadId: number,
   userId: number,
@@ -1088,9 +1052,7 @@ export const updateLeadStatusForUser = async (
   }
 
   // ✅ Normalize userId comparison
-  const index = assignees.findIndex(
-    (a) => Number(a.userId) === Number(userId)
-  );
+  const index = assignees.findIndex((a) => Number(a.userId) === Number(userId));
 
   if (index === -1) {
     throw new Error(`User ID ${userId} is not assigned to lead ID ${leadId}`);

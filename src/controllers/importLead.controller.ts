@@ -2,16 +2,26 @@
 import { Request, Response } from "express";
 import { importLeadsFromFile } from "../services/importLead.service";
 
-export const importLeads = async (req: Request, res: Response):Promise<any> => {
+export const importLeads = async (
+  req: Request,
+  res: Response
+): Promise<any> => {
   try {
-    // file comes from multer upload middleware
     const file = req.file;
+    const mappedData = req.body.mappedData
+      ? JSON.parse(req.body.mappedData)
+      : undefined;
 
-    if (!file) {
-      return res.status(400).json({ message: "No file uploaded" });
+    if (!file && !mappedData) {
+      return res
+        .status(400)
+        .json({ message: "No file uploaded and no mappedData provided" });
     }
 
-    const result = await importLeadsFromFile(file.buffer);
+    const result = await importLeadsFromFile(
+      file ? file.buffer : Buffer.from(""),
+      mappedData
+    );
 
     res.status(200).json({
       message: "Lead import completed",

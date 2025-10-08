@@ -326,21 +326,47 @@ export const assignLeadToUsers = async (
   }
 };
 
+
+
 interface GetAllLeadsParams {
   page?: number;
   limit?: number;
+  search?: string;
 }
 
 export const getAllLeadsWithAssignee = async ({
   page = 1,
   limit = 10,
+  search = "",
 }: GetAllLeadsParams) => {
   try {
     const { offset, limit: paginationLimit } = getPagination({ page, limit });
 
-    // Fetch leads where assignees exist (not empty)
+    // Base condition: leads with at least one assignee
+    const whereCondition: any = Sequelize.literal("JSON_LENGTH(assignees) > 0");
+
+    // Add search filter if provided
+    let searchCondition: any = {};
+    if (search.trim()) {
+      searchCondition = {
+        [Op.or]: [
+          { name: { [Op.like]: `%${search}%` } },
+          { email: { [Op.like]: `%${search}%` } },
+          { phone: { [Op.like]: `%${search}%` } },
+          { source: { [Op.like]: `%${search}%` } },
+          { city: { [Op.like]: `%${search}%` } },
+        ],
+      };
+    }
+
+    // Combine both conditions (use AND if search applied)
+    const combinedWhere = search.trim()
+      ? { [Op.and]: [whereCondition, searchCondition] }
+      : whereCondition;
+
+    // Fetch leads with pagination
     const leads = await Lead.findAndCountAll({
-      where: Sequelize.literal("JSON_LENGTH(assignees) > 0"),
+      where: combinedWhere,
       order: [["createdAt", "DESC"]],
       offset,
       limit: paginationLimit,
@@ -351,7 +377,7 @@ export const getAllLeadsWithAssignee = async ({
       leads.rows.map(async (lead: any) => {
         let assigneesRaw: any[] = [];
 
-        // Robust parsing of assignees field
+        // Safe parse of assignees field
         if (lead.assignees) {
           if (typeof lead.assignees === "string") {
             try {
@@ -359,7 +385,7 @@ export const getAllLeadsWithAssignee = async ({
               assigneesRaw = Array.isArray(temp) ? temp : [temp];
             } catch (err) {
               console.warn(
-                `⚠️ Failed to parse assignees string for lead ${lead.id}, fallback to empty array`,
+                `⚠️ Failed to parse assignees string for lead ${lead.id}:`,
                 err
               );
               assigneesRaw = [];
@@ -367,15 +393,13 @@ export const getAllLeadsWithAssignee = async ({
           } else if (Array.isArray(lead.assignees)) {
             assigneesRaw = lead.assignees;
           } else if (typeof lead.assignees === "object") {
-            assigneesRaw = [lead.assignees]; // single object -> wrap in array
-          } else {
-            assigneesRaw = [];
+            assigneesRaw = [lead.assignees];
           }
         }
 
-        // Extract user IDs from assignees
+        // Extract user IDs
         const userIds = assigneesRaw
-          .map((a) => a.userId ?? a) // support both {userId, status} and plain IDs
+          .map((a) => a.userId ?? a)
           .filter((id: any) => typeof id === "number");
 
         let assigneesData: any[] = [];
@@ -392,7 +416,7 @@ export const getAllLeadsWithAssignee = async ({
             );
             return {
               ...user.toJSON(),
-              status: assignment?.status || "pending", // fallback status
+              status: assignment?.status || "pending",
             };
           });
         }
@@ -404,7 +428,7 @@ export const getAllLeadsWithAssignee = async ({
       })
     );
 
-    // Format and return paginated response
+    // Paginate and return
     const response = getPagingData(
       { count: leads.count, rows: enrichedLeads },
       page,
@@ -416,6 +440,7 @@ export const getAllLeadsWithAssignee = async ({
     throw new Error(`Error fetching leads with assignees: ${error.message}`);
   }
 };
+
 
 /**
  * Get counts of assigned and unassigned leads

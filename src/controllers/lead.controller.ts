@@ -178,12 +178,13 @@ export const assignUserToLead = async (
 
 export const getAllLeadsWithAssignee = async (req: Request, res: Response): Promise<any> => {
   try {
-    // Extract pagination params from query (defaults: page=1, limit=10)
+    // Extract pagination and search params from query (defaults: page=1, limit=10)
     const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
     const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 10;
+    const search = req.query.search ? (req.query.search as string).trim() : "";
 
-    // Fetch paginated leads with assignees
-    const leads = await LeadService.getAllLeadsWithAssignee({ page, limit });
+    // Fetch paginated leads with assignees and optional search
+    const leads = await LeadService.getAllLeadsWithAssignee({ page, limit, search });
 
     if (!leads || leads.data.length === 0) {
       return res.status(404).json({
@@ -204,6 +205,7 @@ export const getAllLeadsWithAssignee = async (req: Request, res: Response): Prom
     });
   }
 };
+
 
 
 export const getLeadsByAssigneeId = async (

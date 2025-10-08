@@ -176,35 +176,49 @@ export const assignUserToLead = async (
 
 
 
-export const getAllLeadsWithAssignee = async (req: Request, res: Response): Promise<any> => {
+export const getAllLeadsWithAssignee = async (
+  req: Request,
+  res: Response
+): Promise<any> => {
   try {
-    // Extract pagination and search params from query (defaults: page=1, limit=10)
+    // Extract pagination and search params from query
     const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
     const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 10;
     const search = req.query.search ? (req.query.search as string).trim() : "";
 
-    // Fetch paginated leads with assignees and optional search
-    const leads = await LeadService.getAllLeadsWithAssignee({ page, limit, search });
+    // Fetch paginated + filtered leads from service
+    const leads = await LeadService.getAllLeadsWithAssignee({
+      page,
+      limit,
+      search,
+    });
 
-    if (!leads || leads.data.length === 0) {
-      return res.status(404).json({
-        success: false,
+    // ✅ Return empty list (not 404) if no data found
+    if (!leads || !leads.data || leads.data.length === 0) {
+      return res.status(200).json({
+        success: true,
         message: "No leads found",
+        data: [],
+        totalItems: 0,
+        totalPages: 0,
+        currentPage: page,
       });
     }
 
-    res.status(200).json({
+    // ✅ Successful response
+    return res.status(200).json({
       success: true,
       ...leads, // includes totalItems, data, totalPages, currentPage
     });
   } catch (error: any) {
-    console.error("Error in getAllLeadsWithAssignee controller:", error);
-    res.status(500).json({
+    console.error("❌ Error in getAllLeadsWithAssignee controller:", error);
+    return res.status(500).json({
       success: false,
-      message: error.message,
+      message: error.message || "Internal server error",
     });
   }
 };
+
 
 
 
@@ -259,27 +273,42 @@ export const getUnassignedLeads = async (req: Request, res: Response): Promise<a
     // Extract pagination and search params from query
     const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
     const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 10;
-    const searchTerm = req.query.search ? String(req.query.search) : "";
+    const searchTerm = req.query.search ? (req.query.search as string).trim() : "";
 
-    // Call service with pagination + search
-    const leads = await LeadService.getUnassignedLeads({ page, limit, searchTerm });
+    // Call service with pagination + search term
+    const leads = await LeadService.getUnassignedLeads({
+      page,
+      limit,
+      searchTerm,
+    });
 
-    if (!leads || leads.data.length === 0) {
+    // If no results found
+    if (!leads || !leads.data || leads.data.length === 0) {
       return res.status(404).json({
         success: false,
         message: "No unassigned leads found",
+        data: [],
       });
     }
 
+    // Success response
     res.status(200).json({
       success: true,
-      ...leads, // includes totalItems, data, totalPages, currentPage
+      totalItems: leads.totalItems,
+      totalPages: leads.totalPages,
+      currentPage: leads.currentPage,
+      data: leads.data,
     });
   } catch (error: any) {
-    console.error("Error in getUnassignedLeads controller:", error);
-    res.status(500).json({ success: false, message: error.message });
+    console.error("❌ Error in getUnassignedLeads controller:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch unassigned leads",
+      error: error.message,
+    });
   }
 };
+
 // POST /leads/:leadId/send-email
 export const sendEmailToLead = async (
   req: Request,

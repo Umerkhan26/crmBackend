@@ -342,52 +342,50 @@ export const getAllLeadsWithAssignee = async ({
   try {
     const { offset, limit: paginationLimit } = getPagination({ page, limit });
 
-    // Base condition: leads with at least one assignee
-    const whereCondition: any = Sequelize.literal("JSON_LENGTH(assignees) > 0");
+    // Base condition: leads that have at least one assignee
+    const whereConditions: any = {
+      [Op.and]: [Sequelize.literal("JSON_LENGTH(assignees) > 0")],
+    };
 
-    // Add search filter if provided
-    let searchCondition: any = {};
-    if (search.trim()) {
-      searchCondition = {
-        [Op.or]: [
-          { name: { [Op.like]: `%${search}%` } },
-          { email: { [Op.like]: `%${search}%` } },
-          { phone: { [Op.like]: `%${search}%` } },
-          { source: { [Op.like]: `%${search}%` } },
-          { city: { [Op.like]: `%${search}%` } },
-        ],
-      };
+    // ✅ Dynamic search logic
+    if (search && search.trim() !== "") {
+      const s = `%${search.trim()}%`;
+
+      // 1️⃣ Add direct field searches (if exist)
+      const searchFilters: any[] = [
+        { campaignName: { [Op.like]: s } },
+      ];
+
+      // 2️⃣ Add dynamic JSON key search across `leadData`
+      // This uses MySQL JSON_SEARCH for all keys and values
+      // Works dynamically regardless of which fields are inside leadData
+      searchFilters.push(
+        Sequelize.literal(`JSON_SEARCH(leadData, 'all', '${search.trim()}') IS NOT NULL`)
+      );
+
+      whereConditions[Op.or] = searchFilters;
     }
 
-    // Combine both conditions (use AND if search applied)
-    const combinedWhere = search.trim()
-      ? { [Op.and]: [whereCondition, searchCondition] }
-      : whereCondition;
-
-    // Fetch leads with pagination
+    // Fetch paginated leads
     const leads = await Lead.findAndCountAll({
-      where: combinedWhere,
+      where: whereConditions,
       order: [["createdAt", "DESC"]],
       offset,
       limit: paginationLimit,
     });
 
-    // Enrich each lead with assignee details
+    // Enrich each lead with assignee user details
     const enrichedLeads = await Promise.all(
       leads.rows.map(async (lead: any) => {
         let assigneesRaw: any[] = [];
 
-        // Safe parse of assignees field
+        // Normalize assignees
         if (lead.assignees) {
           if (typeof lead.assignees === "string") {
             try {
               const temp = JSON.parse(lead.assignees);
               assigneesRaw = Array.isArray(temp) ? temp : [temp];
-            } catch (err) {
-              console.warn(
-                `⚠️ Failed to parse assignees string for lead ${lead.id}:`,
-                err
-              );
+            } catch {
               assigneesRaw = [];
             }
           } else if (Array.isArray(lead.assignees)) {
@@ -428,7 +426,7 @@ export const getAllLeadsWithAssignee = async ({
       })
     );
 
-    // Paginate and return
+    // Return paginated response
     const response = getPagingData(
       { count: leads.count, rows: enrichedLeads },
       page,
@@ -440,6 +438,7 @@ export const getAllLeadsWithAssignee = async ({
     throw new Error(`Error fetching leads with assignees: ${error.message}`);
   }
 };
+
 
 
 /**
@@ -471,6 +470,14 @@ interface GetUnassignedLeadsParams {
   searchTerm?: string;
 }
 
+
+
+interface GetUnassignedLeadsParams {
+  page?: number;
+  limit?: number;
+  searchTerm?: string;
+}
+
 export const getUnassignedLeads = async ({
   page = 1,
   limit = 10,
@@ -479,19 +486,25 @@ export const getUnassignedLeads = async ({
   try {
     const { offset, limit: paginationLimit } = getPagination({ page, limit });
 
-    // Build search filter (optional)
-    const searchCondition = searchTerm
-      ? {
-          [Op.or]: [
-            { name: { [Op.like]: `%${searchTerm}%` } },
-            { email: { [Op.like]: `%${searchTerm}%` } },
-            { phone: { [Op.like]: `%${searchTerm}%` } },
-            { company: { [Op.like]: `%${searchTerm}%` } },
-          ],
-        }
-      : {};
+    // 🔍 Build dynamic search filter for JSON fields (leadData)
+    let searchCondition: any = {};
 
-    // Combine unassigned leads condition with search
+    if (searchTerm) {
+      // This assumes leadData is stored as JSON — we’ll check for matching substrings in any key
+      // Works on MySQL and PostgreSQL
+      searchCondition = {
+        [Op.or]: [
+          // Matches any key-value pair in leadData containing the search term
+          Sequelize.literal(
+            `JSON_SEARCH(JSON_EXTRACT(leadData, '$'), 'all', '%${searchTerm}%') IS NOT NULL`
+          ),
+          // Also allow partial match on campaignName for flexibility
+          { campaignName: { [Op.like]: `%${searchTerm}%` } },
+        ],
+      };
+    }
+
+    // Combine unassigned condition + search
     const whereCondition = {
       [Op.and]: [
         Sequelize.literal("assignees IS NULL OR JSON_LENGTH(assignees) = 0"),
@@ -513,21 +526,19 @@ export const getUnassignedLeads = async ({
       limit: paginationLimit,
     });
 
-    // Normalize assignees for each lead
+    // ✅ Normalize assignees safely
     const normalizedLeads = unassignedLeads.rows.map((lead: any) => {
       let assigneesRaw: any[] = [];
 
       if (lead.assignees) {
         if (typeof lead.assignees === "string") {
           try {
-            const temp = JSON.parse(lead.assignees);
-            assigneesRaw = Array.isArray(temp) ? temp : [temp];
+            const parsed = JSON.parse(lead.assignees);
+            assigneesRaw = Array.isArray(parsed) ? parsed : [parsed];
           } catch (err) {
             console.warn(
-              `⚠️ Failed to parse assignees for lead ${lead.id}, fallback to empty array`,
-              err
+              `⚠️ Failed to parse assignees for lead ${lead.id}, fallback to []`
             );
-            assigneesRaw = [];
           }
         } else if (Array.isArray(lead.assignees)) {
           assigneesRaw = lead.assignees;
@@ -542,7 +553,7 @@ export const getUnassignedLeads = async ({
       };
     });
 
-    // Prepare paginated response
+    // ✅ Build and return paginated response
     const response = getPagingData(
       { count: unassignedLeads.count, rows: normalizedLeads },
       page,

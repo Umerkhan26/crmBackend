@@ -161,17 +161,36 @@ export const getAllLeads = async ({
   }
 };
 
-export const getLeadsByCampaign = async (
-  campaignName: string
-): Promise<any[]> => {
-  try {
-    const leads = await Lead.findAll({ where: { campaignName } });
 
-    // 🔗 Enrich assignees with user details (same as in getAllLeads)
-    const rowsWithAssignees = await Promise.all(
-      leads.map(async (lead) => {
+
+interface GetLeadsByCampaignParams {
+  campaignName: string;
+  page?: number;
+  limit?: number;
+}
+
+export const getLeadsByCampaign = async ({
+  campaignName,
+  page = 1,
+  limit = 10,
+}: GetLeadsByCampaignParams): Promise<any> => {
+  try {
+    const { offset, limit: paginationLimit } = getPagination({ page, limit });
+
+    // 🧠 Fetch paginated leads for the given campaign
+    const leads = await Lead.findAndCountAll({
+      where: { campaignName },
+      order: [["createdAt", "DESC"]],
+      offset,
+      limit: paginationLimit,
+    });
+
+    // 🔗 Enrich each lead with assignee user details
+    const enrichedLeads = await Promise.all(
+      leads.rows.map(async (lead) => {
         let assigneesRaw: AssigneeWithStatus[] = [];
 
+        // Normalize `assignees`
         if (typeof lead.assignees === "string") {
           try {
             assigneesRaw = JSON.parse(lead.assignees) as AssigneeWithStatus[];
@@ -180,8 +199,11 @@ export const getLeadsByCampaign = async (
           }
         } else if (Array.isArray(lead.assignees)) {
           assigneesRaw = lead.assignees;
+        } else if (typeof lead.assignees === "object" && lead.assignees !== null) {
+          assigneesRaw = [lead.assignees];
         }
 
+        // Extract valid user IDs
         const userIds = assigneesRaw
           .map((a) => a.userId)
           .filter((id): id is number => typeof id === "number");
@@ -207,7 +229,14 @@ export const getLeadsByCampaign = async (
       })
     );
 
-    return rowsWithAssignees;
+    // 📦 Format and return paginated data
+    const response = getPagingData(
+      { count: leads.count, rows: enrichedLeads },
+      page,
+      limit
+    );
+
+    return response;
   } catch (error: any) {
     throw new Error(
       `Error fetching leads for campaign ${campaignName}: ${error.message}`

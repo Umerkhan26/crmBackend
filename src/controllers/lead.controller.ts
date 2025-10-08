@@ -66,25 +66,45 @@ export const getAllLeads = async (
 };
 
 // Get Leads by Campaign
-export const getLeadsByCampaign = async (
-  req: Request,
-  res: Response
-): Promise<any> => {
+export const getLeadsByCampaign = async (req: Request, res: Response): Promise<any> => {
   try {
     const { campaignName } = req.params;
-    const leads = await LeadService.getLeadsByCampaign(campaignName);
+    const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
+    const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 10;
 
-    if (leads.length === 0) {
-      return res
-        .status(404)
-        .json({ message: "No leads found for this campaign" });
+    // Call service with pagination
+    const leads = await LeadService.getLeadsByCampaign({
+      campaignName,
+      page,
+      limit,
+    });
+
+    // ✅ Return empty (not 404) if no leads found
+    if (!leads || !leads.data || leads.data.length === 0) {
+      return res.status(200).json({
+        success: true,
+        message: "No leads found for this campaign",
+        data: [],
+        totalItems: 0,
+        totalPages: 0,
+        currentPage: page,
+      });
     }
 
-    return res.status(200).json(leads);
+    // ✅ Success response
+    return res.status(200).json({
+      success: true,
+      ...leads, // includes totalItems, data, totalPages, currentPage
+    });
   } catch (error: any) {
-    return res.status(500).json({ message: error.message });
+    console.error("❌ Error in getLeadsByCampaign controller:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Internal server error",
+    });
   }
 };
+
 
 // Update Lead
 export const updateLead = async (req: Request, res: Response): Promise<any> => {
@@ -176,48 +196,7 @@ export const assignUserToLead = async (
 
 
 
-export const getAllLeadsWithAssignee = async (
-  req: Request,
-  res: Response
-): Promise<any> => {
-  try {
-    // Extract pagination and search params from query
-    const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
-    const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 10;
-    const search = req.query.search ? (req.query.search as string).trim() : "";
-
-    // Fetch paginated + filtered leads from service
-    const leads = await LeadService.getAllLeadsWithAssignee({
-      page,
-      limit,
-      search,
-    });
-
-    // ✅ Return empty list (not 404) if no data found
-    if (!leads || !leads.data || leads.data.length === 0) {
-      return res.status(200).json({
-        success: true,
-        message: "No leads found",
-        data: [],
-        totalItems: 0,
-        totalPages: 0,
-        currentPage: page,
-      });
-    }
-
-    // ✅ Successful response
-    return res.status(200).json({
-      success: true,
-      ...leads, // includes totalItems, data, totalPages, currentPage
-    });
-  } catch (error: any) {
-    console.error("❌ Error in getAllLeadsWithAssignee controller:", error);
-    return res.status(500).json({
-      success: false,
-      message: error.message || "Internal server error",
-    });
-  }
-};
+ 
 
 
 

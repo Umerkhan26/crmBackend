@@ -128,26 +128,6 @@ export const updateCampaign = async (
   }
 };
 
-// ✅ Delete Campaign (with userId for activity/notification)
-// export const deleteCampaign = async (
-//   req: Request,
-//   res: Response
-// ): Promise<any> => {
-//   try {
-//     const { id } = req.params;
-//     const userId = (req as any).user?.id;
-
-//     const success = await CampaignService.deleteCampaign(Number(id), userId);
-
-//     if (!success) {
-//       return res.status(404).json({ message: "Field not found in campaign" });
-//     }
-
-//     return res.status(200).json({ message: "Field deleted successfully" });
-//   } catch (error: any) {
-//     return res.status(500).json({ message: error.message });
-//   }
-// };
 
 
 // ✅ Delete Campaign (with userId for activity/notification)

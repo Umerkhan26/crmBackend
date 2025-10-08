@@ -326,73 +326,29 @@ export const assignLeadToUsers = async (
   }
 };
 
-// export const getAllLeadsWithAssignee = async () => {
-//   try {
-//     const leads = await Lead.findAll({
-//       where: Sequelize.literal("JSON_LENGTH(assignees) > 0"),
-//       order: [["createdAt", "DESC"]],
-//     });
+interface GetAllLeadsParams {
+  page?: number;
+  limit?: number;
+}
 
-//     const enrichedLeads = await Promise.all(
-//       leads.map(async (lead: any) => {
-//         let assigneesRaw: any[] = [];
-
-//         // Parse assignees field (could be stringified JSON or array)
-//         if (typeof lead.assignees === "string") {
-//           try {
-//             assigneesRaw = JSON.parse(lead.assignees);
-//           } catch {
-//             assigneesRaw = [];
-//           }
-//         } else if (Array.isArray(lead.assignees)) {
-//           assigneesRaw = lead.assignees;
-//         }
-
-//         const userIds = assigneesRaw
-//           .map((a) => a.userId ?? a) // support [{userId, status}] or [id]
-//           .filter((id: any) => typeof id === "number");
-
-//         let assigneesData: any[] = [];
-
-//         if (userIds.length > 0) {
-//           const users = await User.findAll({
-//             where: { id: userIds },
-//             attributes: ["id", "firstname", "lastname", "email"],
-//           });
-
-//           assigneesData = users.map((user) => {
-//             const assignment = assigneesRaw.find(
-//               (a) => a.userId === user.id || a === user.id
-//             );
-//             return {
-//               ...user.toJSON(),
-//               status: assignment?.status || "pending", // fallback if no status
-//             };
-//           });
-//         }
-
-//         return {
-//           ...lead.toJSON(),
-//           assignees: assigneesData,
-//         };
-//       })
-//     );
-
-//     return enrichedLeads;
-//   } catch (error: any) {
-//     throw new Error(`Error fetching leads with assignees: ${error.message}`);
-//   }
-// };
-
-export const getAllLeadsWithAssignee = async () => {
+export const getAllLeadsWithAssignee = async ({
+  page = 1,
+  limit = 10,
+}: GetAllLeadsParams) => {
   try {
-    const leads = await Lead.findAll({
+    const { offset, limit: paginationLimit } = getPagination({ page, limit });
+
+    // Fetch leads where assignees exist (not empty)
+    const leads = await Lead.findAndCountAll({
       where: Sequelize.literal("JSON_LENGTH(assignees) > 0"),
       order: [["createdAt", "DESC"]],
+      offset,
+      limit: paginationLimit,
     });
 
+    // Enrich each lead with assignee details
     const enrichedLeads = await Promise.all(
-      leads.map(async (lead: any) => {
+      leads.rows.map(async (lead: any) => {
         let assigneesRaw: any[] = [];
 
         // Robust parsing of assignees field
@@ -417,9 +373,9 @@ export const getAllLeadsWithAssignee = async () => {
           }
         }
 
-        // Extract user IDs
+        // Extract user IDs from assignees
         const userIds = assigneesRaw
-          .map((a) => a.userId ?? a) // support [{userId, status}] or [id]
+          .map((a) => a.userId ?? a) // support both {userId, status} and plain IDs
           .filter((id: any) => typeof id === "number");
 
         let assigneesData: any[] = [];
@@ -436,7 +392,7 @@ export const getAllLeadsWithAssignee = async () => {
             );
             return {
               ...user.toJSON(),
-              status: assignment?.status || "pending", // fallback if no status
+              status: assignment?.status || "pending", // fallback status
             };
           });
         }
@@ -448,7 +404,14 @@ export const getAllLeadsWithAssignee = async () => {
       })
     );
 
-    return enrichedLeads;
+    // Format and return paginated response
+    const response = getPagingData(
+      { count: leads.count, rows: enrichedLeads },
+      page,
+      limit
+    );
+
+    return response;
   } catch (error: any) {
     throw new Error(`Error fetching leads with assignees: ${error.message}`);
   }
@@ -472,34 +435,48 @@ export const getAssignmentCounts = async () => {
   };
 };
 
-/**
- * Get all unassigned leads
- */
-// export const getUnassignedLeads = async () => {
-//   try {
-//     const unassignedLeads = await Lead.findAll({
-//       where: Sequelize.literal("JSON_LENGTH(assignees) = 0"), // ✅ No assignments
-//       include: [
-//         {
-//           model: User,
-//           attributes: ["id", "firstname", "lastname", "email"],
-//         },
-//       ],
-//     });
+interface GetUnassignedLeadsParams {
+  page?: number;
+  limit?: number;
+}
 
-//     return unassignedLeads;
-//   } catch (error: any) {
-//     throw new Error(`Error fetching unassigned leads: ${error.message}`);
-//   }
-// };
+interface GetUnassignedLeadsParams {
+  page?: number;
+  limit?: number;
+  searchTerm?: string;
+}
 
-export const getUnassignedLeads = async () => {
+export const getUnassignedLeads = async ({
+  page = 1,
+  limit = 10,
+  searchTerm = "",
+}: GetUnassignedLeadsParams) => {
   try {
-    // Fetch leads where assignees is empty or null
-    const unassignedLeads = await Lead.findAll({
-      where: Sequelize.literal(
-        "assignees IS NULL OR JSON_LENGTH(assignees) = 0"
-      ),
+    const { offset, limit: paginationLimit } = getPagination({ page, limit });
+
+    // Build search filter (optional)
+    const searchCondition = searchTerm
+      ? {
+          [Op.or]: [
+            { name: { [Op.like]: `%${searchTerm}%` } },
+            { email: { [Op.like]: `%${searchTerm}%` } },
+            { phone: { [Op.like]: `%${searchTerm}%` } },
+            { company: { [Op.like]: `%${searchTerm}%` } },
+          ],
+        }
+      : {};
+
+    // Combine unassigned leads condition with search
+    const whereCondition = {
+      [Op.and]: [
+        Sequelize.literal("assignees IS NULL OR JSON_LENGTH(assignees) = 0"),
+        searchCondition,
+      ],
+    };
+
+    // Fetch paginated + filtered leads
+    const unassignedLeads = await Lead.findAndCountAll({
+      where: whereCondition,
       include: [
         {
           model: User,
@@ -507,10 +484,12 @@ export const getUnassignedLeads = async () => {
         },
       ],
       order: [["createdAt", "DESC"]],
+      offset,
+      limit: paginationLimit,
     });
 
     // Normalize assignees for each lead
-    const normalizedLeads = unassignedLeads.map((lead: any) => {
+    const normalizedLeads = unassignedLeads.rows.map((lead: any) => {
       let assigneesRaw: any[] = [];
 
       if (lead.assignees) {
@@ -528,7 +507,7 @@ export const getUnassignedLeads = async () => {
         } else if (Array.isArray(lead.assignees)) {
           assigneesRaw = lead.assignees;
         } else if (typeof lead.assignees === "object") {
-          assigneesRaw = [lead.assignees]; // wrap single object
+          assigneesRaw = [lead.assignees];
         }
       }
 
@@ -538,162 +517,18 @@ export const getUnassignedLeads = async () => {
       };
     });
 
-    return normalizedLeads;
+    // Prepare paginated response
+    const response = getPagingData(
+      { count: unassignedLeads.count, rows: normalizedLeads },
+      page,
+      limit
+    );
+
+    return response;
   } catch (error: any) {
     throw new Error(`Error fetching unassigned leads: ${error.message}`);
   }
 };
-
-/**
- * Get all leads assigned to a specific user
- */
-
-// export const getLeadsByAssigneeId = async (
-//   assigneeId: number,
-//   filterType: FilterType = "daily",
-//   startDate?: string,
-//   endDate?: string,
-//   page: number = 1,
-//   limit: number = 10
-// ) => {
-//   try {
-//     const dateFilter = buildDateFilter(filterType, startDate, endDate);
-//     const { offset } = getPagination({ page, limit });
-//     const leads = await Lead.findAndCountAll({
-//       where: {
-//         ...dateFilter,
-//         [Op.and]: Sequelize.literal(
-//           `JSON_SEARCH(JSON_EXTRACT(assignees, '$[*].userId'), 'one', '${assigneeId}') IS NOT NULL`
-//         ),
-//       },
-//       attributes: [
-//         "id",
-//         "campaignName",
-//         "leadData",
-//         "assignees",
-//         "createdAt",
-//         "updatedAt",
-//       ],
-//       offset,
-//       limit,
-//     });
-//     // Map leads to include user-specific status
-//     const mappedLeads = leads.rows.map((lead) => {
-//       let assignees: AssigneeWithStatus[] = [];
-//       try {
-//         assignees = Array.isArray(lead.assignees)
-//           ? lead.assignees
-//           : typeof lead.assignees === "string"
-//           ? JSON.parse(lead.assignees)
-//           : [];
-//       } catch (error) {
-//         console.warn(`Failed to parse assignees for lead ${lead.id}:`, error);
-//         assignees = [];
-//       }
-//       const userAssignment = assignees.find(
-//         (a) => Number(a.userId) === assigneeId
-//       );
-//       return {
-//         ...lead.get(),
-//         status: userAssignment?.status || "pending",
-//       };
-//     });
-//     return {
-//       count: leads.count,
-//       rows: mappedLeads,
-//     };
-//   } catch (error: any) {
-//     throw new Error(
-//       `Error fetching leads for assignee ID ${assigneeId}: ${error.message}`
-//     );
-//   }
-// };
-
-// ✅ Corrected function
-// export const sendEmailToLeadUsingTemplate = async (
-//   leadId: number,
-//   templateKey: string,
-//   senderUserId: number
-// ) => {
-//    console.log("🔍 Fetching lead with ID:", leadId, "Type:", typeof leadId);
-
-//   const lead = await Lead.findByPk(leadId);
-//   if (!lead) {
-//     throw new Error("Lead not found");
-//   }
-
-//   let leadData;
-//   if (typeof lead.leadData === "string") {
-//     try {
-//       leadData = JSON.parse(lead.leadData);
-//     } catch (error: any) {
-//       throw new Error("Invalid leadData format");
-//     }
-//   } else {
-//     leadData = lead.leadData;
-//   }
-//   if (!lead) {
-//     console.log("❌ Lead not found in database");
-//     throw new Error("Lead not found");
-//   }
-//   console.log("📋 Lead data:", lead.leadData);
-//   const email = leadData?.email;
-//   if (!email) {
-//     throw new Error("Lead email not found in leadData");
-//   }
-
-//   const sender = await User.findByPk(senderUserId);
-//   const senderRole = String(sender?.role || "guest");
-
-//   const template = await EmailTemplate.findOne({
-//     where: { serviceName: templateKey },
-//   });
-
-//   if (!template) throw new Error("Email template not found");
-
-//   const filledSubject = fillTemplate(template.subjectTemplate, leadData);
-//   const filledBody = fillTemplate(template.bodyTemplate, leadData);
-
-//   const smtpRaw = await getSmtpConfig(senderUserId);
-//   const smtp = {
-//     host: smtpRaw.host || "",
-//     port: smtpRaw.port || 587,
-//     user: smtpRaw.user || "",
-//     pass: smtpRaw.pass || "",
-//   };
-
-//   if (!smtp.host || !smtp.user || !smtp.pass) {
-//     throw new Error("SMTP configuration is incomplete.");
-//   }
-
-//   await sendEmail({
-//     smtp,
-//     to: email,
-//     subject: filledSubject,
-//     body: filledBody,
-//   });
-
-//   await logEmailStatus({
-//     leadId,
-//     to: email,
-//     subject: filledSubject,
-//     body: filledBody,
-//     templateUsed: templateKey,
-//     sentBy: senderUserId,
-//     sentAt: new Date(),
-//     status: "sent",
-//   });
-
-//   // ✅ Log the activity here
-//   await logLeadActivity({
-//     leadId,
-//     action: "email_sent",
-//     performedBy: senderUserId,
-//     details: `Email sent using template "${templateKey}" to ${email}`,
-//   });
-
-//   return { message: "Email sent successfully", to: email };
-// };
 
 export const getLeadsByAssigneeId = async (
   assigneeId: number,
@@ -890,45 +725,7 @@ function fillTemplate(template: string, data: any): string {
   });
 }
 
-/**
- * Get lead status counts + leads grouped by status
- * @param assigneeId optional filter by specific user
- */
-// export const getLeadStatusSummary = async (assigneeId?: number) => {
-//   try {
-//     const statuses = ["pending", "sold", "most_interested", "to_call"]; // Default statuses
-//     const statusCounts: Record<string, number> = {};
-//     const leadsByStatus: Record<string, any[]> = {};
 
-//     // Loop over each status and fetch only those leads
-//     for (const status of statuses) {
-//       // Build WHERE clause for filtering JSON array of assignees
-//       let whereCondition;
-//       if (assigneeId) {
-//         whereCondition = Sequelize.literal(
-//           `JSON_SEARCH(JSON_EXTRACT(assignees, '$[*].status'), 'one', '${status}') IS NOT NULL
-//            AND JSON_SEARCH(JSON_EXTRACT(assignees, '$[*].userId'), 'one', '${assigneeId}') IS NOT NULL`
-//         );
-//       } else {
-//         whereCondition = Sequelize.literal(
-//           `JSON_SEARCH(JSON_EXTRACT(assignees, '$[*].status'), 'one', '${status}') IS NOT NULL`
-//         );
-//       }
-
-//       const leads = await Lead.findAll({
-//         where: whereCondition,
-//         order: [["createdAt", "DESC"]],
-//       });
-
-//       statusCounts[status] = leads.length;
-//       leadsByStatus[status] = leads;
-//     }
-
-//     return { statusCounts, leadsByStatus };
-//   } catch (error: any) {
-//     throw new Error(`Error getting lead status summary: ${error.message}`);
-//   }
-// };
 
 export const getLeadStatusSummary = async (assigneeId?: number) => {
   try {
@@ -991,70 +788,6 @@ export type LeadStatus =
   | "not_interested"
   | "do_not_call";
 
-// export const updateLeadStatusForUser = async (
-//   leadId: number,
-//   userId: number,
-//   newStatus: LeadStatus
-// ) => {
-//   console.log("🔹 Updating lead status request:", {
-//     leadId,
-//     userId,
-//     newStatus,
-//   });
-
-//   if (!ALLOWED_STATUSES.includes(newStatus)) {
-//     throw new Error(
-//       `Invalid status. Allowed statuses: ${ALLOWED_STATUSES.join(", ")}`
-//     );
-//   }
-
-//   const lead = await Lead.findByPk(leadId);
-//   if (!lead) {
-//     throw new Error(`Lead with ID ${leadId} not found`);
-//   }
-
-//   let assignees: AssigneeWithStatus[] = [];
-
-//   if (Array.isArray(lead.assignees)) {
-//     assignees = lead.assignees;
-//   } else if (typeof lead.assignees === "string") {
-//     try {
-//       assignees = JSON.parse(lead.assignees);
-//     } catch {
-//       console.warn(
-//         "⚠️ Failed to parse assignees JSON, resetting to empty array"
-//       );
-//       assignees = [];
-//     }
-//   }
-
-//   const index = assignees.findIndex((a) => a.userId === userId);
-//   if (index === -1) {
-//     throw new Error(`User ID ${userId} is not assigned to lead ID ${leadId}`);
-//   }
-
-//   const previousStatus = assignees[index].status;
-//   assignees[index].status = newStatus;
-
-//   await lead.update({ assignees });
-
-//   // ✅ Log the activity with error handling
-//   try {
-//     const logResult = await logLeadActivity({
-//       entityId: leadId,
-//       entityType: "lead",
-//       action: "status_updated",
-//       performedBy: userId,
-//       details: `Status changed from "${previousStatus}" to "${newStatus}"`,
-//     });
-
-//     console.log("✅ Lead status updated and activity logged:", logResult);
-//   } catch (err) {
-//     console.error("❌ Failed to log lead activity:", err);
-//   }
-
-//   return lead;
-// };
 
 export const updateLeadStatusForUser = async (
   leadId: number,

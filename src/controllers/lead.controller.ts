@@ -171,34 +171,40 @@ export const assignUserToLead = async (
   }
 };
 
-// export const getAllLeadsWithAssignee = async (req: Request, res: Response) => {
-//   try {
-//     const leads = await LeadService.getAllLeadsWithAssignee();
-//     res.status(200).json({ success: true, data: leads });
-//   } catch (error: any) {
-//     res.status(500).json({ success: false, message: error.message });
-//   }
-// };
 
-export const getAllLeadsWithAssignee = async (
-  req: Request,
-  res: Response
-): Promise<any> => {
+
+
+
+
+export const getAllLeadsWithAssignee = async (req: Request, res: Response): Promise<any> => {
   try {
-    const leads = await LeadService.getAllLeadsWithAssignee();
+    // Extract pagination params from query (defaults: page=1, limit=10)
+    const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
+    const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 10;
 
-    if (!leads || leads.length === 0) {
-      return res
-        .status(404)
-        .json({ success: false, message: "No leads found" });
+    // Fetch paginated leads with assignees
+    const leads = await LeadService.getAllLeadsWithAssignee({ page, limit });
+
+    if (!leads || leads.data.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "No leads found",
+      });
     }
 
-    res.status(200).json({ success: true, data: leads });
+    res.status(200).json({
+      success: true,
+      ...leads, // includes totalItems, data, totalPages, currentPage
+    });
   } catch (error: any) {
     console.error("Error in getAllLeadsWithAssignee controller:", error);
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
 };
+
 
 export const getLeadsByAssigneeId = async (
   req: Request,
@@ -245,35 +251,33 @@ export const getAssignmentStats = async (req: Request, res: Response) => {
   }
 };
 
-// export const getUnassignedLeads = async (req: Request, res: Response) => {
-//   try {
-//     const leads = await LeadService.getUnassignedLeads();
-//     res.status(200).json({ success: true, data: leads });
-//   } catch (error: any) {
-//     res.status(500).json({ success: false, message: error.message });
-//   }
-// };
 
-export const getUnassignedLeads = async (
-  req: Request,
-  res: Response
-): Promise<any> => {
+export const getUnassignedLeads = async (req: Request, res: Response): Promise<any> => {
   try {
-    const leads = await LeadService.getUnassignedLeads();
+    // Extract pagination and search params from query
+    const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
+    const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 10;
+    const searchTerm = req.query.search ? String(req.query.search) : "";
 
-    if (!leads || leads.length === 0) {
-      return res
-        .status(404)
-        .json({ success: false, message: "No unassigned leads found" });
+    // Call service with pagination + search
+    const leads = await LeadService.getUnassignedLeads({ page, limit, searchTerm });
+
+    if (!leads || leads.data.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "No unassigned leads found",
+      });
     }
 
-    res.status(200).json({ success: true, data: leads });
+    res.status(200).json({
+      success: true,
+      ...leads, // includes totalItems, data, totalPages, currentPage
+    });
   } catch (error: any) {
     console.error("Error in getUnassignedLeads controller:", error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
-
 // POST /leads/:leadId/send-email
 export const sendEmailToLead = async (
   req: Request,
@@ -318,6 +322,7 @@ export const sendEmailToLead = async (
       message:
         error.message || "An error occurred while sending email to lead.",
     });
+    
   }
 };
 
@@ -393,7 +398,6 @@ const ALLOWED_STATUSES: LeadStatus[] = [
   "sold",
   "most_interested",
   "to_call",
-  "not_interested",
 ];
 export const updateLeadStatus = async (
   req: Request,
@@ -418,9 +422,7 @@ export const updateLeadStatus = async (
     if (!ALLOWED_STATUSES.includes(status)) {
       return res.status(400).json({
         success: false,
-        message: `Invalid status. Allowed statuses: ${ALLOWED_STATUSES.join(
-          ", "
-        )}`,
+        message: `Invalid status. Allowed statuses: ${ALLOWED_STATUSES.join(", ")}`,
       });
     }
 

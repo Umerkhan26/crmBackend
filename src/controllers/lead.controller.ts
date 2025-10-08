@@ -196,7 +196,48 @@ export const assignUserToLead = async (
 
 
 
- 
+export const getAllLeadsWithAssignee = async (
+  req: Request,
+  res: Response
+): Promise<any> => {
+  try {
+    // Extract pagination and search params from query
+    const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
+    const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 10;
+    const search = req.query.search ? (req.query.search as string).trim() : "";
+
+    // Fetch paginated + filtered leads from service
+    const leads = await LeadService.getAllLeadsWithAssignee({
+      page,
+      limit,
+      search,
+    });
+
+    // ✅ Return empty list (not 404) if no data found
+    if (!leads || !leads.data || leads.data.length === 0) {
+      return res.status(200).json({
+        success: true,
+        message: "No leads found",
+        data: [],
+        totalItems: 0,
+        totalPages: 0,
+        currentPage: page,
+      });
+    }
+
+    // ✅ Successful response
+    return res.status(200).json({
+      success: true,
+      ...leads, // includes totalItems, data, totalPages, currentPage
+    });
+  } catch (error: any) {
+    console.error("❌ Error in getAllLeadsWithAssignee controller:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Internal server error",
+    });
+  }
+};
 
 
 

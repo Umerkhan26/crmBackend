@@ -150,10 +150,10 @@ LeadActivity.init(
 );
 
 // ✅ Define associations
-LeadActivity.belongsTo(User, {
-  foreignKey: "performedBy",
-  as: "performedByUser",
-});
+// LeadActivity.belongsTo(User, {
+//   foreignKey: "performedBy",
+//   as: "performedByUser",
+// });
 
 LeadActivity.belongsTo(Lead, {
   foreignKey: "entityId",

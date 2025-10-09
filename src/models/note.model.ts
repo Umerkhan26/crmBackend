@@ -148,6 +148,6 @@ Note.init(
 );
 
 // ✅ Association for creator
-Note.belongsTo(User, { foreignKey: "createdBy", as: "creator" });
+// Note.belongsTo(User, { foreignKey: "createdBy", as: "creator" });
 
 export default Note;

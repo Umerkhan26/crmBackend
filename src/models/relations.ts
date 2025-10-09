@@ -159,11 +159,11 @@ export const associateModels = () => {
     as: "notes",
   });
 
-  Note.belongsTo(Lead, {
-    foreignKey: "notebleId",
-    constraints: false,
-    as: "lead",
-  });
+  // Note.belongsTo(Lead, {
+  //   foreignKey: "notebleId",
+  //   constraints: false,
+  //   as: "lead",
+  // });
 
   // 📌 Polymorphic associations: Note ↔ ClientLead
   ClientLead.hasMany(Note, {

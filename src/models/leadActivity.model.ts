@@ -155,9 +155,9 @@ LeadActivity.init(
 //   as: "performedByUser",
 // });
 
-LeadActivity.belongsTo(Lead, {
-  foreignKey: "entityId",
-  as: "Lead",
-});
+// LeadActivity.belongsTo(Lead, {
+//   foreignKey: "entityId",
+//   as: "Lead",
+// });
 
 export default LeadActivity;

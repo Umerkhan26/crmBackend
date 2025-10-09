@@ -138,25 +138,27 @@ export const getLeadActivityReportByUser = async (
   }
 
   // 🟢 Fetch lead-related activities only for this user
-  const activities = await LeadActivity.findAll({
-    where: {
-      entityType: "lead",
-      createdAt: { [Op.between]: [startDate, endDate] },
-      performedBy: userId, // ✅ Filter by userId
+const activities = await LeadActivity.findAll({
+  where: {
+    entityType: "lead",
+    createdAt: { [Op.between]: [startDate, endDate] },
+    performedBy: userId,
+  },
+  include: [
+    {
+      model: User,
+      as: "performedByUser",
+      attributes: ["id", "name", "email", "role"],
     },
-    include: [
-      {
-        model: User,
-        as: "performedByUser",
-        attributes: ["id", "name", "email", "role"],
-      },
-      {
-        model: Lead,
-        attributes: ["id", "leadData"],
-      },
-    ],
-    order: [["createdAt", "DESC"]],
-  });
+    {
+      model: Lead,
+      as: "lead", // ✅ alias must match your association
+      attributes: ["id", "leadData"],
+    },
+  ],
+  order: [["createdAt", "DESC"]],
+});
+
 
   // 🟣 Fetch notes only for this user
   const notes = await Note.findAll({

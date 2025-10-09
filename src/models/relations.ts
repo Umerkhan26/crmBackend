@@ -78,19 +78,17 @@
 //   Note.belongsTo(ClientLead, {
 //     foreignKey: "notebleId",
 //     constraints: false,
-//     as: "clientLead", 
+//     as: "clientLead",
 //   });
 // };
 
 // Lead.hasMany(LeadActivity, { foreignKey: "leadId", as: "activities" });
 // LeadActivity.belongsTo(Lead, { foreignKey: "leadId" });
-// Lead.hasMany(Note, { foreignKey: "leadId", as: "notess",onDelete: "CASCADE" }); 
+// Lead.hasMany(Note, { foreignKey: "leadId", as: "notess",onDelete: "CASCADE" });
 // Note.belongsTo(Lead, { foreignKey: "leadId",onDelete: "CASCADE" });
-
 
 // LeadActivity.belongsTo(User, { foreignKey: "performedBy", as: "performedByUser",onDelete: "CASCADE" });
 // User.hasMany(LeadActivity, { foreignKey: "performedBy", as: "activitiesPerformed",onDelete: "CASCADE" });
-
 
 import Lead from "./lead.model";
 import { User } from "./user.model";
@@ -103,8 +101,14 @@ import LeadActivity from "./leadActivity.model";
 
 export const associateModels = () => {
   // 📌 Chat-related associations
-  Conversation.hasMany(Message, { foreignKey: "conversationId", onDelete: "CASCADE" });
-  Message.belongsTo(Conversation, { foreignKey: "conversationId", onDelete: "CASCADE" });
+  Conversation.hasMany(Message, {
+    foreignKey: "conversationId",
+    onDelete: "CASCADE",
+  });
+  Message.belongsTo(Conversation, {
+    foreignKey: "conversationId",
+    onDelete: "CASCADE",
+  });
 
   User.hasMany(Message, { foreignKey: "senderId", onDelete: "CASCADE" });
   Message.belongsTo(User, { foreignKey: "senderId", onDelete: "CASCADE" });
@@ -183,22 +187,44 @@ export const associateModels = () => {
 };
 
 // 📌 Lead ↔ LeadActivity + Notes
-Lead.hasMany(LeadActivity, { foreignKey: "leadId", as: "activities", onDelete: "CASCADE" });
+Lead.hasMany(LeadActivity, {
+  foreignKey: "leadId",
+  as: "activities",
+  onDelete: "CASCADE",
+});
 // LeadActivity.belongsTo(Lead, { foreignKey: "leadId", onDelete: "CASCADE" });
 
-LeadActivity.belongsTo(Lead, { foreignKey: "leadId", as: "LeadById", onDelete: "CASCADE" });
+LeadActivity.belongsTo(Lead, {
+  foreignKey: "leadId",
+  as: "LeadById",
+  onDelete: "CASCADE",
+});
 
 Lead.hasMany(Note, { foreignKey: "leadId", as: "notess", onDelete: "CASCADE" });
 Note.belongsTo(Lead, { foreignKey: "leadId", onDelete: "CASCADE" });
 
 // 📌 LeadActivity ↔ User
-LeadActivity.belongsTo(User, { foreignKey: "performedBy", as: "performedByUser", onDelete: "CASCADE" });
-User.hasMany(LeadActivity, { foreignKey: "performedBy", as: "activitiesPerformed", onDelete: "CASCADE" });
-
+LeadActivity.belongsTo(User, {
+  foreignKey: "performedBy",
+  as: "performedByUser",
+  onDelete: "CASCADE",
+});
+User.hasMany(LeadActivity, {
+  foreignKey: "performedBy",
+  as: "activitiesPerformed",
+  onDelete: "CASCADE",
+});
 
 // 📌 ClientLead ↔ LeadActivity + Notes
-ClientLead.hasMany(LeadActivity, { foreignKey: "clientLeadId", as: "activities", onDelete: "CASCADE" });
-LeadActivity.belongsTo(ClientLead, { foreignKey: "clientLeadId", onDelete: "CASCADE" });
+ClientLead.hasMany(LeadActivity, {
+  foreignKey: "clientLeadId",
+  as: "activities",
+  onDelete: "CASCADE",
+});
+LeadActivity.belongsTo(ClientLead, {
+  foreignKey: "clientLeadId",
+  onDelete: "CASCADE",
+});
 
 // LeadActivity ↔ Lead
 // LeadActivity.belongsTo(Lead, {
@@ -207,15 +233,14 @@ LeadActivity.belongsTo(ClientLead, { foreignKey: "clientLeadId", onDelete: "CASC
 //   onDelete: "CASCADE",
 // });
 
+// LeadActivity.belongsTo(Lead, {
+//   foreignKey: "entityId",
+//   constraints: false, // <-- Disable actual DB-level foreign key
+//   as: "LeadEntity",
+// });
 
-LeadActivity.belongsTo(Lead, {
-  foreignKey: "entityId",
-  constraints: false, // <-- Disable actual DB-level foreign key
-  as: "LeadEntity",
-});
-
-Lead.hasMany(LeadActivity, {
-  foreignKey: "entityId", // same name
-  as: "activitiesByEntity",
-  onDelete: "CASCADE",
-});
+// Lead.hasMany(LeadActivity, {
+//   foreignKey: "entityId", // same name
+//   as: "activitiesByEntity",
+//   onDelete: "CASCADE",
+// });

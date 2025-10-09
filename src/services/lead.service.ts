@@ -161,8 +161,6 @@ export const getAllLeads = async ({
   }
 };
 
-
-
 interface GetLeadsByCampaignParams {
   campaignName: string;
   page?: number;
@@ -199,7 +197,10 @@ export const getLeadsByCampaign = async ({
           }
         } else if (Array.isArray(lead.assignees)) {
           assigneesRaw = lead.assignees;
-        } else if (typeof lead.assignees === "object" && lead.assignees !== null) {
+        } else if (
+          typeof lead.assignees === "object" &&
+          lead.assignees !== null
+        ) {
           assigneesRaw = [lead.assignees];
         }
 
@@ -355,8 +356,6 @@ export const assignLeadToUsers = async (
   }
 };
 
-
-
 interface GetAllLeadsParams {
   page?: number;
   limit?: number;
@@ -367,35 +366,44 @@ export const getAllLeadsWithAssignee = async ({
   page = 1,
   limit = 10,
   search = "",
-}: GetAllLeadsParams) => {
+}) => {
   try {
     const { offset, limit: paginationLimit } = getPagination({ page, limit });
 
-    // Base condition: leads that have at least one assignee
+    // ✅ Ensure only leads that have at least one assignee
+    const baseCondition = Sequelize.literal("JSON_LENGTH(assignees) > 0");
+
     const whereConditions: any = {
-      [Op.and]: [Sequelize.literal("JSON_LENGTH(assignees) > 0")],
+      [Op.and]: [baseCondition],
     };
 
-    // ✅ Dynamic search logic
+    // ✅ Improved dynamic search logic (case-insensitive, works properly in MySQL)
     if (search && search.trim() !== "") {
-      const s = `%${search.trim()}%`;
+      const s = `%${search.trim().toLowerCase()}%`;
 
-      // 1️⃣ Add direct field searches (if exist)
-      const searchFilters: any[] = [
-        { campaignName: { [Op.like]: s } },
-      ];
+      const jsonSearchCondition = Sequelize.literal(`
+        (
+          LOWER(JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.agent_name'))) LIKE '${s}'
+          OR LOWER(JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.first_name'))) LIKE '${s}'
+          OR LOWER(JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.last_name'))) LIKE '${s}'
+          OR LOWER(JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.phone_number'))) LIKE '${s}'
+          OR LOWER(JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.state'))) LIKE '${s}'
+          OR LOWER(JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.email'))) LIKE '${s}'
+        )
+      `);
 
-      // 2️⃣ Add dynamic JSON key search across `leadData`
-      // This uses MySQL JSON_SEARCH for all keys and values
-      // Works dynamically regardless of which fields are inside leadData
-      searchFilters.push(
-        Sequelize.literal(`JSON_SEARCH(leadData, 'all', '${search.trim()}') IS NOT NULL`)
+      whereConditions[Op.and].push({
+        [Op.or]: [{ campaignName: { [Op.like]: s } }, jsonSearchCondition],
+      });
+
+      console.log("🔍 Search term:", search);
+      console.log(
+        "🧩 Built whereConditions:",
+        JSON.stringify(whereConditions, null, 2)
       );
-
-      whereConditions[Op.or] = searchFilters;
     }
 
-    // Fetch paginated leads
+    // ✅ Fetch paginated leads
     const leads = await Lead.findAndCountAll({
       where: whereConditions,
       order: [["createdAt", "DESC"]],
@@ -403,28 +411,26 @@ export const getAllLeadsWithAssignee = async ({
       limit: paginationLimit,
     });
 
-    // Enrich each lead with assignee user details
+    console.log(`✅ Found ${leads.count} leads for search="${search}"`);
+
+    // ✅ Enrich leads with assignee user details
     const enrichedLeads = await Promise.all(
       leads.rows.map(async (lead: any) => {
         let assigneesRaw: any[] = [];
 
-        // Normalize assignees
         if (lead.assignees) {
-          if (typeof lead.assignees === "string") {
-            try {
-              const temp = JSON.parse(lead.assignees);
-              assigneesRaw = Array.isArray(temp) ? temp : [temp];
-            } catch {
-              assigneesRaw = [];
-            }
-          } else if (Array.isArray(lead.assignees)) {
-            assigneesRaw = lead.assignees;
-          } else if (typeof lead.assignees === "object") {
-            assigneesRaw = [lead.assignees];
+          try {
+            const parsed =
+              typeof lead.assignees === "string"
+                ? JSON.parse(lead.assignees)
+                : lead.assignees;
+
+            assigneesRaw = Array.isArray(parsed) ? parsed : [parsed];
+          } catch {
+            assigneesRaw = [];
           }
         }
 
-        // Extract user IDs
         const userIds = assigneesRaw
           .map((a) => a.userId ?? a)
           .filter((id: any) => typeof id === "number");
@@ -455,20 +461,26 @@ export const getAllLeadsWithAssignee = async ({
       })
     );
 
-    // Return paginated response
+    // ✅ Return paginated response
     const response = getPagingData(
       { count: leads.count, rows: enrichedLeads },
       page,
       limit
     );
 
+    console.log("📦 Final paginated response:", {
+      totalItems: response.totalItems,
+      currentPage: response.currentPage,
+      totalPages: response.totalPages,
+      dataPreview: response.data.slice(0, 2),
+    });
+
     return response;
   } catch (error: any) {
+    console.error("❌ Error fetching leads with assignees:", error);
     throw new Error(`Error fetching leads with assignees: ${error.message}`);
   }
 };
-
-
 
 /**
  * Get counts of assigned and unassigned leads
@@ -498,8 +510,6 @@ interface GetUnassignedLeadsParams {
   limit?: number;
   searchTerm?: string;
 }
-
-
 
 interface GetUnassignedLeadsParams {
   page?: number;
@@ -790,8 +800,6 @@ function fillTemplate(template: string, data: any): string {
   });
 }
 
-
-
 export const getLeadStatusSummary = async (assigneeId?: number) => {
   try {
     const statuses = [
@@ -852,7 +860,6 @@ export type LeadStatus =
   | "sold"
   | "not_interested"
   | "do_not_call";
-
 
 export const updateLeadStatusForUser = async (
   leadId: number,

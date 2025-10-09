@@ -1,4 +1,3 @@
-
 // src/services/leadActivity.service.ts
 
 import LeadActivity from "../models/leadActivity.model";
@@ -15,7 +14,6 @@ interface ReportUser {
   notesCount: number;
   remindersCount: number;
 }
-
 
 // 🔹 Get activities for a specific lead (entityType = "lead")
 export const getLeadActivitiesByLeadId = async (
@@ -39,6 +37,7 @@ export const getLeadActivitiesByLeadId = async (
       },
       {
         model: Lead,
+        as: "LeadById",
         attributes: { exclude: [] },
       },
     ],
@@ -92,7 +91,6 @@ export const getAllLeadActivities = async (
   return getPagingData(data, page, limit);
 };
 
-
 export const updateLeadActivity = async (
   id: number,
   data: Partial<LeadActivity>
@@ -109,14 +107,10 @@ export const deleteLeadActivity = async (id: number) => {
   const activity = await LeadActivity.findByPk(id);
   if (!activity) {
     throw new Error("Lead activity not found");
-  } 
+  }
   await activity.destroy();
   return { message: "Lead activity deleted successfully" };
 };
-
-
-
-
 
 export const getLeadActivityReportByUser = async (
   userId: number,
@@ -138,27 +132,25 @@ export const getLeadActivityReportByUser = async (
   }
 
   // 🟢 Fetch lead-related activities only for this user
-const activities = await LeadActivity.findAll({
-  where: {
-    entityType: "lead",
-    createdAt: { [Op.between]: [startDate, endDate] },
-    performedBy: userId,
-  },
-  include: [
-    {
-      model: User,
-      as: "performedByUser",
-      attributes: ["id", "name", "email", "role"],
+  const activities = await LeadActivity.findAll({
+    where: {
+      entityType: "lead",
+      createdAt: { [Op.between]: [startDate, endDate] },
+      performedBy: userId,
     },
-    {
-      model: Lead,
-      as: "lead", // ✅ alias must match your association
-      attributes: ["id", "leadData"],
-    },
-  ],
-  order: [["createdAt", "DESC"]],
-});
-
+    include: [
+      {
+        model: User,
+        as: "performedByUser",
+        attributes: ["id", "firstname", "email"],
+      },
+      {
+        model: Lead,
+        as: "LeadById", //       attributes: ["id", "leadData"],
+      },
+    ],
+    order: [["createdAt", "DESC"]],
+  });
 
   // 🟣 Fetch notes only for this user
   const notes = await Note.findAll({
@@ -171,15 +163,14 @@ const activities = await LeadActivity.findAll({
       {
         model: User,
         as: "creator",
-        attributes: ["id", "name", "email", "role"],
+        attributes: ["id", "firstname", "email"],
       },
     ],
   });
 
   // 🔹 Prepare user-level report
   const report: ReportUser = {
-    user:
-      activities[0]?.performedByUser ||
+    user: activities[0]?.performedByUser ||
       notes[0]?.creator || { id: userId, name: "Unknown User" },
     totalActivities: 0,
     leadsWorkedOn: new Map(),
@@ -236,9 +227,6 @@ const activities = await LeadActivity.findAll({
 };
 
 // Interface (same as before)
-
-
-
 
 // export const getLeadActivityReportByUser = async (
 //   period: "daily" | "weekly" | "monthly"

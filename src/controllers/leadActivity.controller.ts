@@ -43,7 +43,6 @@ export const getLeadActivities = async (
   }
 };
 
-
 export const getAllLeadActivityLogs = async (req: Request, res: Response) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
@@ -61,7 +60,10 @@ export const getAllLeadActivityLogs = async (req: Request, res: Response) => {
   }
 };
 
-export const getActivityLogsByEntity = async (req: Request, res: Response):Promise<any> => {
+export const getActivityLogsByEntity = async (
+  req: Request,
+  res: Response
+): Promise<any> => {
   try {
     const { entityId, entityType } = req.params;
 
@@ -73,7 +75,12 @@ export const getActivityLogsByEntity = async (req: Request, res: Response):Promi
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
 
-    const logs = await getActivitiesByEntity(numericEntityId, entityType as "lead" | "clientLead", page, limit);
+    const logs = await getActivitiesByEntity(
+      numericEntityId,
+      entityType as "lead" | "clientLead",
+      page,
+      limit
+    );
 
     res.status(200).json({
       success: true,
@@ -118,9 +125,6 @@ export const deleteLeadActivityController = async (
     res.status(500).json({ message: error.message });
   }
 };
-
-
-
 
 export const getLeadActivityReportByUserController = async (
   req: Request,
@@ -177,9 +181,6 @@ export const getLeadActivityReportByUserController = async (
     });
   }
 };
-
-
-
 
 // export const getLeadActivityReportByUserController = async (
 //   req: Request,

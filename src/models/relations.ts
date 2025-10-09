@@ -201,11 +201,19 @@ ClientLead.hasMany(LeadActivity, { foreignKey: "clientLeadId", as: "activities",
 LeadActivity.belongsTo(ClientLead, { foreignKey: "clientLeadId", onDelete: "CASCADE" });
 
 // LeadActivity ↔ Lead
+// LeadActivity.belongsTo(Lead, {
+//   foreignKey: "entityId", // adjust if your column name is different
+//   as: "LeadEntity", // ✅ alias must match your include
+//   onDelete: "CASCADE",
+// });
+
+
 LeadActivity.belongsTo(Lead, {
-  foreignKey: "entityId", // adjust if your column name is different
-  as: "LeadEntity", // ✅ alias must match your include
-  onDelete: "CASCADE",
+  foreignKey: "entityId",
+  constraints: false, // <-- Disable actual DB-level foreign key
+  as: "LeadEntity",
 });
+
 Lead.hasMany(LeadActivity, {
   foreignKey: "entityId", // same name
   as: "activitiesByEntity",

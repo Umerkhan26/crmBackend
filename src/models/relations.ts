@@ -184,7 +184,9 @@ export const associateModels = () => {
 
 // 📌 Lead ↔ LeadActivity + Notes
 Lead.hasMany(LeadActivity, { foreignKey: "leadId", as: "activities", onDelete: "CASCADE" });
-LeadActivity.belongsTo(Lead, { foreignKey: "leadId", onDelete: "CASCADE" });
+// LeadActivity.belongsTo(Lead, { foreignKey: "leadId", onDelete: "CASCADE" });
+
+LeadActivity.belongsTo(Lead, { foreignKey: "leadId", as: "LeadById", onDelete: "CASCADE" });
 
 Lead.hasMany(Note, { foreignKey: "leadId", as: "notess", onDelete: "CASCADE" });
 Note.belongsTo(Lead, { foreignKey: "leadId", onDelete: "CASCADE" });
@@ -201,7 +203,7 @@ LeadActivity.belongsTo(ClientLead, { foreignKey: "clientLeadId", onDelete: "CASC
 // LeadActivity ↔ Lead
 LeadActivity.belongsTo(Lead, {
   foreignKey: "entityId", // adjust if your column name is different
-  as: "Lead", // ✅ alias must match your include
+  as: "LeadEntity", // ✅ alias must match your include
   onDelete: "CASCADE",
 });
 Lead.hasMany(LeadActivity, {

@@ -135,7 +135,7 @@ Lead.belongsTo(User, { foreignKey: "assigneeId", onDelete: "CASCADE" });
 // Campaign ↔ ProductSale
 Campaign.hasMany(ProductSale, {
   foreignKey: "campaignId",
-  sourceKey: "id",
+  sourceKey: "id", 
   as: "productSales",
   onDelete: "CASCADE",
 });

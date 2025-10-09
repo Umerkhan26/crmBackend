@@ -449,6 +449,7 @@ const ALLOWED_STATUSES: LeadStatus[] = [
   "sold",
   "most_interested",
   "to_call",
+"not_interested",
 ];
 export const updateLeadStatus = async (
   req: Request,

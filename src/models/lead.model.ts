@@ -28,7 +28,7 @@ export interface LeadAttributes {
 export interface LeadCreationAttributes
   extends Optional<LeadAttributes, "id"> {}
 
-class Lead
+export class Lead
   extends Model<LeadAttributes, LeadCreationAttributes>
   implements LeadAttributes {
   public id!: number;

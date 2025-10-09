@@ -6,6 +6,7 @@ import {
   getActivityLogsByEntity,
   getAllLeadActivityLogs,
   getLeadActivities,
+  getLeadActivityReportByUserController,
   updateLeadActivityController,
 } from "../controllers/leadActivity.controller";
 import { verifyToken } from "../middleware/verifyToken.middleware";
@@ -27,5 +28,9 @@ router.put("/updateLeadActivity/:id", verifyToken, updateLeadActivityController)
 
 // DELETE lead activity
 router.delete("/deleteLeadActivity/:id", verifyToken, deleteLeadActivityController);
+
+
+router.get("/LeadreportByUser", getLeadActivityReportByUserController
+);
 
 export default router;

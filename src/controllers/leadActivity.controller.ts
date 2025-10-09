@@ -120,39 +120,52 @@ export const deleteLeadActivityController = async (
 };
 
 
+
+
 export const getLeadActivityReportByUserController = async (
   req: Request,
   res: Response
 ): Promise<any> => {
   try {
-    const { period } = req.query;
+    const { userId, period } = req.query;
 
-    // ✅ Validate query param type and value
+    // 🟢 Validate 'period'
     if (
       !period ||
       typeof period !== "string" ||
       !["daily", "weekly", "monthly"].includes(period)
     ) {
-      return res.status(400).json({ message: "Invalid or missing 'period' parameter" });
+      return res
+        .status(400)
+        .json({ message: "Invalid or missing 'period' parameter" });
     }
 
-    // ✅ Fetch report
-    const report = await getLeadActivityReportByUser(period as "daily" | "weekly" | "monthly");
+    // 🟢 Validate 'userId'
+    if (!userId || isNaN(Number(userId))) {
+      return res
+        .status(400)
+        .json({ message: "Invalid or missing 'userId' parameter" });
+    }
 
-    // ✅ Handle empty case gracefully
-    if (!report || report.length === 0) {
+    // 🟢 Fetch report for specific user
+    const report = await getLeadActivityReportByUser(
+      Number(userId),
+      period as "daily" | "weekly" | "monthly"
+    );
+
+    // 🟢 Handle case: no data found
+    if (!report || (Array.isArray(report) && report.length === 0)) {
       return res.status(200).json({
         success: true,
-        message: "No lead activity found for this period",
-        totalUsers: 0,
+        message: "No lead activity found for this user and period",
         data: [],
       });
     }
 
-    // ✅ Successful response
+    // 🟢 Successful response
     return res.status(200).json({
       success: true,
-      totalUsers: report.length,
+      message: "Lead activity report fetched successfully",
       data: report,
     });
   } catch (error: any) {
@@ -164,3 +177,51 @@ export const getLeadActivityReportByUserController = async (
     });
   }
 };
+
+
+
+
+// export const getLeadActivityReportByUserController = async (
+//   req: Request,
+//   res: Response
+// ): Promise<any> => {
+//   try {
+//     const { period } = req.query;
+
+//     // ✅ Validate query param type and value
+//     if (
+//       !period ||
+//       typeof period !== "string" ||
+//       !["daily", "weekly", "monthly"].includes(period)
+//     ) {
+//       return res.status(400).json({ message: "Invalid or missing 'period' parameter" });
+//     }
+
+//     // ✅ Fetch report
+//     const report = await getLeadActivityReportByUser(period as "daily" | "weekly" | "monthly");
+
+//     // ✅ Handle empty case gracefully
+//     if (!report || report.length === 0) {
+//       return res.status(200).json({
+//         success: true,
+//         message: "No lead activity found for this period",
+//         totalUsers: 0,
+//         data: [],
+//       });
+//     }
+
+//     // ✅ Successful response
+//     return res.status(200).json({
+//       success: true,
+//       totalUsers: report.length,
+//       data: report,
+//     });
+//   } catch (error: any) {
+//     console.error("Error generating lead activity report:", error);
+//     return res.status(500).json({
+//       success: false,
+//       message: "Failed to generate activity report",
+//       error: error.message,
+//     });
+//   }
+// };

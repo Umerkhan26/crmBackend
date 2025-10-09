@@ -1,6 +1,12 @@
 import { Op } from "sequelize";
 
-export type FilterType = "daily" | "weekly" | "monthly" | "yearly" | "custom";
+export type FilterType =
+  | "today"
+  | "daily"
+  | "weekly"
+  | "monthly"
+  | "yearly"
+  | "custom";
 
 export const buildDateFilter = (
   filterType: FilterType,
@@ -11,6 +17,7 @@ export const buildDateFilter = (
   let whereClause: any = {};
 
   switch (filterType) {
+    case "today":
     case "daily":
       whereClause = {
         [Op.gte]: new Date(today.setHours(0, 0, 0, 0)),
@@ -48,7 +55,6 @@ export const buildDateFilter = (
       break;
 
     default:
-      // No filter
       whereClause = {};
   }
 

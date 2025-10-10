@@ -4,7 +4,7 @@ import LeadActivity from "../models/leadActivity.model";
 import User from "../models/user.model";
 import Lead from "../models/lead.model";
 import { getPagination, getPagingData } from "../utils/paginate";
-import { Op } from "sequelize";
+import { Op,Sequelize,WhereOptions  } from "sequelize";
 import Note from "../models/note.model";
 interface ReportUser {
   user: any;
@@ -246,7 +246,7 @@ export const getLeadActivityReportByUser = async (
     startDate.setMonth(startDate.getMonth() - 1);
   }
 
-  // 🟢 Fetch lead-related activities (including status changes)
+  // 🟢 Fetch lead-related activities
   const activities = await LeadActivity.findAll({
     where: {
       entityType: { [Op.in]: ["lead", "lead_status", "status_change"] },
@@ -267,7 +267,7 @@ export const getLeadActivityReportByUser = async (
     order: [["createdAt", "DESC"]],
   });
 
-  // 🟣 Fetch notes only for this user
+  // 🟣 Fetch notes
   const notes = await Note.findAll({
     where: {
       notebleType: "lead",
@@ -283,15 +283,23 @@ export const getLeadActivityReportByUser = async (
     ],
   });
 
-  // 🟡 Fetch leads whose status was updated by this user within the time range
-  // 🟡 Fetch leads whose status was updated by this user within the time range
+  // 🟠 Fetch leads where this user updated status recently
+  const statusWhere: WhereOptions = {
+    [Op.and]: [
+      Sequelize.where(
+        Sequelize.fn(
+          "JSON_CONTAINS",
+          Sequelize.col("assignees"),
+          JSON.stringify([{ userId }])
+        ),
+        1
+      ),
+      { updatedAt: { [Op.between]: [startDate, endDate] } },
+    ],
+  } as unknown as WhereOptions; // ✅ TypeScript-safe cast
+
   const statusUpdates = await Lead.findAll({
-    where: {
-      updatedAt: { [Op.between]: [startDate, endDate] },
-      assignees: {
-        [Op.contains]: [{ userId }],
-      },
-    } as any, // ✅ safely cast to any for Sequelize-managed fields
+    where: statusWhere,
   });
 
   // 🔹 Prepare user-level report
@@ -336,14 +344,14 @@ export const getLeadActivityReportByUser = async (
     }
   }
 
-  // 🟠 Process direct status updates from the Lead model
+  // 🟠 Process direct status updates
   for (const lead of statusUpdates) {
     const assignee = lead.assignees?.find((a: any) => a.userId === userId);
     if (assignee) {
       const leadName =
         lead.leadData?.name || lead.leadData?.fullName || `Lead #${lead.id}`;
       report.leadsWorkedOn.set(lead.id, leadName);
-      report.totalActivities++; // count as an activity
+      report.totalActivities++;
       if (lead.updatedAt > report.lastActivityAt) {
         report.lastActivityAt = lead.updatedAt;
       }
@@ -351,7 +359,7 @@ export const getLeadActivityReportByUser = async (
   }
 
   // 🧾 Final formatted output
-  const formattedReport = {
+  return {
     user: report.user,
     totalActivities: report.totalActivities,
     totalLeadsWorkedOn: report.leadsWorkedOn.size,
@@ -363,6 +371,4 @@ export const getLeadActivityReportByUser = async (
     })),
     lastActivityAt: report.lastActivityAt,
   };
-
-  return formattedReport;
 };

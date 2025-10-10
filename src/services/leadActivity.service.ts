@@ -283,20 +283,17 @@ export const getLeadActivityReportByUser = async (
     ],
   });
 
-  // 🟠 Fetch leads where this user updated status recently
+  // 🟠 Fetch leads where this user updated status recently (MySQL JSON compatible)
   const statusWhere: WhereOptions = {
     [Op.and]: [
-      Sequelize.where(
-        Sequelize.fn(
-          "JSON_CONTAINS",
-          Sequelize.col("assignees"),
-          JSON.stringify([{ userId }])
-        ),
-        1
+      Sequelize.literal(
+        `JSON_CONTAINS(assignees, JSON_OBJECT('userId', ${userId}))`
       ),
-      { updatedAt: { [Op.between]: [startDate, endDate] } },
+      {
+        updatedAt: { [Op.between]: [startDate, endDate] },
+      },
     ],
-  } as unknown as WhereOptions; // ✅ TypeScript-safe cast
+  } as unknown as WhereOptions;
 
   const statusUpdates = await Lead.findAll({
     where: statusWhere,
@@ -346,7 +343,20 @@ export const getLeadActivityReportByUser = async (
 
   // 🟠 Process direct status updates
   for (const lead of statusUpdates) {
-    const assignee = lead.assignees?.find((a: any) => a.userId === userId);
+    let assignees: any[] = [];
+
+    try {
+      // ✅ Parse JSON safely
+      if (typeof lead.assignees === "string") {
+        assignees = JSON.parse(lead.assignees);
+      } else if (Array.isArray(lead.assignees)) {
+        assignees = lead.assignees;
+      }
+    } catch {
+      assignees = [];
+    }
+
+    const assignee = assignees.find((a: any) => a.userId === userId);
     if (assignee) {
       const leadName =
         lead.leadData?.name || lead.leadData?.fullName || `Lead #${lead.id}`;

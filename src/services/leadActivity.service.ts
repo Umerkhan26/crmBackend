@@ -13,6 +13,8 @@ interface ReportUser {
   lastActivityAt: Date;
   notesCount: number;
   remindersCount: number;
+    statusChangeHistory?: any[]; // ✅ add this line
+
 }
 
 // 🔹 Get activities for a specific lead (entityType = "lead")
@@ -246,7 +248,7 @@ export const getLeadActivityReportByUser = async (
     startDate.setMonth(startDate.getMonth() - 1);
   }
 
-  // 🟢 Fetch lead-related activities
+  // 🟢 Fetch activities
   const activities = await LeadActivity.findAll({
     where: {
       entityType: { [Op.in]: ["lead", "lead_status", "status_change"] },
@@ -259,10 +261,7 @@ export const getLeadActivityReportByUser = async (
         as: "performedByUser",
         attributes: ["id", "firstname", "email"],
       },
-      {
-        model: Lead,
-        as: "LeadById",
-      },
+      { model: Lead, as: "LeadById" },
     ],
     order: [["createdAt", "DESC"]],
   });
@@ -283,23 +282,13 @@ export const getLeadActivityReportByUser = async (
     ],
   });
 
-  // 🟠 Fetch leads where this user updated status recently (MySQL JSON compatible)
-  const statusWhere: WhereOptions = {
-    [Op.and]: [
-      Sequelize.literal(
-        `JSON_CONTAINS(assignees, JSON_OBJECT('userId', ${userId}))`
-      ),
-      {
-        updatedAt: { [Op.between]: [startDate, endDate] },
-      },
-    ],
-  } as unknown as WhereOptions;
-
+  // 🟠 Fetch leads where this user changed status recently
   const statusUpdates = await Lead.findAll({
-    where: statusWhere,
+    where: Sequelize.literal(
+      `JSON_CONTAINS(assignees, JSON_OBJECT('userId', ${userId}))`
+    ),
   });
 
-  // 🔹 Prepare user-level report
   const report: ReportUser = {
     user:
       activities[0]?.performedByUser ||
@@ -309,12 +298,12 @@ export const getLeadActivityReportByUser = async (
     lastActivityAt: startDate,
     notesCount: 0,
     remindersCount: 0,
+    statusChangeHistory: [], // ✅ new field
   };
 
   // 🟢 Process activities
   for (const act of activities) {
     report.totalActivities++;
-
     const leadName =
       act.Lead?.leadData?.name ||
       act.Lead?.leadData?.fullName ||
@@ -323,35 +312,31 @@ export const getLeadActivityReportByUser = async (
     if (act.Lead?.id) {
       report.leadsWorkedOn.set(act.Lead.id, leadName);
     }
-
     if (act.createdAt > report.lastActivityAt) {
       report.lastActivityAt = act.createdAt;
     }
   }
 
-  // 🟣 Process notes & reminders
+  // 🟣 Process notes
   for (const note of notes) {
     if (note.type === "comment") report.notesCount++;
     if (note.type === "reminder") report.remindersCount++;
-
     report.leadsWorkedOn.set(note.notebleId, `Lead #${note.notebleId}`);
-
     if (note.createdAt > report.lastActivityAt) {
       report.lastActivityAt = note.createdAt;
     }
   }
 
-  // 🟠 Process direct status updates
+  // 🟠 Process direct status changes
   for (const lead of statusUpdates) {
     let assignees: any[] = [];
-
     try {
-      // ✅ Parse JSON safely
-      if (typeof lead.assignees === "string") {
-        assignees = JSON.parse(lead.assignees);
-      } else if (Array.isArray(lead.assignees)) {
-        assignees = lead.assignees;
-      }
+      assignees =
+        typeof lead.assignees === "string"
+          ? JSON.parse(lead.assignees)
+          : Array.isArray(lead.assignees)
+          ? lead.assignees
+          : [];
     } catch {
       assignees = [];
     }
@@ -362,13 +347,22 @@ export const getLeadActivityReportByUser = async (
         lead.leadData?.name || lead.leadData?.fullName || `Lead #${lead.id}`;
       report.leadsWorkedOn.set(lead.id, leadName);
       report.totalActivities++;
+
+      report.statusChangeHistory?.push({
+  leadId: lead.id,
+  leadName,
+  newStatus: assignee.status,
+  changedAt: assignee.updatedAt || lead.updatedAt,
+});
+
+
       if (lead.updatedAt > report.lastActivityAt) {
         report.lastActivityAt = lead.updatedAt;
       }
     }
   }
 
-  // 🧾 Final formatted output
+  // 🧾 Final output
   return {
     user: report.user,
     totalActivities: report.totalActivities,
@@ -379,6 +373,7 @@ export const getLeadActivityReportByUser = async (
       id,
       name,
     })),
+    statusChangeHistory: report.statusChangeHistory, // ✅ included in response
     lastActivityAt: report.lastActivityAt,
   };
 };

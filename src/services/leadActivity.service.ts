@@ -6,6 +6,7 @@ import Lead from "../models/lead.model";
 import { getPagination, getPagingData } from "../utils/paginate";
 import { Op,Sequelize,WhereOptions  } from "sequelize";
 import Note from "../models/note.model";
+import ActivityLog from "../models/activityLog.model";
 interface ReportUser {
   user: any;
   totalActivities: number;
@@ -105,14 +106,34 @@ export const updateLeadActivity = async (
   return activity;
 };
 
-export const deleteLeadActivity = async (id: number) => {
+export const deleteLeadActivity = async (id: number, deletedBy: number) => {
   const activity = await LeadActivity.findByPk(id);
   if (!activity) {
     throw new Error("Lead activity not found");
   }
-  await activity.destroy();
-  return { message: "Lead activity deleted successfully" };
+
+await (ActivityLog as any).create({
+  userId: deletedBy,
+  entityType: "leadActivity",
+  entityId: id,
+  action: "delete",
+  description: `Lead activity ID ${id} deleted by user ${deletedBy}`,
+});
+
+
+  await activity.destroy(); // Soft delete because of `paranoid: true`
+  return { message: "Lead activity deleted and logged" };
 };
+
+
+// export const deleteLeadActivity = async (id: number) => {
+//   const activity = await LeadActivity.findByPk(id);
+//   if (!activity) {
+//     throw new Error("Lead activity not found");
+//   }
+//   await activity.destroy();
+//   return { message: "Lead activity deleted successfully" };
+// };
 
 // export const getLeadActivityReportByUser = async (
 //   userId: number,

@@ -1,13 +1,18 @@
-// import { DataTypes, Model, Optional } from "sequelize";
+
+
+// import { DataTypes, Model, Optional, Association } from "sequelize";
 // import db from "../../db";
+
+// import User from "./user.model";
+// import Lead from "./lead.model";
 
 // export interface LeadActivityAttributes {
 //   id: number;
-//   entityId: number; // ID of the lead or clientLead
-//   entityType: "lead" | "clientLead"; // To differentiate
-//   action: string; // e.g., "status_updated", "email_sent"
-//   details?: string; // Optional details like status changed, email subject, etc.
-//   performedBy: number; // User ID who did the action
+//   entityId: number;
+//   entityType: "lead" | "clientLead";
+//   action: string;
+//   details?: string;
+//   performedBy: number;
 //   createdAt?: Date;
 //   updatedAt?: Date;
 // }
@@ -16,11 +21,12 @@
 //   extends Optional<
 //     LeadActivityAttributes,
 //     "id" | "details" | "createdAt" | "updatedAt"
-//   > { }
+//   > {}
 
 // class LeadActivity
 //   extends Model<LeadActivityAttributes, LeadActivityCreationAttributes>
-//   implements LeadActivityAttributes {
+//   implements LeadActivityAttributes
+// {
 //   public id!: number;
 //   public entityId!: number;
 //   public entityType!: "lead" | "clientLead";
@@ -29,6 +35,15 @@
 //   public performedBy!: number;
 //   public readonly createdAt!: Date;
 //   public readonly updatedAt!: Date;
+
+//   // ✅ Use typeof User / Lead for association types
+//   public performedByUser?: InstanceType<typeof User>;
+//   public Lead?: InstanceType<typeof Lead>;
+
+//   public static associations: {
+//     performedByUser: Association<LeadActivity, InstanceType<typeof User>>;
+//     Lead: Association<LeadActivity, InstanceType<typeof Lead>>;
+//   };
 // }
 
 // LeadActivity.init(
@@ -66,7 +81,9 @@
 //   }
 // );
 
+
 // export default LeadActivity;
+
 
 import { DataTypes, Model, Optional, Association } from "sequelize";
 import db from "../../db";
@@ -83,12 +100,13 @@ export interface LeadActivityAttributes {
   performedBy: number;
   createdAt?: Date;
   updatedAt?: Date;
+  deletedAt?: Date | null; // ✅ added field for soft delete tracking
 }
 
 export interface LeadActivityCreationAttributes
   extends Optional<
     LeadActivityAttributes,
-    "id" | "details" | "createdAt" | "updatedAt"
+    "id" | "details" | "createdAt" | "updatedAt" | "deletedAt"
   > {}
 
 class LeadActivity
@@ -103,8 +121,9 @@ class LeadActivity
   public performedBy!: number;
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
+  public readonly deletedAt!: Date | null; // ✅ soft delete timestamp
 
-  // ✅ Use typeof User / Lead for association types
+  // ✅ Associations
   public performedByUser?: InstanceType<typeof User>;
   public Lead?: InstanceType<typeof Lead>;
 
@@ -141,23 +160,17 @@ LeadActivity.init(
       type: DataTypes.INTEGER,
       allowNull: false,
     },
+    deletedAt: {
+      type: DataTypes.DATE,
+      allowNull: true, // ✅ new optional column
+    },
   },
   {
     sequelize: db,
     tableName: "lead_activities",
     timestamps: true,
+    paranoid: true, // ✅ Enables soft delete (sets deletedAt instead of hard delete)
   }
 );
-
-// ✅ Define associations
-// LeadActivity.belongsTo(User, {
-//   foreignKey: "performedBy",
-//   as: "performedByUser",
-// });
-
-// LeadActivity.belongsTo(Lead, {
-//   foreignKey: "entityId",
-//   as: "Lead",
-// });
 
 export default LeadActivity;

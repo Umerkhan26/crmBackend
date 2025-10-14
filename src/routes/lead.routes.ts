@@ -25,10 +25,11 @@ router.get(
   LeadController.getAllLeads
 );
 router.get(
-  "/getleadbyid",
+  "/getleadByid/:id",
   verifyToken,
   LeadController.getLeadById
 );
+
 // Get Leads by Campaign
 router.get(
   "/leads/campaign/:campaignName",

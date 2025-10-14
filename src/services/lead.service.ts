@@ -160,6 +160,57 @@ export const getAllLeads = async ({
     throw new Error(`Error fetching leads: ${error.message}`);
   }
 };
+export const getLeadById = async (leadId: number): Promise<LeadAttributes> => {
+  try {
+    const lead = await Lead.findByPk(leadId);
+
+    if (!lead) {
+      throw new Error(`Lead not found with ID ${leadId}`);
+    }
+
+    // 🧩 Enrich assignee details (same logic as getAllLeads)
+    let assigneesRaw: AssigneeWithStatus[] = [];
+
+    if (typeof lead.assignees === "string") {
+      try {
+        assigneesRaw = JSON.parse(lead.assignees) as AssigneeWithStatus[];
+      } catch {
+        assigneesRaw = [];
+      }
+    } else if (Array.isArray(lead.assignees)) {
+      assigneesRaw = lead.assignees;
+    }
+
+    const userIds = assigneesRaw
+      .map((a) => a.userId)
+      .filter((id): id is number => typeof id === "number");
+
+    let assigneesData: any[] = [];
+
+    if (userIds.length > 0) {
+      const users = await User.findAll({
+        where: { id: userIds },
+        attributes: ["id", "firstname", "lastname", "email"],
+      });
+
+      assigneesData = users.map((user) => {
+        const assignment = assigneesRaw.find((a) => a.userId === user.id);
+        return {
+          ...user.toJSON(),
+          status: assignment?.status || "pending",
+        };
+      });
+    }
+
+    return {
+      ...lead.toJSON(),
+      assignees: assigneesData,
+    };
+  } catch (error: any) {
+    console.error("Error in getLeadById:", error.stack);
+    throw new Error(`Error fetching lead by ID: ${error.message}`);
+  }
+};
 
 interface GetLeadsByCampaignParams {
   campaignName: string;

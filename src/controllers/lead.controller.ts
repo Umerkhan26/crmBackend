@@ -65,6 +65,30 @@ export const getAllLeads = async (
   }
 };
 
+export const getLeadById = async (req: Request, res: Response): Promise<any> => {
+  try {
+    const { id } = req.params;
+
+    if (!id || isNaN(Number(id))) {
+      return res.status(400).json({ success: false, message: "Invalid lead ID." });
+    }
+
+    const lead = await LeadService.getLeadById(Number(id));
+
+    return res.status(200).json({
+      success: true,
+      message: "Lead fetched successfully",
+      data: lead,
+    });
+  } catch (error: any) {
+    console.error("Error in getLeadById:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "An error occurred while fetching the lead",
+    });
+  }
+};
+
 // Get Leads by Campaign
 export const getLeadsByCampaign = async (req: Request, res: Response): Promise<any> => {
   try {

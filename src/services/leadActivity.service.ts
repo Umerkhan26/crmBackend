@@ -369,20 +369,10 @@ export const getLeadActivityReportByUser = async (
     totalLeadsWorkedOn: report.leadsWorkedOn.size,
     totalNotes: report.notesCount,
     totalReminders: report.remindersCount,
-    leads: Array.from(report.leadsWorkedOn.values()).map((lead: any) => ({
-  id: lead.id,
-  name:
-    lead.leadData?.name ||
-    lead.leadData?.fullName ||
-    `Lead #${lead.id}`,
-  email: lead.leadData?.email || null,
-  phone: lead.leadData?.phone || null,
-  status: lead.status || null,
-  source: lead.source || null,
-  createdAt: lead.createdAt,
-  updatedAt: lead.updatedAt,
-  leadData: lead.leadData || {},
-})),
+    leads: Array.from(report.leadsWorkedOn.entries()).map(([id, name]) => ({
+      id,
+      name,
+    })),
     statusChangeHistory: report.statusChangeHistory, // ✅ included in response
     lastActivityAt: report.lastActivityAt,
   };

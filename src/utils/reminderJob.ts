@@ -9,7 +9,7 @@
     host: process.env.DEFAULT_SMTP_HOST || "smtp.example.com",
     port: parseInt(process.env.DEFAULT_SMTP_PORT || "587", 10),
     user: process.env.DEFAULT_SMTP_EMAIL || "engrshahidullah02@gmail.com",
-    pass: process.env.DEFAULT_SMTP_EMAIL || "idcn eevf qdxv muad",
+    pass: process.env.DEFAULT_SMTP_PASSWORD || "idcn eevf qdxv muad",
     };
 
     cron.schedule("* * * * *", async () => {

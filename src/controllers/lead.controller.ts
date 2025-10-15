@@ -65,12 +65,17 @@ export const getAllLeads = async (
   }
 };
 
-export const getLeadById = async (req: Request, res: Response): Promise<any> => {
+export const getLeadById = async (
+  req: Request,
+  res: Response
+): Promise<any> => {
   try {
     const { id } = req.params;
 
     if (!id || isNaN(Number(id))) {
-      return res.status(400).json({ success: false, message: "Invalid lead ID." });
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid lead ID." });
     }
 
     const lead = await LeadService.getLeadById(Number(id));
@@ -90,11 +95,16 @@ export const getLeadById = async (req: Request, res: Response): Promise<any> => 
 };
 
 // Get Leads by Campaign
-export const getLeadsByCampaign = async (req: Request, res: Response): Promise<any> => {
+export const getLeadsByCampaign = async (
+  req: Request,
+  res: Response
+): Promise<any> => {
   try {
     const { campaignName } = req.params;
     const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
-    const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 10;
+    const limit = req.query.limit
+      ? parseInt(req.query.limit as string, 10)
+      : 10;
 
     // Call service with pagination
     const leads = await LeadService.getLeadsByCampaign({
@@ -128,7 +138,6 @@ export const getLeadsByCampaign = async (req: Request, res: Response): Promise<a
     });
   }
 };
-
 
 // Update Lead
 export const updateLead = async (req: Request, res: Response): Promise<any> => {
@@ -215,29 +224,38 @@ export const assignUserToLead = async (
   }
 };
 
-
-
-
-
-
 export const getAllLeadsWithAssignee = async (
   req: Request,
   res: Response
 ): Promise<any> => {
   try {
-    // Extract pagination and search params from query
     const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
-    const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 10;
+    const limit = req.query.limit
+      ? parseInt(req.query.limit as string, 10)
+      : 10;
     const search = req.query.search ? (req.query.search as string).trim() : "";
 
-    // Fetch paginated + filtered leads from service
+    // ✅ Cast query param safely to FilterType
+    const filterType = req.query.filterType
+      ? (req.query.filterType as FilterType)
+      : undefined;
+
+    const startDate = req.query.startDate
+      ? (req.query.startDate as string)
+      : undefined;
+    const endDate = req.query.endDate
+      ? (req.query.endDate as string)
+      : undefined;
+
     const leads = await LeadService.getAllLeadsWithAssignee({
       page,
       limit,
       search,
+      filterType,
+      startDate,
+      endDate,
     });
 
-    // ✅ Return empty list (not 404) if no data found
     if (!leads || !leads.data || leads.data.length === 0) {
       return res.status(200).json({
         success: true,
@@ -249,10 +267,9 @@ export const getAllLeadsWithAssignee = async (
       });
     }
 
-    // ✅ Successful response
     return res.status(200).json({
       success: true,
-      ...leads, // includes totalItems, data, totalPages, currentPage
+      ...leads,
     });
   } catch (error: any) {
     console.error("❌ Error in getAllLeadsWithAssignee controller:", error);
@@ -262,9 +279,6 @@ export const getAllLeadsWithAssignee = async (
     });
   }
 };
-
-
-
 
 export const getLeadsByAssigneeId = async (
   req: Request,
@@ -280,6 +294,7 @@ export const getLeadsByAssigneeId = async (
     if (isNaN(assigneeId)) {
       return res.status(400).json({ message: "Invalid assignee ID." });
     }
+
     const leadsResult = await LeadService.getLeadsByAssigneeId(
       assigneeId,
       filterType,
@@ -311,41 +326,62 @@ export const getAssignmentStats = async (req: Request, res: Response) => {
   }
 };
 
-
-export const getUnassignedLeads = async (req: Request, res: Response): Promise<any> => {
+export const getUnassignedLeads = async (
+  req: Request,
+  res: Response
+): Promise<any> => {
   try {
-    // Extract pagination and search params from query
+    // 📦 Extract pagination, search, and date filter params from query
     const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
-    const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 10;
-    const searchTerm = req.query.search ? (req.query.search as string).trim() : "";
+    const limit = req.query.limit
+      ? parseInt(req.query.limit as string, 10)
+      : 10;
+    const searchTerm = req.query.search
+      ? (req.query.search as string).trim()
+      : "";
 
-    // Call service with pagination + search term
+    // 🕒 Date filter params
+    const filterType = req.query.filterType
+      ? (req.query.filterType as FilterType)
+      : undefined;
+
+    const startDate = req.query.startDate
+      ? (req.query.startDate as string)
+      : undefined;
+    const endDate = req.query.endDate
+      ? (req.query.endDate as string)
+      : undefined;
+
+    // 🚀 Call service with all params
     const leads = await LeadService.getUnassignedLeads({
       page,
       limit,
       searchTerm,
+      filterType,
+      startDate,
+      endDate,
     });
 
-    // If no results found
+    // ✅ Return empty list (not 404)
     if (!leads || !leads.data || leads.data.length === 0) {
-      return res.status(404).json({
-        success: false,
+      return res.status(200).json({
+        success: true,
         message: "No unassigned leads found",
         data: [],
+        totalItems: 0,
+        totalPages: 0,
+        currentPage: page,
       });
     }
 
-    // Success response
-    res.status(200).json({
+    // ✅ Success response
+    return res.status(200).json({
       success: true,
-      totalItems: leads.totalItems,
-      totalPages: leads.totalPages,
-      currentPage: leads.currentPage,
-      data: leads.data,
+      ...leads,
     });
   } catch (error: any) {
     console.error("❌ Error in getUnassignedLeads controller:", error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: "Failed to fetch unassigned leads",
       error: error.message,
@@ -353,7 +389,6 @@ export const getUnassignedLeads = async (req: Request, res: Response): Promise<a
   }
 };
 
-// POST /leads/:leadId/send-email
 export const sendEmailToLead = async (
   req: Request,
   res: Response
@@ -397,7 +432,6 @@ export const sendEmailToLead = async (
       message:
         error.message || "An error occurred while sending email to lead.",
     });
-    
   }
 };
 
@@ -473,7 +507,7 @@ const ALLOWED_STATUSES: LeadStatus[] = [
   "sold",
   "most_interested",
   "to_call",
-"not_interested",
+  "not_interested",
 ];
 export const updateLeadStatus = async (
   req: Request,
@@ -498,7 +532,9 @@ export const updateLeadStatus = async (
     if (!ALLOWED_STATUSES.includes(status)) {
       return res.status(400).json({
         success: false,
-        message: `Invalid status. Allowed statuses: ${ALLOWED_STATUSES.join(", ")}`,
+        message: `Invalid status. Allowed statuses: ${ALLOWED_STATUSES.join(
+          ", "
+        )}`,
       });
     }
 

@@ -16,6 +16,7 @@ export type LeadStatus =
 export interface AssigneeWithStatus {
   userId: number;
   status: LeadStatus;
+  assignedAt: string;
 }
 
 export interface LeadAttributes {
@@ -30,7 +31,8 @@ export interface LeadCreationAttributes
 
 export class Lead
   extends Model<LeadAttributes, LeadCreationAttributes>
-  implements LeadAttributes {
+  implements LeadAttributes
+{
   public id!: number;
   public campaignName!: string;
   public leadData!: any;

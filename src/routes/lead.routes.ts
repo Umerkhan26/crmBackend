@@ -24,11 +24,7 @@ router.get(
   checkPermission(PERMISSIONS.LEAD_GET_ALL),
   LeadController.getAllLeads
 );
-router.get(
-  "/getleadbyid",
-  verifyToken,
-  LeadController.getLeadById
-);
+router.get("/getleadbyid/:id", verifyToken, LeadController.getLeadById);
 // Get Leads by Campaign
 router.get(
   "/leads/campaign/:campaignName",

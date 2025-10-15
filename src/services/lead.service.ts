@@ -370,10 +370,18 @@ export const assignLeadToUsers = async (
     // Create set of existing user IDs
     const existingIds = new Set<number>(currentAssignees.map((a) => a.userId));
 
+    // ✅ ADDED: Current timestamp for assignment
+    const assignmentTimestamp = new Date().toISOString();
+
     // Prepare new assignees (only those not already assigned)
     const newAssignees: AssigneeWithStatus[] = userIdsToAssign
       .filter((id: number) => !existingIds.has(id))
-      .map((id: number) => ({ userId: id, status: "pending" }));
+      .map((id: number) => ({
+        userId: id,
+        status: "pending",
+        assignedAt: assignmentTimestamp, // ✅ ADDED: Track assignment date
+        status_updated: false,
+      }));
 
     if (newAssignees.length === 0) {
       throw new Error("All provided users are already assigned to this lead.");
@@ -384,6 +392,15 @@ export const assignLeadToUsers = async (
 
     // Save in DB in a single update
     await lead.update({ assignees: updatedAssignees });
+
+    console.log("✅ Lead Assignment Details:", {
+      leadId,
+      newAssignments: newAssignees.map((a) => ({
+        userId: a.userId,
+        assignedAt: a.assignedAt,
+      })),
+      totalAssignees: updatedAssignees.length,
+    });
 
     // Log and notify new assignees
     if (assignedByUserId) {
@@ -406,7 +423,6 @@ export const assignLeadToUsers = async (
     throw new Error(`Error assigning lead: ${error.message}`);
   }
 };
-
 interface GetAllLeadsParams {
   page?: number;
   limit?: number;
@@ -417,18 +433,34 @@ export const getAllLeadsWithAssignee = async ({
   page = 1,
   limit = 10,
   search = "",
+  filterType,
+  startDate,
+  endDate,
+}: {
+  page?: number;
+  limit?: number;
+  search?: string;
+  filterType?: FilterType;
+  startDate?: string;
+  endDate?: string;
 }) => {
   try {
     const { offset, limit: paginationLimit } = getPagination({ page, limit });
 
-    // ✅ Ensure only leads that have at least one assignee
+    // ✅ Base condition: only leads that have at least one assignee
     const baseCondition = Sequelize.literal("JSON_LENGTH(assignees) > 0");
 
     const whereConditions: any = {
       [Op.and]: [baseCondition],
     };
 
-    // ✅ Improved dynamic search logic (case-insensitive, works properly in MySQL)
+    // ✅ Apply date filter (like in getAllLeads)
+    if (filterType) {
+      const dateFilter = buildDateFilter(filterType, startDate, endDate);
+      whereConditions[Op.and].push(dateFilter);
+    }
+
+    // 🔍 Search support (case-insensitive)
     if (search && search.trim() !== "") {
       const s = `%${search.trim().toLowerCase()}%`;
 
@@ -446,15 +478,9 @@ export const getAllLeadsWithAssignee = async ({
       whereConditions[Op.and].push({
         [Op.or]: [{ campaignName: { [Op.like]: s } }, jsonSearchCondition],
       });
-
-      console.log("🔍 Search term:", search);
-      console.log(
-        "🧩 Built whereConditions:",
-        JSON.stringify(whereConditions, null, 2)
-      );
     }
 
-    // ✅ Fetch paginated leads
+    // 🚀 Fetch paginated leads
     const leads = await Lead.findAndCountAll({
       where: whereConditions,
       order: [["createdAt", "DESC"]],
@@ -462,9 +488,7 @@ export const getAllLeadsWithAssignee = async ({
       limit: paginationLimit,
     });
 
-    console.log(`✅ Found ${leads.count} leads for search="${search}"`);
-
-    // ✅ Enrich leads with assignee user details
+    // 🧩 Enrich with user details
     const enrichedLeads = await Promise.all(
       leads.rows.map(async (lead: any) => {
         let assigneesRaw: any[] = [];
@@ -475,7 +499,6 @@ export const getAllLeadsWithAssignee = async ({
               typeof lead.assignees === "string"
                 ? JSON.parse(lead.assignees)
                 : lead.assignees;
-
             assigneesRaw = Array.isArray(parsed) ? parsed : [parsed];
           } catch {
             assigneesRaw = [];
@@ -512,21 +535,12 @@ export const getAllLeadsWithAssignee = async ({
       })
     );
 
-    // ✅ Return paginated response
-    const response = getPagingData(
+    // ✅ Return paginated + enriched response
+    return getPagingData(
       { count: leads.count, rows: enrichedLeads },
       page,
       limit
     );
-
-    console.log("📦 Final paginated response:", {
-      totalItems: response.totalItems,
-      currentPage: response.currentPage,
-      totalPages: response.totalPages,
-      dataPreview: response.data.slice(0, 2),
-    });
-
-    return response;
   } catch (error: any) {
     console.error("❌ Error fetching leads with assignees:", error);
     throw new Error(`Error fetching leads with assignees: ${error.message}`);
@@ -572,86 +586,85 @@ export const getUnassignedLeads = async ({
   page = 1,
   limit = 10,
   searchTerm = "",
-}: GetUnassignedLeadsParams) => {
+  filterType,
+  startDate,
+  endDate,
+}: {
+  page?: number;
+  limit?: number;
+  searchTerm?: string;
+  filterType?: FilterType;
+  startDate?: string;
+  endDate?: string;
+}) => {
   try {
     const { offset, limit: paginationLimit } = getPagination({ page, limit });
 
-    // 🔍 Build dynamic search filter for JSON fields (leadData)
-    let searchCondition: any = {};
+    // 🧹 Clean and escape search term safely
+    const escapedSearch = searchTerm.trim().toLowerCase().replace(/'/g, "\\'");
+    const s = `%${escapedSearch}%`;
 
-    if (searchTerm) {
-      // This assumes leadData is stored as JSON — we’ll check for matching substrings in any key
-      // Works on MySQL and PostgreSQL
-      searchCondition = {
-        [Op.or]: [
-          // Matches any key-value pair in leadData containing the search term
-          Sequelize.literal(
-            `JSON_SEARCH(JSON_EXTRACT(leadData, '$'), 'all', '%${searchTerm}%') IS NOT NULL`
-          ),
-          // Also allow partial match on campaignName for flexibility
-          { campaignName: { [Op.like]: `%${searchTerm}%` } },
-        ],
-      };
+    // ✅ Main conditions: only leads with NO assignees
+    const andConditions: any[] = [
+      Sequelize.literal("(assignees IS NULL OR JSON_LENGTH(assignees) = 0)"),
+    ];
+
+    // 🕒 Apply date filtering (if provided)
+    if (filterType) {
+      const dateFilter = buildDateFilter(filterType, startDate, endDate);
+      andConditions.push(dateFilter);
     }
 
-    // Combine unassigned condition + search
-    const whereCondition = {
-      [Op.and]: [
-        Sequelize.literal("assignees IS NULL OR JSON_LENGTH(assignees) = 0"),
-        searchCondition,
-      ],
-    };
+    // 🔍 Apply search across campaignName + JSON fields
+    if (escapedSearch) {
+      const jsonSearchCondition = `
+        LOWER(JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.agent_name'))) LIKE '${s}'
+        OR LOWER(JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.first_name'))) LIKE '${s}'
+        OR LOWER(JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.last_name'))) LIKE '${s}'
+        OR LOWER(JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.phone_number'))) LIKE '${s}'
+        OR LOWER(JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.state'))) LIKE '${s}'
+        OR LOWER(JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.email'))) LIKE '${s}'
+        OR LOWER(campaignName) LIKE '${s}'
+      `;
+      andConditions.push(Sequelize.literal(`(${jsonSearchCondition})`));
+    }
 
-    // Fetch paginated + filtered leads
+    // 🧩 Combine all where conditions
+    const whereCondition = { [Op.and]: andConditions };
+
+    // 🚀 Fetch unassigned leads
     const unassignedLeads = await Lead.findAndCountAll({
       where: whereCondition,
-      include: [
-        {
-          model: User,
-          attributes: ["id", "firstname", "lastname", "email"],
-        },
-      ],
       order: [["createdAt", "DESC"]],
       offset,
       limit: paginationLimit,
     });
 
-    // ✅ Normalize assignees safely
+    // 🧩 Normalize assignees (parse JSON safely)
     const normalizedLeads = unassignedLeads.rows.map((lead: any) => {
       let assigneesRaw: any[] = [];
-
       if (lead.assignees) {
-        if (typeof lead.assignees === "string") {
-          try {
-            const parsed = JSON.parse(lead.assignees);
-            assigneesRaw = Array.isArray(parsed) ? parsed : [parsed];
-          } catch (err) {
-            console.warn(
-              `⚠️ Failed to parse assignees for lead ${lead.id}, fallback to []`
-            );
-          }
-        } else if (Array.isArray(lead.assignees)) {
-          assigneesRaw = lead.assignees;
-        } else if (typeof lead.assignees === "object") {
-          assigneesRaw = [lead.assignees];
+        try {
+          const parsed =
+            typeof lead.assignees === "string"
+              ? JSON.parse(lead.assignees)
+              : lead.assignees;
+          assigneesRaw = Array.isArray(parsed) ? parsed : [parsed];
+        } catch {
+          assigneesRaw = [];
         }
       }
-
-      return {
-        ...lead.toJSON(),
-        assignees: assigneesRaw,
-      };
+      return { ...lead.toJSON(), assignees: assigneesRaw };
     });
 
-    // ✅ Build and return paginated response
-    const response = getPagingData(
+    // ✅ Return paginated & cleaned result
+    return getPagingData(
       { count: unassignedLeads.count, rows: normalizedLeads },
       page,
       limit
     );
-
-    return response;
   } catch (error: any) {
+    console.error("❌ Error fetching unassigned leads:", error);
     throw new Error(`Error fetching unassigned leads: ${error.message}`);
   }
 };
@@ -665,13 +678,11 @@ export const getLeadsByAssigneeId = async (
   limit: number = 10
 ) => {
   try {
-    const dateFilter = buildDateFilter(filterType, startDate, endDate);
     const { offset } = getPagination({ page, limit });
 
-    // ✅ Use JSON_CONTAINS to query assignees JSON array
+    // ✅ Get ALL leads assigned to this user (without date filter first)
     const leads = await Lead.findAndCountAll({
       where: {
-        ...dateFilter,
         [Op.and]: Sequelize.literal(
           `JSON_CONTAINS(assignees, '{"userId": ${assigneeId}}', '$')`
         ),
@@ -688,15 +699,143 @@ export const getLeadsByAssigneeId = async (
       limit,
     });
 
-    // ✅ Map leads and extract status for current assignee
-    const mappedLeads = leads.rows.map((lead) => {
+    console.log("📊 Initial Query Results:", {
+      filterType,
+      totalLeads: leads.count,
+      sampleLead: leads.rows[0]?.get?.() || leads.rows[0] || null,
+    });
+
+    // ✅ Filter by ASSIGNMENT DATE in JavaScript
+    const now = new Date();
+    const filteredLeads = leads.rows.filter((lead) => {
       let assignees: AssigneeWithStatus[] = [];
 
       try {
         if (Array.isArray(lead.assignees)) {
           assignees = lead.assignees;
         } else if (typeof lead.assignees === "string") {
-          // In case column is TEXT locally
+          assignees = JSON.parse(lead.assignees);
+        } else if (lead.assignees && typeof lead.assignees === "object") {
+          assignees = lead.assignees as AssigneeWithStatus[];
+        }
+      } catch (error) {
+        console.warn(`Failed to parse assignees for lead ${lead.id}:`, error);
+        return false;
+      }
+
+      // Find this user's assignment
+      const userAssignment = assignees.find(
+        (a) => Number(a.userId) === assigneeId
+      );
+
+      if (!userAssignment) return false;
+
+      // ✅ Use assignedAt if available, otherwise fall back to createdAt
+      const assignmentDate = userAssignment.assignedAt
+        ? new Date(userAssignment.assignedAt)
+        : new Date(lead.createdAt);
+
+      console.log(`🔍 Lead ${lead.id} assignment date:`, {
+        leadId: lead.id,
+        assignedAt: userAssignment.assignedAt,
+        assignmentDate: assignmentDate.toISOString(),
+        filterType,
+      });
+
+      // Apply date filtering based on ASSIGNMENT DATE
+      switch (filterType) {
+        case "daily":
+          const todayStart = new Date(
+            now.getFullYear(),
+            now.getMonth(),
+            now.getDate(),
+            0,
+            0,
+            0,
+            0
+          );
+          const todayEnd = new Date(
+            now.getFullYear(),
+            now.getMonth(),
+            now.getDate(),
+            23,
+            59,
+            59,
+            999
+          );
+          const isToday =
+            assignmentDate >= todayStart && assignmentDate <= todayEnd;
+          console.log(`📅 Daily filter for lead ${lead.id}:`, {
+            assignmentDate: assignmentDate.toISOString(),
+            todayStart: todayStart.toISOString(),
+            todayEnd: todayEnd.toISOString(),
+            isToday,
+          });
+          return isToday;
+
+        case "weekly":
+          const startOfWeek = new Date(now);
+          const day = startOfWeek.getDay();
+          const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1);
+          const weekStart = new Date(startOfWeek.setDate(diff));
+          weekStart.setHours(0, 0, 0, 0);
+
+          const weekEnd = new Date(weekStart);
+          weekEnd.setDate(weekStart.getDate() + 6);
+          weekEnd.setHours(23, 59, 59, 999);
+
+          const isThisWeek =
+            assignmentDate >= weekStart && assignmentDate <= weekEnd;
+          console.log(`📅 Weekly filter for lead ${lead.id}:`, {
+            assignmentDate: assignmentDate.toISOString(),
+            weekStart: weekStart.toISOString(),
+            weekEnd: weekEnd.toISOString(),
+            isThisWeek,
+          });
+          return isThisWeek;
+
+        case "monthly":
+          const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+          const monthEnd = new Date(
+            now.getFullYear(),
+            now.getMonth() + 1,
+            0,
+            23,
+            59,
+            59,
+            999
+          );
+          const isThisMonth =
+            assignmentDate >= monthStart && assignmentDate <= monthEnd;
+          console.log(`📅 Monthly filter for lead ${lead.id}:`, {
+            assignmentDate: assignmentDate.toISOString(),
+            monthStart: monthStart.toISOString(),
+            monthEnd: monthEnd.toISOString(),
+            isThisMonth,
+          });
+          return isThisMonth;
+
+        case "custom":
+          if (startDate && endDate) {
+            const customStart = new Date(`${startDate}T00:00:00`);
+            const customEnd = new Date(`${endDate}T23:59:59`);
+            return assignmentDate >= customStart && assignmentDate <= customEnd;
+          }
+          return true;
+
+        default:
+          return true;
+      }
+    });
+
+    // Map the filtered leads with status
+    const mappedLeads = filteredLeads.map((lead) => {
+      let assignees: AssigneeWithStatus[] = [];
+
+      try {
+        if (Array.isArray(lead.assignees)) {
+          assignees = lead.assignees;
+        } else if (typeof lead.assignees === "string") {
           assignees = JSON.parse(lead.assignees);
         } else if (lead.assignees && typeof lead.assignees === "object") {
           assignees = lead.assignees as AssigneeWithStatus[];
@@ -713,11 +852,23 @@ export const getLeadsByAssigneeId = async (
       return {
         ...lead.get(),
         status: userAssignment?.status || "pending",
+        // Include assignment info for debugging
+        assignedAt: userAssignment?.assignedAt,
+        assignmentDate: userAssignment?.assignedAt
+          ? new Date(userAssignment.assignedAt).toISOString()
+          : lead.createdAt.toISOString(),
       };
     });
 
+    console.log("📊 Final Filter Results:", {
+      filterType,
+      totalLeadsBeforeFilter: leads.count,
+      totalLeadsAfterFilter: mappedLeads.length,
+      sampleLead: mappedLeads[0] || null,
+    });
+
     return {
-      count: leads.count,
+      count: mappedLeads.length,
       rows: mappedLeads,
     };
   } catch (error: any) {

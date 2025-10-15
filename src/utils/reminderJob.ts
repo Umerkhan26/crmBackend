@@ -24,7 +24,12 @@
         },
         },
     });
-
+console.log("🔎 Found due reminders:", dueReminders.map(r => ({
+  id: r.id,
+  reminderDate: r.reminderDate,
+  now,
+  oneMinuteAgo,
+})));
     for (const reminder of dueReminders) {
         const message = `⏰ Reminder: ${reminder.content}`;
 

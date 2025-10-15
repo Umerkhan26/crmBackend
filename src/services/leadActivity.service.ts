@@ -119,7 +119,7 @@ await (ActivityLog as any).create({
   action: "delete",
   description: `Lead activity ID ${id} deleted by user ${deletedBy}`,
 });
-
+  
 
   await activity.destroy(); // Soft delete because of `paranoid: true`
   return { message: "Lead activity deleted and logged" };

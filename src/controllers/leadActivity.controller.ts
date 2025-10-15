@@ -115,16 +115,23 @@ export const deleteLeadActivityController = async (
 ): Promise<any> => {
   try {
     const id = parseInt(req.params.id, 10);
+    const deletedBy = req.user?.id || req.body.deletedBy; // assuming middleware sets req.user or frontend sends deletedBy
+
     if (isNaN(id)) {
       return res.status(400).json({ message: "Invalid activity ID" });
     }
 
-    const result = await deleteLeadActivity(id);
+    if (!deletedBy) {
+      return res.status(400).json({ message: "Missing deletedBy (user ID)" });
+    }
+
+    const result = await deleteLeadActivity(id, deletedBy);
     res.json(result);
   } catch (error: any) {
     res.status(500).json({ message: error.message });
   }
 };
+
   
 
 export const getLeadActivityReportByUserController = async (

@@ -4,10 +4,11 @@ import dotenv from "dotenv";
 import path from "path";
 import fs from "fs";
 import { syncPermissionsToDB } from "./src/utils/syncPermissions";
-import { syncEmailPermissionsToDB } from "./src/utils/syncEmailPermissions"; 
-import db from "./db"; 
+import { syncEmailPermissionsToDB } from "./src/utils/syncEmailPermissions";
+import db from "./db";
 import "./src/models/associations";
-import "./src/models/index"
+import "./src/models/index";
+import "./src/utils/reminderJob";
 dotenv.config();
 
 const app: Application = express();
@@ -23,7 +24,10 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   res.setHeader("Access-Control-Allow-Credentials", "true");
   res.setHeader("Access-Control-Max-Age", "1800");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-  res.setHeader("Access-Control-Allow-Methods", "PUT, POST, GET, DELETE, PATCH, OPTIONS");
+  res.setHeader(
+    "Access-Control-Allow-Methods",
+    "PUT, POST, GET, DELETE, PATCH, OPTIONS"
+  );
 
   if (req.method === "OPTIONS") {
     res.sendStatus(204);

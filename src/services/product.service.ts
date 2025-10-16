@@ -545,62 +545,74 @@ export const getSalesByAssigneeId = async (
   limit: number = 10,
   search: string = ""
 ) => {
-  console.log(":mag: [getSalesByAssigneeId] Called with assigneeId:", assigneeId);
+  console.log(
+    ":mag: [getSalesByAssigneeId] Called with assigneeId:",
+    assigneeId
+  );
   try {
     const numericId = Number(assigneeId);
     if (isNaN(numericId)) throw new Error("Invalid assignee ID");
-
-    const whereClause: any = { assigneeId: numericId };
-
-    // ✅ Apply search filter (across multiple fields)
-    const searchFilter =
-      search.trim() !== ""
-        ? {
-            [Op.or]: [
-              { "$Lead.campaignName$": { [Op.like]: `%${search}%` } },
-              { "$Lead.leadData$": { [Op.like]: `%${search}%` } },
-              { "$User.firstname$": { [Op.like]: `%${search}%` } },
-              { "$User.email$": { [Op.like]: `%${search}%` } },
-            ],
-          }
-        : {};
-
-    // ✅ If searching, ignore pagination (bring all matches)
-    const usePagination = !search || search.trim() === "";
-
-    const queryOptions: any = {
-      where: {
-        ...whereClause,
-        ...searchFilter,
+    const { offset, limit: pageLimit } = getPagination({ page, limit });
+    const where: any = { assigneeId: numericId };
+    const include: any = [
+      {
+        model: Lead,
+        attributes: ["id", "campaignName", "leadData"],
       },
-      include: [
-        { model: Lead, attributes: ["id", "campaignName", "leadData"] },
-        { model: User, attributes: ["id", "firstname", "email"] },
-      ],
-      order: [["createdAt", "DESC"]],
-    };
-
-    if (usePagination) {
-      const { offset, limit: pageLimit } = getPagination({ page, limit });
-      queryOptions.offset = offset;
-      queryOptions.limit = pageLimit;
+      {
+        model: User,
+        attributes: ["id", "firstname", "email"],
+      },
+    ];
+    if (search.trim()) {
+      where[Op.or] = [
+        // ProductSale fields
+        { productType: { [Op.like]: `%${search}%` } },
+        { price: { [Op.like]: `%${search}%` } },
+        { notes: { [Op.like]: `%${search}%` } },
+        { status: { [Op.like]: `%${search}%` } },
+        // Campaign
+        { "$Lead.campaignName$": { [Op.like]: `%${search}%` } },
+        // Created By (User)
+        { "$User.firstname$": { [Op.like]: `%${search}%` } },
+        { "$User.email$": { [Op.like]: `%${search}%` } },
+        // :white_check_mark: Lead JSON fields
+        Sequelize.literal(
+          `JSON_UNQUOTE(JSON_EXTRACT(Lead.leadData, '$.first_name')) LIKE '%${search}%'`
+        ),
+        Sequelize.literal(
+          `JSON_UNQUOTE(JSON_EXTRACT(Lead.leadData, '$.last_name')) LIKE '%${search}%'`
+        ),
+        Sequelize.literal(
+          `JSON_UNQUOTE(JSON_EXTRACT(Lead.leadData, '$.agent_name')) LIKE '%${search}%'`
+        ),
+        Sequelize.literal(
+          `JSON_UNQUOTE(JSON_EXTRACT(Lead.leadData, '$.state')) LIKE '%${search}%'`
+        ),
+        Sequelize.literal(
+          `JSON_UNQUOTE(JSON_EXTRACT(Lead.leadData, '$.email')) LIKE '%${search}%'`
+        ),
+        // Conversion Date
+        Sequelize.where(
+          Sequelize.fn(
+            "DATE_FORMAT",
+            Sequelize.col("ProductSale.conversionDate"),
+            "%Y-%m-%d"
+          ),
+          { [Op.like]: `%${search}%` }
+        ),
+      ];
     }
-
-    const sales = await ProductSale.findAndCountAll(queryOptions);
-
+    const sales = await ProductSale.findAndCountAll({
+      offset,
+      limit: pageLimit,
+      where,
+      include,
+      order: [["createdAt", "DESC"]],
+    });
     if (!sales || sales.count === 0)
       throw new Error("No sales found for this assignee");
-
-    const pagingData = usePagination
-      ? getPagingData(sales, page, limit)
-      : {
-          totalItems: sales.count,
-          data: sales.rows,
-          totalPages: 1,
-          currentPage: 1,
-        };
-
-    return pagingData;
+    return getPagingData(sales, page, pageLimit);
   } catch (error: any) {
     console.error(":fire: Error in getSalesByAssigneeId service:", error);
     throw new Error(`Error fetching sales by assigneeId: ${error.message}`);

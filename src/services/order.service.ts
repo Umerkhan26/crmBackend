@@ -233,19 +233,39 @@ export const createOrder = async (
         console.log("✉️ Compiled Email Subject:", subject);
         console.log("📄 Compiled Email Body:", body);
 
-        await sendEmail({
-          smtp: smtpConfig,
-          to: user.email,
-          subject,
-          body,
-        });
+    //     await sendEmail({
+    //       smtp: smtpConfig,
+    //       to: user.email,
+    //       subject,
+    //       body,
+    //     });
 
-        console.log("✅ Email sent to:", user.email);
-      } else {
-        console.log("❌ Email not allowed for role:", user.userrole);
-      }
-    }
+    //     console.log("✅ Email sent to:", user.email);
+    //   } else {
+    //     console.log("❌ Email not allowed for role:", user.userrole);
+    //   }
+    // }
 
+    await sendEmail({
+  smtp: {
+    host: user.smtpoutgoingserver || process.env.DEFAULT_SMTP_HOST || "",
+    port:
+      (user.smtpport ? Number(user.smtpport) : Number(process.env.DEFAULT_SMTP_PORT)) ||
+      587,
+    user: user.smtpemail || process.env.DEFAULT_SMTP_EMAIL || "",
+    pass: user.smtppassword || process.env.DEFAULT_SMTP_PASSWORD || "",
+  },
+  to: user.email || "",
+  subject: subject || "No Subject",
+  body: body || "",
+});
+
+console.log(
+  `✅ Email sent to: ${user.email} using ${
+    user.smtpemail ? "user SMTP" : "default SMTP"
+  }`
+);
+      }}
     const orderWithCampaign = await Order.findByPk(order.id, {
       include: [{ model: Campaign, as: "campaign" }],
     });

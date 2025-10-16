@@ -150,7 +150,9 @@ export const deleteSale = async (req: Request, res: Response): Promise<any> => {
     const userId = req.user?.id;
 
     if (isNaN(saleId)) {
-      return res.status(400).json({ success: false, message: "Invalid sale ID" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid sale ID" });
     }
 
     await ProductSaleService.deleteSale(saleId, userId);
@@ -171,7 +173,6 @@ export const deleteSale = async (req: Request, res: Response): Promise<any> => {
     return res.status(500).json({ success: false, message: error.message });
   }
 };
-
 
 // ✅ Get Sales by Product Type
 export const getSalesByProductType = async (
@@ -272,9 +273,7 @@ export const getAllProducts = async (
       ...products, // already contains totalItems, data, totalPages, currentPage
     });
   } catch (error: any) {
-    return res
-      .status(500)
-      .json({ success: false, message: error.message });
+    return res.status(500).json({ success: false, message: error.message });
   }
 };
 
@@ -313,7 +312,9 @@ export const deleteProduct = async (
   try {
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) {
-      return res.status(400).json({ success: false, message: "Invalid product ID" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid product ID" });
     }
 
     const userId = req.user?.id;
@@ -335,7 +336,6 @@ export const deleteProduct = async (
     return res.status(500).json({ success: false, message: error.message });
   }
 };
-
 
 // ✅ Get Products by Campaign & Assignee
 export const getProductsByCampaignAndAssignee = async (
@@ -396,7 +396,7 @@ export const getProductsByCampaignAndAssignee = async (
 //       success: false,
 //       message: error.message || "Something went wrong while fetching invoice",
 //     });
-//   }   
+//   }
 // };
 
 export const getInvoice = async (req: Request, res: Response): Promise<any> => {
@@ -433,17 +433,15 @@ export const getInvoice = async (req: Request, res: Response): Promise<any> => {
       success: false,
       message: error.message || "Something went wrong while fetching invoice",
     });
-  }   
+  }
 };
-
-
 
 export const getSalesByAssigneeIdController = async (
   req: Request,
   res: Response
 ): Promise<any> => {
   try {
-const assigneeId = parseInt(req.params.id, 10);
+    const assigneeId = parseInt(req.params.id, 10);
     console.log("🔍 [Controller] Received assigneeId:", assigneeId);
 
     if (isNaN(assigneeId)) {

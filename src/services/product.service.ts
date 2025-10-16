@@ -19,7 +19,7 @@ interface SaleQueryParams extends PaginationParams {
   search?: string;
   filters?: Record<string, any>;
 }
- 
+
 export const convertLeadToSale = async (
   data: ProductSaleCreationAttributes,
   userId?: number
@@ -56,7 +56,6 @@ export const convertLeadToSale = async (
     throw new Error(`Error converting lead to sale: ${error.message}`);
   }
 };
-// ✅ Get All Sales with Filters, Pagination, and Search
 export const getAllSales = async ({
   page = 1,
   limit = 10,
@@ -65,58 +64,68 @@ export const getAllSales = async ({
 }: SaleQueryParams) => {
   try {
     const { offset, limit: pageLimit } = getPagination({ page, limit });
-
     const where: any = { ...filters };
 
-   if (search) {
-    where[Op.or] = [
-      // Product info
-      { productType: { [Op.like]: `%${search}%` } },
-      Sequelize.where(
-        Sequelize.cast(Sequelize.col("ProductSale.products"), "CHAR"),
-        { [Op.like]: `%${search}%` }
-      ),
-      { price: { [Op.like]: `%${search}%` } },
-      { notes: { [Op.like]: `%${search}%` } },
-      { status: { [Op.like]: `%${search}%` } },
-      // Campaign name
-      { "$Campaign.name$": { [Op.like]: `%${search}%` } },
-      { "$Lead.campaignName$": { [Op.like]: `%${search}%` } },
-      // Created By (User)
-      { "$User.firstname$": { [Op.like]: `%${search}%` } },
-      { "$User.email$": { [Op.like]: `%${search}%` } },
-      // Lead info (JSON search by casting leadData to string)
-      Sequelize.where(
-        Sequelize.cast(Sequelize.col("Lead.leadData"), "CHAR"),
-        { [Op.like]: `%${search}%` }
-      ),
-      // Conversion Date
-      Sequelize.where(
-        Sequelize.fn(
-          "DATE_FORMAT",
-          Sequelize.col("ProductSale.conversionDate"),
-          "%Y-%m-%d"
-        ),
-        { [Op.like]: `%${search}%` }
-      ),
+    const include: any = [
+      {
+        model: Lead,
+        attributes: ["id", "campaignName", "leadData"],
+      },
+      {
+        model: User,
+        attributes: ["id", "firstname", "email"],
+      },
     ];
-  }
 
+    if (search) {
+      where[Op.or] = [
+        // ProductSale fields
+        { productType: { [Op.like]: `%${search}%` } },
+        { price: { [Op.like]: `%${search}%` } },
+        { notes: { [Op.like]: `%${search}%` } },
+        { status: { [Op.like]: `%${search}%` } },
+
+        // Campaign
+        { "$Lead.campaignName$": { [Op.like]: `%${search}%` } },
+
+        // Created By (User)
+        { "$User.firstname$": { [Op.like]: `%${search}%` } },
+        { "$User.email$": { [Op.like]: `%${search}%` } },
+
+        // ✅ Lead JSON fields
+        Sequelize.literal(
+          `JSON_UNQUOTE(JSON_EXTRACT(Lead.leadData, '$.first_name')) LIKE '%${search}%'`
+        ),
+        Sequelize.literal(
+          `JSON_UNQUOTE(JSON_EXTRACT(Lead.leadData, '$.last_name')) LIKE '%${search}%'`
+        ),
+        Sequelize.literal(
+          `JSON_UNQUOTE(JSON_EXTRACT(Lead.leadData, '$.agent_name')) LIKE '%${search}%'`
+        ),
+        Sequelize.literal(
+          `JSON_UNQUOTE(JSON_EXTRACT(Lead.leadData, '$.state')) LIKE '%${search}%'`
+        ),
+        Sequelize.literal(
+          `JSON_UNQUOTE(JSON_EXTRACT(Lead.leadData, '$.email')) LIKE '%${search}%'`
+        ),
+
+        // Conversion Date
+        Sequelize.where(
+          Sequelize.fn(
+            "DATE_FORMAT",
+            Sequelize.col("ProductSale.conversionDate"),
+            "%Y-%m-%d"
+          ),
+          { [Op.like]: `%${search}%` }
+        ),
+      ];
+    }
 
     const data = await ProductSale.findAndCountAll({
       offset,
       limit: pageLimit,
       where,
-      include: [
-        {
-          model: Lead,
-          attributes: ["id", "campaignName", "leadData"],
-        },
-        {
-          model: User,
-          attributes: ["id", "firstname", "email"],
-        },
-      ],
+      include,
       order: [["createdAt", "DESC"]],
     });
 
@@ -208,14 +217,17 @@ export const deleteSale = async (
     await sale.destroy();
 
     if (userId) {
-      await logActivity(userId, "delete", `Converted sale deleted with ID ${id}`);
+      await logActivity(
+        userId,
+        "delete",
+        `Converted sale deleted with ID ${id}`
+      );
       await sendNotification(userId, `Converted sale deleted with ID ${id}`);
     }
   } catch (error: any) {
     throw new Error(`Error deleting sale: ${error.message}`);
   }
 };
-
 
 // ✅ Get Sales by Product Type
 export const getSalesByProductType = async (
@@ -308,7 +320,6 @@ export const getAllProducts = async (
   return getPagingData(data, page, pageLimit);
 };
 
-
 // ✅ Update Product
 export const updateProduct = async (
   id: number,
@@ -344,11 +355,14 @@ export const deleteProduct = async (
   await product.destroy();
 
   if (userId) {
-    await logActivity(userId, "delete", `Pending product deleted with ID ${id}`);
+    await logActivity(
+      userId,
+      "delete",
+      `Pending product deleted with ID ${id}`
+    );
     await sendNotification(userId, `Pending product deleted: ID ${id}`);
   }
 };
-
 
 // ✅ Get Products by campaignName and assigneeId (NEW)
 // ✅ Get Products by campaignId and assigneeId
@@ -443,9 +457,6 @@ export const getProductsByCampaignAndAssignee = async (
 //   }
 // };
 
-
-
-
 export const getInvoiceByLeadId = async (leadId: number) => {
   try {
     const sale: any = await ProductSale.findOne({
@@ -475,7 +486,10 @@ export const getInvoiceByLeadId = async (leadId: number) => {
           const temp = JSON.parse(sale.products);
           parsedProducts = Array.isArray(temp) ? temp : [temp];
         } catch (err) {
-          console.warn(`Failed to parse products string for sale ID ${sale.id}:`, err);
+          console.warn(
+            `Failed to parse products string for sale ID ${sale.id}:`,
+            err
+          );
           parsedProducts = [
             {
               productType: sale.productType || "N/A",

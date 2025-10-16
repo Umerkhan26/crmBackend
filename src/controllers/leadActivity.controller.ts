@@ -134,61 +134,61 @@ export const deleteLeadActivityController = async (
 
   
 
-export const getLeadActivityReportByUserController = async (
-  req: Request,
-  res: Response
-): Promise<any> => {
-  try {
-    const { userId, period } = req.query;
+// export const getLeadActivityReportByUserController = async (
+//   req: Request,
+//   res: Response
+// ): Promise<any> => {
+//   try {
+//     const { userId, period } = req.query;
 
-    // 🟢 Validate 'period'
-    if (
-      !period ||
-      typeof period !== "string" ||
-      !["daily", "weekly", "monthly"].includes(period)
-    ) {
-      return res
-        .status(400)
-        .json({ message: "Invalid or missing 'period' parameter" });
-    }
+//     // 🟢 Validate 'period'
+//     if (
+//       !period ||
+//       typeof period !== "string" ||
+//       !["daily", "weekly", "monthly"].includes(period)
+//     ) {
+//       return res
+//         .status(400)
+//         .json({ message: "Invalid or missing 'period' parameter" });
+//     }
 
-    // 🟢 Validate 'userId'
-    if (!userId || isNaN(Number(userId))) {
-      return res
-        .status(400)
-        .json({ message: "Invalid or missing 'userId' parameter" });
-    }
+//     // 🟢 Validate 'userId'
+//     if (!userId || isNaN(Number(userId))) {
+//       return res
+//         .status(400)
+//         .json({ message: "Invalid or missing 'userId' parameter" });
+//     }
 
-    // 🟢 Fetch report for specific user
-    const report = await getLeadActivityReportByUser(
-      Number(userId),
-      period as "daily" | "weekly" | "monthly"
-    );
+//     // 🟢 Fetch report for specific user
+//     const report = await getLeadActivityReportByUser(
+//       Number(userId),
+//       period as "daily" | "weekly" | "monthly"
+//     );
 
-    // 🟢 Handle case: no data found
-    if (!report || (Array.isArray(report) && report.length === 0)) {
-      return res.status(200).json({
-        success: true,
-        message: "No lead activity found for this user and period",
-        data: [],
-      });
-    }
+//     // 🟢 Handle case: no data found
+//     if (!report || (Array.isArray(report) && report.length === 0)) {
+//       return res.status(200).json({
+//         success: true,
+//         message: "No lead activity found for this user and period",
+//         data: [],
+//       });
+//     }
 
-    // 🟢 Successful response
-    return res.status(200).json({
-      success: true,
-      message: "Lead activity report fetched successfully",
-      data: report,
-    });
-  } catch (error: any) {
-    console.error("Error generating lead activity report:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Failed to generate activity report",
-      error: error.message,
-    });
-  }
-};
+//     // 🟢 Successful response
+//     return res.status(200).json({
+//       success: true,
+//       message: "Lead activity report fetched successfully",
+//       data: report,
+//     });
+//   } catch (error: any) {
+//     console.error("Error generating lead activity report:", error);
+//     return res.status(500).json({
+//       success: false,
+//       message: "Failed to generate activity report",
+//       error: error.message,
+//     });
+//   }
+// };
 
 // export const getLeadActivityReportByUserController = async (
 //   req: Request,
@@ -235,3 +235,59 @@ export const getLeadActivityReportByUserController = async (
 //   }
 // };
 
+export const getLeadActivityReportByUserController = async (
+  req: Request,
+  res: Response
+): Promise<any> => {
+  try {
+    const { userId, period, ...customFilter } = req.query; // ✅ collect other filters
+
+    // 🟢 Validate 'period'
+    if (
+      !period ||
+      typeof period !== "string" ||
+      !["daily", "weekly", "monthly"].includes(period)
+    ) {
+      return res
+        .status(400)
+        .json({ message: "Invalid or missing 'period' parameter" });
+    }
+
+    // 🟢 Validate 'userId'
+    if (!userId || isNaN(Number(userId))) {
+      return res
+        .status(400)
+        .json({ message: "Invalid or missing 'userId' parameter" });
+    }
+
+    // 🟢 Fetch report for specific user + filters
+    const report = await getLeadActivityReportByUser(
+      Number(userId),
+      period as "daily" | "weekly" | "monthly",
+      customFilter // ✅ pass filters here
+    );
+
+    // 🟢 Handle case: no data found
+    if (!report || (Array.isArray(report) && report.length === 0)) {
+      return res.status(200).json({
+        success: true,
+        message: "No lead activity found for this user and period",
+        data: [],
+      });
+    }
+
+    // 🟢 Successful response
+    return res.status(200).json({
+      success: true,
+      message: "Lead activity report fetched successfully",
+      data: report,
+    });
+  } catch (error: any) {
+    console.error("Error generating lead activity report:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to generate activity report",
+      error: error.message,
+    });
+  }
+};

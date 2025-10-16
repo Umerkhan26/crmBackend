@@ -16,7 +16,7 @@ interface UserModel
 
 export const User = db.define<UserModel>(
   "User",
-  {
+  { 
     id: {
       type: DataTypes.INTEGER,
       autoIncrement: true,

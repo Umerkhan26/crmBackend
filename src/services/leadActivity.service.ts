@@ -126,15 +126,6 @@ await (ActivityLog as any).create({
 };
 
 
-// export const deleteLeadActivity = async (id: number) => {
-//   const activity = await LeadActivity.findByPk(id);
-//   if (!activity) {
-//     throw new Error("Lead activity not found");
-//   }
-//   await activity.destroy();
-//   return { message: "Lead activity deleted successfully" };
-// };
-
 // export const getLeadActivityReportByUser = async (
 //   userId: number,
 //   period: "daily" | "weekly" | "monthly"
@@ -154,10 +145,10 @@ await (ActivityLog as any).create({
 //     startDate.setMonth(startDate.getMonth() - 1);
 //   }
 
-//   // 🟢 Fetch lead-related activities only for this user
+//   // 🟢 Fetch activities
 //   const activities = await LeadActivity.findAll({
 //     where: {
-//       entityType: "lead",
+//       entityType: { [Op.in]: ["lead", "lead_status", "status_change"] },
 //       createdAt: { [Op.between]: [startDate, endDate] },
 //       performedBy: userId,
 //     },
@@ -167,20 +158,17 @@ await (ActivityLog as any).create({
 //         as: "performedByUser",
 //         attributes: ["id", "firstname", "email"],
 //       },
-//       {
-//         model: Lead,
-//         as: "LeadById", //       attributes: ["id", "leadData"],
-//       },
+//       { model: Lead, as: "LeadById" },
 //     ],
 //     order: [["createdAt", "DESC"]],
 //   });
 
-//   // 🟣 Fetch notes only for this user
+//   // 🟣 Fetch notes
 //   const notes = await Note.findAll({
 //     where: {
 //       notebleType: "lead",
 //       createdAt: { [Op.between]: [startDate, endDate] },
-//       createdBy: userId, // ✅ Filter by userId
+//       createdBy: userId,
 //     },
 //     include: [
 //       {
@@ -191,49 +179,88 @@ await (ActivityLog as any).create({
 //     ],
 //   });
 
-//   // 🔹 Prepare user-level report
+//   // 🟠 Fetch leads where this user changed status recently
+//   const statusUpdates = await Lead.findAll({
+//     where: Sequelize.literal(
+//       `JSON_CONTAINS(assignees, JSON_OBJECT('userId', ${userId}))`
+//     ),
+//   });
+
 //   const report: ReportUser = {
-//     user: activities[0]?.performedByUser ||
+//     user:
+//       activities[0]?.performedByUser ||
 //       notes[0]?.creator || { id: userId, name: "Unknown User" },
 //     totalActivities: 0,
 //     leadsWorkedOn: new Map(),
 //     lastActivityAt: startDate,
 //     notesCount: 0,
 //     remindersCount: 0,
+//     statusChangeHistory: [], // ✅ new field
 //   };
 
 //   // 🟢 Process activities
 //   for (const act of activities) {
 //     report.totalActivities++;
-
 //     const leadName =
-//       act.Lead?.leadData?.name || 
+//       act.Lead?.leadData?.name ||
 //       act.Lead?.leadData?.fullName ||
 //       `Lead #${act.Lead?.id}`;
 
 //     if (act.Lead?.id) {
 //       report.leadsWorkedOn.set(act.Lead.id, leadName);
 //     }
-
 //     if (act.createdAt > report.lastActivityAt) {
 //       report.lastActivityAt = act.createdAt;
-//     }   
+//     }
 //   }
 
-//   // 🟣 Process notes & reminders
+//   // 🟣 Process notes
 //   for (const note of notes) {
 //     if (note.type === "comment") report.notesCount++;
 //     if (note.type === "reminder") report.remindersCount++;
-
 //     report.leadsWorkedOn.set(note.notebleId, `Lead #${note.notebleId}`);
-
 //     if (note.createdAt > report.lastActivityAt) {
 //       report.lastActivityAt = note.createdAt;
 //     }
 //   }
 
-//   // 🧾 Final formatted output
-//   const formattedReport = {
+//   // 🟠 Process direct status changes
+//   for (const lead of statusUpdates) {
+//     let assignees: any[] = [];
+//     try {
+//       assignees =
+//         typeof lead.assignees === "string"
+//           ? JSON.parse(lead.assignees)
+//           : Array.isArray(lead.assignees)
+//           ? lead.assignees
+//           : [];
+//     } catch {
+//       assignees = [];
+//     }
+
+//     const assignee = assignees.find((a: any) => a.userId === userId);
+//     if (assignee) {
+//       const leadName =
+//         lead.leadData?.name || lead.leadData?.fullName || `Lead #${lead.id}`;
+//       report.leadsWorkedOn.set(lead.id, leadName);
+//       report.totalActivities++;
+
+//       report.statusChangeHistory?.push({
+//   leadId: lead.id,
+//   leadName,
+//   newStatus: assignee.status,
+//   changedAt: assignee.updatedAt || lead.updatedAt,
+// });
+
+
+//       if (lead.updatedAt > report.lastActivityAt) {
+//         report.lastActivityAt = lead.updatedAt;
+//       }
+//     }
+//   }
+
+//   // 🧾 Final output
+//   return {
 //     user: report.user,
 //     totalActivities: report.totalActivities,
 //     totalLeadsWorkedOn: report.leadsWorkedOn.size,
@@ -243,30 +270,38 @@ await (ActivityLog as any).create({
 //       id,
 //       name,
 //     })),
+//     statusChangeHistory: report.statusChangeHistory, // ✅ included in response
 //     lastActivityAt: report.lastActivityAt,
 //   };
-
-//   return formattedReport;
 // };
 
 
 export const getLeadActivityReportByUser = async (
   userId: number,
-  period: "daily" | "weekly" | "monthly"
+  period: "daily" | "weekly" | "monthly",
+  customFilter: Record<string, any> = {} // ✅ optional filter
 ) => {
   let startDate: Date;
   const endDate = new Date();
 
-  // 📅 Define date range
+  // 📅 Define precise date range (fixed version)
   if (period === "daily") {
+    // ✅ From start of today to end of today (local time)
     startDate = new Date();
     startDate.setHours(0, 0, 0, 0);
+    endDate.setHours(23, 59, 59, 999);
   } else if (period === "weekly") {
+    // ✅ From 7 days ago (start of day) to end of today
     startDate = new Date();
     startDate.setDate(startDate.getDate() - 7);
+    startDate.setHours(0, 0, 0, 0);
+    endDate.setHours(23, 59, 59, 999);
   } else {
+    // ✅ From 1 month ago (start of day) to end of today
     startDate = new Date();
     startDate.setMonth(startDate.getMonth() - 1);
+    startDate.setHours(0, 0, 0, 0);
+    endDate.setHours(23, 59, 59, 999);
   }
 
   // 🟢 Fetch activities
@@ -275,6 +310,7 @@ export const getLeadActivityReportByUser = async (
       entityType: { [Op.in]: ["lead", "lead_status", "status_change"] },
       createdAt: { [Op.between]: [startDate, endDate] },
       performedBy: userId,
+      ...customFilter, // ✅ custom filter applied
     },
     include: [
       {
@@ -293,6 +329,7 @@ export const getLeadActivityReportByUser = async (
       notebleType: "lead",
       createdAt: { [Op.between]: [startDate, endDate] },
       createdBy: userId,
+      ...customFilter, // ✅ custom filter applied
     },
     include: [
       {
@@ -305,9 +342,12 @@ export const getLeadActivityReportByUser = async (
 
   // 🟠 Fetch leads where this user changed status recently
   const statusUpdates = await Lead.findAll({
-    where: Sequelize.literal(
-      `JSON_CONTAINS(assignees, JSON_OBJECT('userId', ${userId}))`
-    ),
+    where: {
+      ...customFilter, // ✅ custom filter applied
+      [Op.and]: Sequelize.literal(
+        `JSON_CONTAINS(assignees, JSON_OBJECT('userId', ${userId}))`
+      ),
+    },
   });
 
   const report: ReportUser = {
@@ -370,12 +410,11 @@ export const getLeadActivityReportByUser = async (
       report.totalActivities++;
 
       report.statusChangeHistory?.push({
-  leadId: lead.id,
-  leadName,
-  newStatus: assignee.status,
-  changedAt: assignee.updatedAt || lead.updatedAt,
-});
-
+        leadId: lead.id,
+        leadName,
+        newStatus: assignee.status,
+        changedAt: assignee.updatedAt || lead.updatedAt,
+      });
 
       if (lead.updatedAt > report.lastActivityAt) {
         report.lastActivityAt = lead.updatedAt;
@@ -394,7 +433,8 @@ export const getLeadActivityReportByUser = async (
       id,
       name,
     })),
-    statusChangeHistory: report.statusChangeHistory, // ✅ included in response
+    statusChangeHistory: report.statusChangeHistory,
     lastActivityAt: report.lastActivityAt,
   };
 };
+

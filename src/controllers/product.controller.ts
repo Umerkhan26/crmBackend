@@ -64,18 +64,15 @@ export const getAllSales = async (
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
     const search = (req.query.search as string) || "";
-
     const filters: any = {};
     if (req.query.productType) filters.productType = req.query.productType;
     if (req.query.status) filters.status = req.query.status;
-
     const salesData = await ProductSaleService.getAllSales({
       page,
       limit,
       search,
       filters,
     });
-
     return res.status(200).json({
       success: true,
       message: "Sales fetched successfully",
@@ -443,31 +440,40 @@ export const getSalesByAssigneeIdController = async (
   res: Response
 ): Promise<any> => {
   try {
-const assigneeId = parseInt(req.params.id, 10);
-    console.log("🔍 [Controller] Received assigneeId:", assigneeId);
-
-    if (isNaN(assigneeId)) {
-      console.error("❌ Invalid assignee ID:", req.params.assigneeId);
+    const assigneeId = parseInt(req.params.id, 10);
+    if (isNaN(assigneeId))
       return res.status(400).json({ message: "Invalid assignee ID" });
-    }
 
-    const sales = await ProductSaleService.getSalesByAssigneeId(assigneeId);
-    console.log("📦 [Controller] Sales fetched:", sales);
+    const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
+    const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 10;
+    const search = (req.query.search as string) || "";
 
-    if (!sales || sales.length === 0) {
-      console.warn("⚠️ No sales found for assigneeId:", assigneeId);
+    console.log(
+      `📄 Pagination => page: ${page}, limit: ${limit}, search: "${search}"`
+    );
+
+    const salesData = await ProductSaleService.getSalesByAssigneeId(
+      assigneeId,
+      page,
+      limit,
+      search
+    );
+
+    if (!salesData || !salesData.data || salesData.data.length === 0)
       return res
         .status(404)
-        .json({ message: "No sales found for this assignee" });
-    }
+        .json({ success: false, message: "No sales found for this assignee" });
 
     return res.status(200).json({
       success: true,
       message: "Sales fetched successfully",
-      data: sales,
+      ...salesData,
     });
   } catch (error: any) {
     console.error("🔥 Error in getSalesByAssigneeId controller:", error);
-    return res.status(500).json({ success: false, message: error.message });
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Internal Server Error",
+    });
   }
 };

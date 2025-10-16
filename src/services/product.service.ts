@@ -65,61 +65,63 @@ export const getAllSales = async ({
 }: SaleQueryParams) => {
   try {
     const { offset, limit: pageLimit } = getPagination({ page, limit });
-
     const where: any = { ...filters };
-
-   if (search) {
-    where[Op.or] = [
-      // Product info
-      { productType: { [Op.like]: `%${search}%` } },
-      Sequelize.where(
-        Sequelize.cast(Sequelize.col("ProductSale.products"), "CHAR"),
-        { [Op.like]: `%${search}%` }
-      ),
-      { price: { [Op.like]: `%${search}%` } },
-      { notes: { [Op.like]: `%${search}%` } },
-      { status: { [Op.like]: `%${search}%` } },
-      // Campaign name
-      { "$Campaign.name$": { [Op.like]: `%${search}%` } },
-      { "$Lead.campaignName$": { [Op.like]: `%${search}%` } },
-      // Created By (User)
-      { "$User.firstname$": { [Op.like]: `%${search}%` } },
-      { "$User.email$": { [Op.like]: `%${search}%` } },
-      // Lead info (JSON search by casting leadData to string)
-      Sequelize.where(
-        Sequelize.cast(Sequelize.col("Lead.leadData"), "CHAR"),
-        { [Op.like]: `%${search}%` }
-      ),
-      // Conversion Date
-      Sequelize.where(
-        Sequelize.fn(
-          "DATE_FORMAT",
-          Sequelize.col("ProductSale.conversionDate"),
-          "%Y-%m-%d"
-        ),
-        { [Op.like]: `%${search}%` }
-      ),
+    const include: any = [
+      {
+        model: Lead,
+        attributes: ["id", "campaignName", "leadData"],
+      },
+      {
+        model: User,
+        attributes: ["id", "firstname", "email"],
+      },
     ];
-  }
-
-
+    if (search) {
+      where[Op.or] = [
+        // ProductSale fields
+        { productType: { [Op.like]: `%${search}%` } },
+        { price: { [Op.like]: `%${search}%` } },
+        { notes: { [Op.like]: `%${search}%` } },
+        { status: { [Op.like]: `%${search}%` } },
+        // Campaign
+        { "$Lead.campaignName$": { [Op.like]: `%${search}%` } },
+        // Created By (User)
+        { "$User.firstname$": { [Op.like]: `%${search}%` } },
+        { "$User.email$": { [Op.like]: `%${search}%` } },
+        // :white_check_mark: Lead JSON fields
+        Sequelize.literal(
+          `JSON_UNQUOTE(JSON_EXTRACT(Lead.leadData, '$.first_name')) LIKE '%${search}%'`
+        ),
+        Sequelize.literal(
+          `JSON_UNQUOTE(JSON_EXTRACT(Lead.leadData, '$.last_name')) LIKE '%${search}%'`
+        ),
+        Sequelize.literal(
+          `JSON_UNQUOTE(JSON_EXTRACT(Lead.leadData, '$.agent_name')) LIKE '%${search}%'`
+        ),
+        Sequelize.literal(
+          `JSON_UNQUOTE(JSON_EXTRACT(Lead.leadData, '$.state')) LIKE '%${search}%'`
+        ),
+        Sequelize.literal(
+          `JSON_UNQUOTE(JSON_EXTRACT(Lead.leadData, '$.email')) LIKE '%${search}%'`
+        ),
+        // Conversion Date
+        Sequelize.where(
+          Sequelize.fn(
+            "DATE_FORMAT",
+            Sequelize.col("ProductSale.conversionDate"),
+            "%Y-%m-%d"
+          ),
+          { [Op.like]: `%${search}%` }
+        ),
+      ];
+    }
     const data = await ProductSale.findAndCountAll({
       offset,
       limit: pageLimit,
       where,
-      include: [
-        {
-          model: Lead,
-          attributes: ["id", "campaignName", "leadData"],
-        },
-        {
-          model: User,
-          attributes: ["id", "firstname", "email"],
-        },
-      ],
+      include,
       order: [["createdAt", "DESC"]],
     });
-
     return getPagingData(data, page, pageLimit);
   } catch (error: any) {
     throw new Error(`Error fetching sales: ${error.message}`);
@@ -536,37 +538,69 @@ export const getInvoiceByLeadId = async (leadId: number) => {
     throw new Error(`Failed to fetch invoice: ${error.message}`);
   }
 };
-export const getSalesByAssigneeId = async (assigneeId: number | string) => {
-  console.log(
-    ":mag: [getSalesByAssigneeId] Called with assigneeId:",
-    assigneeId
-  );
+
+export const getSalesByAssigneeId = async (
+  assigneeId: number | string,
+  page: number = 1,
+  limit: number = 10,
+  search: string = ""
+) => {
+  console.log(":mag: [getSalesByAssigneeId] Called with assigneeId:", assigneeId);
   try {
     const numericId = Number(assigneeId);
-    console.log(":arrow_right: Parsed numeric assigneeId:", numericId);
-    if (isNaN(numericId)) {
-      console.error(":x: Invalid assigneeId provided:", assigneeId);
-      throw new Error("Invalid assignee ID");
-    }
-    console.log(":satellite_antenna: Querying ProductSale by assigneeId...");
-    const sales = await ProductSale.findAll({
-      where: { assigneeId: numericId },
+    if (isNaN(numericId)) throw new Error("Invalid assignee ID");
+
+    const whereClause: any = { assigneeId: numericId };
+
+    // ✅ Apply search filter (across multiple fields)
+    const searchFilter =
+      search.trim() !== ""
+        ? {
+            [Op.or]: [
+              { "$Lead.campaignName$": { [Op.like]: `%${search}%` } },
+              { "$Lead.leadData$": { [Op.like]: `%${search}%` } },
+              { "$User.firstname$": { [Op.like]: `%${search}%` } },
+              { "$User.email$": { [Op.like]: `%${search}%` } },
+            ],
+          }
+        : {};
+
+    // ✅ If searching, ignore pagination (bring all matches)
+    const usePagination = !search || search.trim() === "";
+
+    const queryOptions: any = {
+      where: {
+        ...whereClause,
+        ...searchFilter,
+      },
       include: [
         { model: Lead, attributes: ["id", "campaignName", "leadData"] },
         { model: User, attributes: ["id", "firstname", "email"] },
       ],
       order: [["createdAt", "DESC"]],
-    });
-    console.log(":package: Sequelize query result:", sales);
-    if (!sales || sales.length === 0) {
-      console.warn(":warning: No sales found for assigneeId:", numericId);
-      throw new Error("No sales found for this assignee");
+    };
+
+    if (usePagination) {
+      const { offset, limit: pageLimit } = getPagination({ page, limit });
+      queryOptions.offset = offset;
+      queryOptions.limit = pageLimit;
     }
 
-    const plainSales = sales.map((sale) => sale.toJSON());
-    console.log("✅ Final sales array:", plainSales);
+    const sales = await ProductSale.findAndCountAll(queryOptions);
 
-    return plainSales;
+    if (!sales || sales.count === 0)
+      throw new Error("No sales found for this assignee");
+
+    const pagingData = usePagination
+      ? getPagingData(sales, page, limit)
+      : {
+          totalItems: sales.count,
+          data: sales.rows,
+          totalPages: 1,
+          currentPage: 1,
+        };
+
+    return pagingData;
   } catch (error: any) {
     console.error(":fire: Error in getSalesByAssigneeId service:", error);
     throw new Error(`Error fetching sales by assigneeId: ${error.message}`);

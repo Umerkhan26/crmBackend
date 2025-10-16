@@ -278,39 +278,50 @@ await (ActivityLog as any).create({
 
 export const getLeadActivityReportByUser = async (
   userId: number,
-  period: "daily" | "weekly" | "monthly",
-  customFilter: Record<string, any> = {} // ✅ optional filter
+  period: "daily" | "weekly" | "monthly" | "custom",
+  customFilter: Record<string, any> = {} // :white_check_mark: optional filter
 ) => {
   let startDate: Date;
-  const endDate = new Date();
-
-  // 📅 Define precise date range (fixed version)
-  if (period === "daily") {
-    // ✅ From start of today to end of today (local time)
-    startDate = new Date();
-    startDate.setHours(0, 0, 0, 0);
-    endDate.setHours(23, 59, 59, 999);
-  } else if (period === "weekly") {
-    // ✅ From 7 days ago (start of day) to end of today
-    startDate = new Date();
-    startDate.setDate(startDate.getDate() - 7);
-    startDate.setHours(0, 0, 0, 0);
-    endDate.setHours(23, 59, 59, 999);
+  let endDate: Date;
+  // :date: Check if custom dates are provided
+  const hasCustomDates = customFilter.startDate && customFilter.endDate;
+  if (hasCustomDates) {
+    // :white_check_mark: Use custom date range from filters
+    startDate = new Date(customFilter.startDate);
+    endDate = new Date(customFilter.endDate);
+    // Remove startDate and endDate from customFilter so they don't override createdAt
+    const { startDate: _, endDate: __, ...cleanCustomFilter } = customFilter;
+    customFilter = cleanCustomFilter;
   } else {
-    // ✅ From 1 month ago (start of day) to end of today
-    startDate = new Date();
-    startDate.setMonth(startDate.getMonth() - 1);
-    startDate.setHours(0, 0, 0, 0);
-    endDate.setHours(23, 59, 59, 999);
+    // :date: Use period-based date range
+    endDate = new Date();
+    if (period === "daily") {
+      // :white_check_mark: From start of today to end of today (local time)
+      startDate = new Date();
+      startDate.setHours(0, 0, 0, 0);
+      endDate.setHours(23, 59, 59, 999);
+    } else if (period === "weekly") {
+      // :white_check_mark: From 7 days ago (start of day) to end of today
+      startDate = new Date();
+      startDate.setDate(startDate.getDate() - 7);
+      startDate.setHours(0, 0, 0, 0);
+      endDate.setHours(23, 59, 59, 999);
+    } else {
+      // :white_check_mark: From 1 month ago (start of day) to end of today
+      startDate = new Date();
+      startDate.setMonth(startDate.getMonth() - 1);
+      startDate.setHours(0, 0, 0, 0);
+      endDate.setHours(23, 59, 59, 999);
+    }
   }
-
-  // 🟢 Fetch activities
+  console.log(":date: Date Range:", { startDate, endDate, hasCustomDates });
+  // :large_green_circle: Fetch activities
   const activities = await LeadActivity.findAll({
     where: {
       entityType: { [Op.in]: ["lead", "lead_status", "status_change"] },
       createdAt: { [Op.between]: [startDate, endDate] },
       performedBy: userId,
-      ...customFilter, // ✅ custom filter applied
+      ...customFilter, // :white_check_mark: clean custom filter applied (no date conflicts)
     },
     include: [
       {
@@ -322,14 +333,13 @@ export const getLeadActivityReportByUser = async (
     ],
     order: [["createdAt", "DESC"]],
   });
-
-  // 🟣 Fetch notes
+  // :large_purple_circle: Fetch notes
   const notes = await Note.findAll({
     where: {
       notebleType: "lead",
       createdAt: { [Op.between]: [startDate, endDate] },
       createdBy: userId,
-      ...customFilter, // ✅ custom filter applied
+      ...customFilter, // :white_check_mark: clean custom filter applied
     },
     include: [
       {
@@ -339,37 +349,37 @@ export const getLeadActivityReportByUser = async (
       },
     ],
   });
-
-  // 🟠 Fetch leads where this user changed status recently
+  // :large_orange_circle: Fetch leads where this user changed status recently
+  const statusUpdatesWhere: any = {
+    ...customFilter, // :white_check_mark: clean custom filter applied
+    [Op.and]: Sequelize.literal(
+      `JSON_CONTAINS(assignees, JSON_OBJECT('userId', ${userId}))`
+    ),
+  };
+  // Add date filtering for status updates if using custom dates
+  if (hasCustomDates) {
+    statusUpdatesWhere.updatedAt = { [Op.between]: [startDate, endDate] };
+  }
   const statusUpdates = await Lead.findAll({
-    where: {
-      ...customFilter, // ✅ custom filter applied
-      [Op.and]: Sequelize.literal(
-        `JSON_CONTAINS(assignees, JSON_OBJECT('userId', ${userId}))`
-      ),
-    },
+    where: statusUpdatesWhere,
   });
-
   const report: ReportUser = {
-    user:
-      activities[0]?.performedByUser ||
+    user: activities[0]?.performedByUser ||
       notes[0]?.creator || { id: userId, name: "Unknown User" },
     totalActivities: 0,
     leadsWorkedOn: new Map(),
     lastActivityAt: startDate,
     notesCount: 0,
     remindersCount: 0,
-    statusChangeHistory: [], // ✅ new field
+    statusChangeHistory: [],
   };
-
-  // 🟢 Process activities
+  // :large_green_circle: Process activities
   for (const act of activities) {
     report.totalActivities++;
     const leadName =
       act.Lead?.leadData?.name ||
       act.Lead?.leadData?.fullName ||
       `Lead #${act.Lead?.id}`;
-
     if (act.Lead?.id) {
       report.leadsWorkedOn.set(act.Lead.id, leadName);
     }
@@ -377,8 +387,7 @@ export const getLeadActivityReportByUser = async (
       report.lastActivityAt = act.createdAt;
     }
   }
-
-  // 🟣 Process notes
+  // :large_purple_circle: Process notes
   for (const note of notes) {
     if (note.type === "comment") report.notesCount++;
     if (note.type === "reminder") report.remindersCount++;
@@ -387,8 +396,7 @@ export const getLeadActivityReportByUser = async (
       report.lastActivityAt = note.createdAt;
     }
   }
-
-  // 🟠 Process direct status changes
+  // :large_orange_circle: Process direct status changes
   for (const lead of statusUpdates) {
     let assignees: any[] = [];
     try {
@@ -401,28 +409,24 @@ export const getLeadActivityReportByUser = async (
     } catch {
       assignees = [];
     }
-
     const assignee = assignees.find((a: any) => a.userId === userId);
     if (assignee) {
       const leadName =
         lead.leadData?.name || lead.leadData?.fullName || `Lead #${lead.id}`;
       report.leadsWorkedOn.set(lead.id, leadName);
       report.totalActivities++;
-
       report.statusChangeHistory?.push({
         leadId: lead.id,
         leadName,
         newStatus: assignee.status,
         changedAt: assignee.updatedAt || lead.updatedAt,
       });
-
       if (lead.updatedAt > report.lastActivityAt) {
         report.lastActivityAt = lead.updatedAt;
       }
     }
   }
-
-  // 🧾 Final output
+  // :receipt: Final output
   return {
     user: report.user,
     totalActivities: report.totalActivities,
@@ -437,4 +441,3 @@ export const getLeadActivityReportByUser = async (
     lastActivityAt: report.lastActivityAt,
   };
 };
-

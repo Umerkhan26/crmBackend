@@ -240,34 +240,30 @@ export const getLeadActivityReportByUserController = async (
   res: Response
 ): Promise<any> => {
   try {
-    const { userId, period, ...customFilter } = req.query; // ✅ collect other filters
-
-    // 🟢 Validate 'period'
+    const { userId, period, ...customFilter } = req.query; // :white_check_mark: collect other filters
+    // :large_green_circle: Validate 'period' - ADD "custom" to allowed periods
     if (
       !period ||
       typeof period !== "string" ||
-      !["daily", "weekly", "monthly"].includes(period)
+      !["daily", "weekly", "monthly", "custom"].includes(period)
     ) {
       return res
         .status(400)
         .json({ message: "Invalid or missing 'period' parameter" });
     }
-
-    // 🟢 Validate 'userId'
+    // :large_green_circle: Validate 'userId'
     if (!userId || isNaN(Number(userId))) {
       return res
         .status(400)
         .json({ message: "Invalid or missing 'userId' parameter" });
     }
-
-    // 🟢 Fetch report for specific user + filters
+    // :large_green_circle: Fetch report for specific user + filters
     const report = await getLeadActivityReportByUser(
       Number(userId),
-      period as "daily" | "weekly" | "monthly",
-      customFilter // ✅ pass filters here
+      period as "daily" | "weekly" | "monthly" | "custom",
+      customFilter // :white_check_mark: pass filters here
     );
-
-    // 🟢 Handle case: no data found
+    // :large_green_circle: Handle case: no data found
     if (!report || (Array.isArray(report) && report.length === 0)) {
       return res.status(200).json({
         success: true,
@@ -275,8 +271,7 @@ export const getLeadActivityReportByUserController = async (
         data: [],
       });
     }
-
-    // 🟢 Successful response
+    // :large_green_circle: Successful response
     return res.status(200).json({
       success: true,
       message: "Lead activity report fetched successfully",
@@ -291,3 +286,12 @@ export const getLeadActivityReportByUserController = async (
     });
   }
 };
+
+
+
+
+
+
+
+
+

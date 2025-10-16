@@ -550,37 +550,92 @@ export const getInvoiceByLeadId = async (leadId: number) => {
     throw new Error(`Failed to fetch invoice: ${error.message}`);
   }
 };
-export const getSalesByAssigneeId = async (assigneeId: number | string) => {
+
+export const getSalesByAssigneeId = async (
+  assigneeId: number | string,
+  page: number = 1,
+  limit: number = 10,
+  search: string = ""
+) => {
   console.log(
     ":mag: [getSalesByAssigneeId] Called with assigneeId:",
     assigneeId
   );
+
   try {
     const numericId = Number(assigneeId);
-    console.log(":arrow_right: Parsed numeric assigneeId:", numericId);
-    if (isNaN(numericId)) {
-      console.error(":x: Invalid assigneeId provided:", assigneeId);
-      throw new Error("Invalid assignee ID");
+    if (isNaN(numericId)) throw new Error("Invalid assignee ID");
+
+    const { offset, limit: pageLimit } = getPagination({ page, limit });
+
+    const where: any = { assigneeId: numericId };
+    const include: any = [
+      {
+        model: Lead,
+        attributes: ["id", "campaignName", "leadData"],
+      },
+      {
+        model: User,
+        attributes: ["id", "firstname", "email"],
+      },
+    ];
+
+    if (search.trim()) {
+      where[Op.or] = [
+        // ProductSale fields
+        { productType: { [Op.like]: `%${search}%` } },
+        { price: { [Op.like]: `%${search}%` } },
+        { notes: { [Op.like]: `%${search}%` } },
+        { status: { [Op.like]: `%${search}%` } },
+
+        // Campaign
+        { "$Lead.campaignName$": { [Op.like]: `%${search}%` } },
+
+        // Created By (User)
+        { "$User.firstname$": { [Op.like]: `%${search}%` } },
+        { "$User.email$": { [Op.like]: `%${search}%` } },
+
+        // ✅ Lead JSON fields
+        Sequelize.literal(
+          `JSON_UNQUOTE(JSON_EXTRACT(Lead.leadData, '$.first_name')) LIKE '%${search}%'`
+        ),
+        Sequelize.literal(
+          `JSON_UNQUOTE(JSON_EXTRACT(Lead.leadData, '$.last_name')) LIKE '%${search}%'`
+        ),
+        Sequelize.literal(
+          `JSON_UNQUOTE(JSON_EXTRACT(Lead.leadData, '$.agent_name')) LIKE '%${search}%'`
+        ),
+        Sequelize.literal(
+          `JSON_UNQUOTE(JSON_EXTRACT(Lead.leadData, '$.state')) LIKE '%${search}%'`
+        ),
+        Sequelize.literal(
+          `JSON_UNQUOTE(JSON_EXTRACT(Lead.leadData, '$.email')) LIKE '%${search}%'`
+        ),
+
+        // Conversion Date
+        Sequelize.where(
+          Sequelize.fn(
+            "DATE_FORMAT",
+            Sequelize.col("ProductSale.conversionDate"),
+            "%Y-%m-%d"
+          ),
+          { [Op.like]: `%${search}%` }
+        ),
+      ];
     }
-    console.log(":satellite_antenna: Querying ProductSale by assigneeId...");
-    const sales = await ProductSale.findAll({
-      where: { assigneeId: numericId },
-      include: [
-        { model: Lead, attributes: ["id", "campaignName", "leadData"] },
-        { model: User, attributes: ["id", "firstname", "email"] },
-      ],
+
+    const sales = await ProductSale.findAndCountAll({
+      offset,
+      limit: pageLimit,
+      where,
+      include,
       order: [["createdAt", "DESC"]],
     });
-    console.log(":package: Sequelize query result:", sales);
-    if (!sales || sales.length === 0) {
-      console.warn(":warning: No sales found for assigneeId:", numericId);
+
+    if (!sales || sales.count === 0)
       throw new Error("No sales found for this assignee");
-    }
 
-    const plainSales = sales.map((sale) => sale.toJSON());
-    console.log("✅ Final sales array:", plainSales);
-
-    return plainSales;
+    return getPagingData(sales, page, pageLimit);
   } catch (error: any) {
     console.error(":fire: Error in getSalesByAssigneeId service:", error);
     throw new Error(`Error fetching sales by assigneeId: ${error.message}`);

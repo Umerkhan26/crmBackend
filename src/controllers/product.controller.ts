@@ -442,30 +442,36 @@ export const getSalesByAssigneeIdController = async (
 ): Promise<any> => {
   try {
     const assigneeId = parseInt(req.params.id, 10);
-    console.log("🔍 [Controller] Received assigneeId:", assigneeId);
-
-    if (isNaN(assigneeId)) {
-      console.error("❌ Invalid assignee ID:", req.params.assigneeId);
+    if (isNaN(assigneeId))
       return res.status(400).json({ message: "Invalid assignee ID" });
-    }
-
-    const sales = await ProductSaleService.getSalesByAssigneeId(assigneeId);
-    console.log("📦 [Controller] Sales fetched:", sales);
-
-    if (!sales || sales.length === 0) {
-      console.warn("⚠️ No sales found for assigneeId:", assigneeId);
+    const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
+    const limit = req.query.limit
+      ? parseInt(req.query.limit as string, 10)
+      : 10;
+    const search = (req.query.search as string) || "";
+    console.log(
+      `:page_facing_up: Pagination => page: ${page}, limit: ${limit}, search: "${search}"`
+    );
+    const salesData = await ProductSaleService.getSalesByAssigneeId(
+      assigneeId,
+      page,
+      limit,
+      search
+    );
+    if (!salesData || !salesData.data || salesData.data.length === 0)
       return res
         .status(404)
-        .json({ message: "No sales found for this assignee" });
-    }
-
+        .json({ success: false, message: "No sales found for this assignee" });
     return res.status(200).json({
       success: true,
       message: "Sales fetched successfully",
-      data: sales,
+      ...salesData,
     });
   } catch (error: any) {
-    console.error("🔥 Error in getSalesByAssigneeId controller:", error);
-    return res.status(500).json({ success: false, message: error.message });
+    console.error(":fire: Error in getSalesByAssigneeId controller:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Internal Server Error",
+    });
   }
 };

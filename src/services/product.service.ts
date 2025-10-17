@@ -65,7 +65,6 @@ export const getAllSales = async ({
   try {
     const { offset, limit: pageLimit } = getPagination({ page, limit });
     const where: any = { ...filters };
-
     const include: any = [
       {
         model: Lead,
@@ -76,7 +75,6 @@ export const getAllSales = async ({
         attributes: ["id", "firstname", "email"],
       },
     ];
-
     if (search) {
       where[Op.or] = [
         // ProductSale fields
@@ -84,15 +82,12 @@ export const getAllSales = async ({
         { price: { [Op.like]: `%${search}%` } },
         { notes: { [Op.like]: `%${search}%` } },
         { status: { [Op.like]: `%${search}%` } },
-
         // Campaign
         { "$Lead.campaignName$": { [Op.like]: `%${search}%` } },
-
         // Created By (User)
         { "$User.firstname$": { [Op.like]: `%${search}%` } },
         { "$User.email$": { [Op.like]: `%${search}%` } },
-
-        // ✅ Lead JSON fields
+        // :white_check_mark: Lead JSON fields
         Sequelize.literal(
           `JSON_UNQUOTE(JSON_EXTRACT(Lead.leadData, '$.first_name')) LIKE '%${search}%'`
         ),
@@ -108,7 +103,6 @@ export const getAllSales = async ({
         Sequelize.literal(
           `JSON_UNQUOTE(JSON_EXTRACT(Lead.leadData, '$.email')) LIKE '%${search}%'`
         ),
-
         // Conversion Date
         Sequelize.where(
           Sequelize.fn(
@@ -120,7 +114,6 @@ export const getAllSales = async ({
         ),
       ];
     }
-
     const data = await ProductSale.findAndCountAll({
       offset,
       limit: pageLimit,
@@ -128,7 +121,6 @@ export const getAllSales = async ({
       include,
       order: [["createdAt", "DESC"]],
     });
-
     return getPagingData(data, page, pageLimit);
   } catch (error: any) {
     throw new Error(`Error fetching sales: ${error.message}`);
@@ -565,9 +557,7 @@ export const getSalesByAssigneeId = async (
   try {
     const numericId = Number(assigneeId);
     if (isNaN(numericId)) throw new Error("Invalid assignee ID");
-
     const { offset, limit: pageLimit } = getPagination({ page, limit });
-
     const where: any = { assigneeId: numericId };
     const include: any = [
       {
@@ -579,7 +569,6 @@ export const getSalesByAssigneeId = async (
         attributes: ["id", "firstname", "email"],
       },
     ];
-
     if (search.trim()) {
       where[Op.or] = [
         // ProductSale fields
@@ -587,15 +576,12 @@ export const getSalesByAssigneeId = async (
         { price: { [Op.like]: `%${search}%` } },
         { notes: { [Op.like]: `%${search}%` } },
         { status: { [Op.like]: `%${search}%` } },
-
         // Campaign
         { "$Lead.campaignName$": { [Op.like]: `%${search}%` } },
-
         // Created By (User)
         { "$User.firstname$": { [Op.like]: `%${search}%` } },
         { "$User.email$": { [Op.like]: `%${search}%` } },
-
-        // ✅ Lead JSON fields
+        // :white_check_mark: Lead JSON fields
         Sequelize.literal(
           `JSON_UNQUOTE(JSON_EXTRACT(Lead.leadData, '$.first_name')) LIKE '%${search}%'`
         ),
@@ -611,7 +597,6 @@ export const getSalesByAssigneeId = async (
         Sequelize.literal(
           `JSON_UNQUOTE(JSON_EXTRACT(Lead.leadData, '$.email')) LIKE '%${search}%'`
         ),
-
         // Conversion Date
         Sequelize.where(
           Sequelize.fn(
@@ -623,7 +608,6 @@ export const getSalesByAssigneeId = async (
         ),
       ];
     }
-
     const sales = await ProductSale.findAndCountAll({
       offset,
       limit: pageLimit,
@@ -631,10 +615,8 @@ export const getSalesByAssigneeId = async (
       include,
       order: [["createdAt", "DESC"]],
     });
-
     if (!sales || sales.count === 0)
       throw new Error("No sales found for this assignee");
-
     return getPagingData(sales, page, pageLimit);
   } catch (error: any) {
     console.error(":fire: Error in getSalesByAssigneeId service:", error);

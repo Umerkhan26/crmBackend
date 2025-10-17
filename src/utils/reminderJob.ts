@@ -19,7 +19,7 @@ cron.schedule("* * * * *", async () => {
     const now = new Date();
     const oneMinuteAgo = new Date(now.getTime() - 60 * 1000);
 
-    console.log("⏰ Checking reminders between:", oneMinuteAgo, "→", now);
+    // console.log("⏰ Checking reminders between:", oneMinuteAgo, "→", now);
 
     // ✅ Fetch all due reminders
     const dueReminders = await Note.findAll({
@@ -36,15 +36,7 @@ cron.schedule("* * * * *", async () => {
       return;
     }
 
-    console.log(
-      "🔎 Found due reminders:",
-      dueReminders.map((r) => ({
-        id: r.id,
-        reminderDate: r.reminderDate,
-        now,
-        oneMinuteAgo,
-      }))
-    );
+  
 
     for (const reminder of dueReminders) {
       const message = `⏰ Reminder: ${reminder.content}`;

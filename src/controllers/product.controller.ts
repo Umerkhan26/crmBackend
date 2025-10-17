@@ -64,18 +64,15 @@ export const getAllSales = async (
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
     const search = (req.query.search as string) || "";
-
     const filters: any = {};
     if (req.query.productType) filters.productType = req.query.productType;
     if (req.query.status) filters.status = req.query.status;
-
     const salesData = await ProductSaleService.getAllSales({
       page,
       limit,
       search,
       filters,
     });
-
     return res.status(200).json({
       success: true,
       message: "Sales fetched successfully",
@@ -444,31 +441,36 @@ export const getSalesByAssigneeIdController = async (
     const assigneeId = parseInt(req.params.id, 10);
     if (isNaN(assigneeId))
       return res.status(400).json({ message: "Invalid assignee ID" });
+
     const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
     const limit = req.query.limit
       ? parseInt(req.query.limit as string, 10)
       : 10;
     const search = (req.query.search as string) || "";
+
     console.log(
-      `:page_facing_up: Pagination => page: ${page}, limit: ${limit}, search: "${search}"`
+      `📄 Pagination => page: ${page}, limit: ${limit}, search: "${search}"`
     );
+
     const salesData = await ProductSaleService.getSalesByAssigneeId(
       assigneeId,
       page,
       limit,
       search
     );
+
     if (!salesData || !salesData.data || salesData.data.length === 0)
       return res
         .status(404)
         .json({ success: false, message: "No sales found for this assignee" });
+
     return res.status(200).json({
       success: true,
       message: "Sales fetched successfully",
       ...salesData,
     });
   } catch (error: any) {
-    console.error(":fire: Error in getSalesByAssigneeId controller:", error);
+    console.error("🔥 Error in getSalesByAssigneeId controller:", error);
     return res.status(500).json({
       success: false,
       message: error.message || "Internal Server Error",

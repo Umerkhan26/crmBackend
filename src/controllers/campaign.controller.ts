@@ -138,17 +138,15 @@ export const deleteCampaign = async (
   try {
     const { id } = req.params;
     const userId = (req as any).user?.id;
-
     const success = await CampaignService.deleteCampaign(Number(id), userId);
-
     if (!success) {
       return res.status(404).json({ message: "Campaign not found" });
     }
-
     return res.status(200).json({
-      message: "Campaign and related permissions deleted successfully",
+      message: ":white_check_mark: Campaign and related permissions deleted successfully",
     });
   } catch (error: any) {
+    console.error("Delete campaign error:", error);
     return res.status(500).json({ message: error.message });
   }
 };

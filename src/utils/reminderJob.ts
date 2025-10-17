@@ -127,7 +127,7 @@ cron.schedule("* * * * *", async () => {
 
   console.log(`📧 Email sent to ${user.email} for reminder ID ${reminder.id}`);
 }
-else {
+  else {
           console.log(`⚠️ No email found for user ID ${reminder.createdBy}`);
         }
       }

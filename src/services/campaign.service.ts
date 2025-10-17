@@ -12,6 +12,7 @@ import User from "../models/user.model";
 import Role from "../models/role.model";
 import RolePermission from "../models/rolePermission.model";
 import Order from "../models/order.model";
+import { Op } from "sequelize";
 
 interface PaginationParams {
   page?: number;
@@ -122,130 +123,111 @@ export const getCampaignById = async (
   }
 };
 
+
+
+
+
 export const updateCampaign = async (
   id: number,
   data: any,
   userId?: number
 ): Promise<any> => {
   try {
+    // Step 1: Prevent update if linked to orders
     const orderExists = await Order.count({ where: { campaign_id: id } });
     if (orderExists > 0) {
       throw new Error(
-        "❌ Cannot update campaign: it is linked to existing orders."
+        ":x: Cannot update campaign: it is linked to existing orders."
       );
     }
-
+    // Step 2: Find campaign
     const campaign = await Campaign.findByPk(id);
     if (!campaign) throw new Error("Campaign not found");
-
     const oldName = campaign.campaignName;
-    campaign.campaignName = data.campaignName;
+    const newName = data.campaignName;
+    // Step 3: Update campaign fields
+    campaign.campaignName = newName;
     campaign.fields = data.fields;
     await campaign.save();
-
+    // Step 4: Update permission resourceType if name has changed
+    if (oldName !== newName) {
+      const oldResourceType = `campaign-${oldName}`;
+      const newResourceType = `campaign-${newName}`;
+      await Permission.update(
+        { resourceType: newResourceType },
+        { where: { resourceType: oldResourceType } }
+      );
+      // Optional: also update role-permission relationships if needed
+      // (No need if only the resourceType changes, not IDs)
+    }
+    // Step 5: Log and notify user
     if (userId) {
       await logActivity(
         userId,
         "Campaign Updated",
-        `Updated campaign "${oldName}"`
+        `Updated campaign "${oldName}" → "${newName}"`
       );
-      await sendNotification(userId, `Campaign "${oldName}" has been updated.`);
+      await sendNotification(
+        userId,
+        `Campaign "${oldName}" has been renamed to "${newName}".`
+      );
     }
-
     return campaign.get();
   } catch (err: any) {
     throw new Error(err.message || "Error updating campaign");
   }
 };
-
-// export const deleteCampaign = async (
-//   id: number,
-//   userId?: number
-// ): Promise<boolean> => {
-//   try {
-//     const orderExists = await Order.count({ where: { campaign_id: id } });
-//     if (orderExists > 0) {
-//       throw new Error(
-//         "❌ Cannot delete campaign: it is linked to existing orders."
-//       );
-//     }
-
-//     const campaign = await Campaign.findByPk(id);
-//     if (!campaign) throw new Error("Campaign not found");
-
-//     const name = campaign.campaignName;
-//     await Campaign.destroy({ where: { id } });
-
-//     if (userId) {
-//       await logActivity(
-//         userId,
-//         "Campaign Deleted",
-//         `Deleted campaign "${name}"`
-//       );
-//       await sendNotification(userId, `Campaign "${name}" has been deleted.`);
-//     }
-
-//     return true;
-//   } catch (err: any) {
-//     throw new Error(err.message || "Error deleting campaign");
-//   }
-// };
-
-
-
 export const deleteCampaign = async (
   id: number,
   userId?: number
 ): Promise<boolean> => {
   try {
-    // Step 1: Prevent deletion if linked to orders
+    // Step 1: Check for linked orders
     const orderExists = await Order.count({ where: { campaign_id: id } });
     if (orderExists > 0) {
       throw new Error(
-        "❌ Cannot delete campaign: it is linked to existing orders."
+        ":x: Cannot delete campaign: It is linked to existing orders."
       );
     }
-
     // Step 2: Find campaign
     const campaign = await Campaign.findByPk(id);
     if (!campaign) throw new Error("Campaign not found");
-
-    const name = campaign.campaignName;
-    const resourceType = `campaign-${name}`;
-
-    // Step 3: Find permissions related to this campaign
+    const campaignName = campaign.campaignName;
+    const resourceTypeId = `campaign-${id}`;
+    const resourceTypeName = `campaign-${campaignName}`;
+    // Step 3: Find related permissions (by both ID & name)
     const permissions = await Permission.findAll({
-      where: { resourceType, resourceId: id },
+      where: {
+        [Op.or]: [
+          { resourceType: resourceTypeId },
+          { resourceType: resourceTypeName },
+        ],
+      },
     });
-
     if (permissions.length > 0) {
       const permissionIds = permissions.map((p) => p.id);
-
-      // Step 4: Delete from RolePermission first (to avoid FK constraints)
+      // Step 4: Delete from RolePermission first (avoid FK constraint)
       await RolePermission.destroy({ where: { permissionId: permissionIds } });
-
-      // Step 5: Delete the permissions
-      await Permission.destroy({ where: { id: permissionIds } });    
+      // Step 5: Delete related permissions
+      await Permission.destroy({ where: { id: permissionIds } });
     }
-
     // Step 6: Delete campaign
     await Campaign.destroy({ where: { id } });
-
-    // Step 7: Log + notify if userId provided
+    // Step 7: Log + notify (if user available)
     if (userId) {
       await logActivity(
         userId,
         "Campaign Deleted",
-        `Deleted campaign "${name}" and its related permissions.`
+        `Deleted campaign "${campaignName}" and its related permissions.`
       );
       await sendNotification(
         userId,
-        `Campaign "${name}" and its related permissions have been deleted.`
+        `Campaign "${campaignName}" and its related permissions have been deleted.`
       );
     }
-
     return true;
   } catch (err: any) {
+    console.error("Error deleting campaign:", err);
     throw new Error(err.message || "Error deleting campaign");
   }
 };

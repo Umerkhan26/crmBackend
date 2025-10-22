@@ -12,7 +12,8 @@ export const createCampaignn = async (
 
     if (!campaignName || !Array.isArray(fields) || fields.length === 0) {
       return res.status(400).json({
-        message: "Invalid data. Must include campaignName and at least one field.",
+        message:
+          "Invalid data. Must include campaignName and at least one field.",
       });
     }
 
@@ -58,7 +59,11 @@ export const getAllCampaigns = async (
     const limit = parseInt(req.query.limit as string) || 10;
     const search = (req.query.search as string) || "";
 
-    const campaignsResult = await CampaignService.getAllCampaigns({ page, limit, search });
+    const campaignsResult = await CampaignService.getAllCampaigns({
+      page,
+      limit,
+      search,
+    });
 
     if (!campaignsResult || campaignsResult.data.length === 0) {
       return res.status(404).json({ message: "No campaigns found" });
@@ -91,7 +96,16 @@ export const getCampaignById = async (
 ): Promise<any> => {
   try {
     const { id } = req.params;
-    const fields = await CampaignService.getCampaignById(Number(id));
+    // const fields = await CampaignService.getCampaignById(Number(id));
+    let fields;
+
+    if (isNaN(Number(id))) {
+      // Treat param as campaign name
+      fields = await CampaignService.getCampaignByName(id);
+    } else {
+      // Treat param as numeric ID
+      fields = await CampaignService.getCampaignById(Number(id));
+    }
 
     if (!fields || fields.length === 0) {
       return res.status(404).json({ message: "Campaign not found" });
@@ -116,7 +130,11 @@ export const updateCampaign = async (
     const data = req.body;
     const userId = (req as any).user?.id;
 
-    const updated = await CampaignService.updateCampaign(Number(id), data, userId);
+    const updated = await CampaignService.updateCampaign(
+      Number(id),
+      data,
+      userId
+    );
 
     if (!updated) {
       return res.status(404).json({ message: "Campaign not found" });
@@ -127,8 +145,6 @@ export const updateCampaign = async (
     return res.status(500).json({ message: error.message });
   }
 };
-
-
 
 // ✅ Delete Campaign (with userId for activity/notification)
 export const deleteCampaign = async (
@@ -143,7 +159,8 @@ export const deleteCampaign = async (
       return res.status(404).json({ message: "Campaign not found" });
     }
     return res.status(200).json({
-      message: ":white_check_mark: Campaign and related permissions deleted successfully",
+      message:
+        ":white_check_mark: Campaign and related permissions deleted successfully",
     });
   } catch (error: any) {
     console.error("Delete campaign error:", error);

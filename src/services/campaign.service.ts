@@ -123,9 +123,23 @@ export const getCampaignById = async (
   }
 };
 
+export const getCampaignByName = async (
+  name: string
+): Promise<CampaignAttributes[]> => {
+  try {
+    const campaignEntry = await Campaign.findOne({
+      where: { campaignName: name },
+    });
+    if (!campaignEntry) return [];
 
-
-
+    const campaignFields = await Campaign.findAll({
+      where: { campaignName: campaignEntry.campaignName },
+    });
+    return campaignFields.map((c) => c.get());
+  } catch (error: any) {
+    throw new Error(`Error retrieving campaign by name: ${error.message}`);
+  }
+};
 
 export const updateCampaign = async (
   id: number,

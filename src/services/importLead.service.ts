@@ -189,39 +189,6 @@ export const importLeadsFromFile = async (
       await Lead.bulkCreate(validLeads, { validate: true });
       insertedCount = validLeads.length;
       console.log(`\n✅ Successfully inserted ${insertedCount} leads into DB`);
-
-      // 📧 Setup SMTP config
-      const smtpConfig = {
-        host: process.env.DEFAULT_SMTP_HOST!,
-        port: Number(process.env.DEFAULT_SMTP_PORT!),
-        user: process.env.DEFAULT_SMTP_EMAIL!,
-        pass: process.env.DEFAULT_SMTP_PASSWORD!,
-      };
-
-      // 🔔 Collect all unique emails from leadData
-      const emailMap: Record<string, number> = {};
-      for (const lead of validLeads) {
-        const email = (lead.leadData as any)?.email;
-        if (email) {
-          emailMap[email] = (emailMap[email] || 0) + 1;
-        }
-      }
-
-      if (Object.keys(emailMap).length > 0) {
-        for (const [email, count] of Object.entries(emailMap)) {
-          console.log(
-            `📧 Sending summary email to ${email} for ${count} leads`
-          );
-          await sendEmail({
-            smtp: smtpConfig,
-            to: email,
-            subject: "Lead Assignment",
-            body: assignedBulkLeadEmailTemplate(count),
-          });
-        }
-      } else {
-        console.warn("⚠️ No lead emails found → skipping email notifications");
-      }
     } catch (dbError: any) {
       console.error("❌ Database error during bulkCreate:", dbError);
       skippedRows.push({

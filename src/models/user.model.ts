@@ -16,7 +16,7 @@ interface UserModel
 
 export const User = db.define<UserModel>(
   "User",
-  { 
+  {
     id: {
       type: DataTypes.INTEGER,
       autoIncrement: true,
@@ -67,10 +67,15 @@ export const User = db.define<UserModel>(
       type: DataTypes.STRING(300),
       allowNull: true,
     },
+    // userrole: {
+    //   type: DataTypes.ENUM("admin", "vendor", "client"),
+    //   allowNull: true,
+    // },
     userrole: {
-      type: DataTypes.ENUM("admin", "vendor", "client"),
+      type: DataTypes.STRING(100),
       allowNull: true,
     },
+
     roleId: {
       type: DataTypes.INTEGER,
       allowNull: true,

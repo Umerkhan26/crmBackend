@@ -7,8 +7,21 @@ import multer from "multer";
 import { importLeads } from "../controllers/importLead.controller";
 
 const router = Router();
-const storage = multer.memoryStorage(); // store file in memory buffer
-export const upload = multer({ storage });
+
+/** ----------------------------
+ *  FIX: UPDATED MULTER CONFIG
+ * ----------------------------
+ */
+const storage = multer.memoryStorage();
+
+export const upload = multer({
+  storage,
+  limits: {
+    fileSize: 20 * 1024 * 1024,  // allow up to 20MB file
+    fieldSize: 10 * 1024 * 1024, // allow up to 10MB text fields
+  },
+});
+
 // Create Lead
 router.post(
   "/leads",
@@ -24,6 +37,7 @@ router.get(
   checkPermission(PERMISSIONS.LEAD_GET_ALL),
   LeadController.getAllLeads
 );
+
 router.get("/getleadByid/:id", verifyToken, LeadController.getLeadById);
 
 // Get Leads by Campaign
@@ -53,38 +67,33 @@ router.delete(
 router.post(
   "/assign/:leadId",
   verifyToken,
-  // checkPermission(PERMISSIONS.LEAD_ASSIGN_USER),
   LeadController.assignUserToLead
 );
 
-// ✅ Get assigned users to a lead
+// Get assigned users to a lead
 router.get(
   "/getLeadsWithAssignee",
   verifyToken,
-  // checkPermission(PERMISSIONS.LEAD_VIEW_ASSIGNED_USERS),
   LeadController.getAllLeadsWithAssignee
 );
 
-// ✅ Get assignment stats (assigned & unassigned counts)
-
+// Get assignment stats
 router.get(
   "/assignment-stats",
   verifyToken,
-  // checkPermission(PERMISSIONS.LEAD_VIEW_ASSIGNMENT_STATS),
   LeadController.getAssignmentStats
 );
 
-// ✅ Get all unassigned users for a lead
+// Get all unassigned users for a lead
 router.get(
   "/getLeadsWithUnassigned",
   verifyToken,
-  // checkPermission(PERMISSIONS.LEAD_VIEW_UNASSIGNED_USERS),
   LeadController.getUnassignedLeads
 );
+
 router.get(
   "/getLeadsByAssigneeId/:assigneeId",
   verifyToken,
-  // checkPermission(PERMISSIONS.LEAD_GET_BY_ASSIGNEE),
   checkPermission(PERMISSIONS.ASSIGNED_LEAD_GET_BY_ASSIGNEE),
   LeadController.getLeadsByAssigneeId
 );
@@ -98,12 +107,10 @@ router.post(
 router.get(
   "/status-summary",
   verifyToken,
-  // checkPermission(PERMISSIONS.LEAD_GET_STATUS_SUMMARY),
   checkPermission(PERMISSIONS.ASSIGNED_LEAD_GET_STATUS_SUMMARY),
   LeadController.getLeadStatusSummary
 );
 
-// ✅ NEW: Update lead status for specific user
 router.put(
   "/getAssignedLeadsByStatus/:leadId/status",
   verifyToken,
@@ -114,15 +121,18 @@ router.put(
 router.get(
   "/lead-get-by-campaign-and-assignee/:campaignName",
   verifyToken,
-  // checkPermission(PERMISSIONS.LEAD_GET_BY_CAMPAIGN_AND_ASSIGNEE),
   checkPermission(PERMISSIONS.ASSIGNED_LEAD_GET_BY_CAMPAIGN_AND_ASSIGNEE),
   LeadController.getLeadsByCampaignAndAssignee
 );
 
+/** ------------------------------------------
+ *  FIXED IMPORT ROUTE (NO OTHER CHANGE)
+ * ------------------------------------------ */
 router.post(
   "/import-leads",
   verifyToken,
-  upload.single("file"), // file input field name: 'file'
+  upload.single("file"),
   importLeads
 );
+
 export default router;

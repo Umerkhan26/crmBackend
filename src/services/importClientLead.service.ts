@@ -326,7 +326,6 @@ const excelSerialDateToDate = (serial: number): string => {
 // };
 
 
-
 export const importClientLeadsFromFile = async (
   fileBuffer: Buffer,
   createdBy: number,
@@ -339,7 +338,7 @@ export const importClientLeadsFromFile = async (
     mappedData ? "Provided" : "Not Provided"
   );
 
-  // ✅ Use mappedData if passed, otherwise parse file
+  // Use mappedData if passed, otherwise parse file
   const rows = mappedData || parseFileBuffer(fileBuffer);
   console.log(`➡️ Total rows to process: ${rows.length}`);
 
@@ -371,12 +370,12 @@ export const importClientLeadsFromFile = async (
         );
       }
 
-      // ✅ CampaignName check (optional but included if available)
+      // Optional: campaignName check
       if (!row.leadData.campaignName) {
         console.warn(`   ⚠️ No campaignName provided in row ${index + 2}`);
       }
 
-      // Check order validity
+      // Validate order_id
       if (row.order_id) {
         const orderExists = await Order.findByPk(row.order_id);
         if (!orderExists) {
@@ -384,6 +383,7 @@ export const importClientLeadsFromFile = async (
         }
       }
 
+      // Validate campaign_id
       if (row.campaign_id) {
         const campaignExists = await Campaign.findByPk(row.campaign_id);
         if (!campaignExists) {
@@ -391,7 +391,7 @@ export const importClientLeadsFromFile = async (
         }
       }
 
-      // Map and prepare lead
+      // Map & prepare lead
       const lead = mapClientLeadRow(row);
       const preparedLead: ClientLeadCreationAttributes = {
         ...lead,
@@ -400,7 +400,7 @@ export const importClientLeadsFromFile = async (
         campaign_id: row.campaign_id || null,
         leadData: {
           ...row.leadData,
-          campaignName: row.leadData.campaignName || null, // 👈 ensure campaignName is stored
+          campaignName: row.leadData.campaignName || null,
         },
       };
 
@@ -419,13 +419,22 @@ export const importClientLeadsFromFile = async (
 
   let insertedCount = 0;
 
+  // CHUNKED INSERT LOGIC ⬇️
   if (validLeads.length > 0) {
     try {
-      await ClientLead.bulkCreate(validLeads, { validate: true });
-      insertedCount = validLeads.length;
-      console.log(`\n✅ Successfully inserted ${insertedCount} leads into DB`);
+      const chunkSize = 200; // Insert 200 leads per batch
+
+      for (let i = 0; i < validLeads.length; i += chunkSize) {
+        const chunk = validLeads.slice(i, i + chunkSize);
+        console.log(`📦 Inserting chunk ${i / chunkSize + 1}...`);
+
+        await ClientLead.bulkCreate(chunk, { validate: true });
+        insertedCount += chunk.length;
+      }
+
+      console.log(`\n✅ Successfully inserted ${insertedCount} client leads in batches.`);
     } catch (dbError: any) {
-      console.error("❌ Database error during bulkCreate:", dbError);
+      console.error("❌ Database error during chunked bulkCreate:", dbError);
       skippedRows.push({
         row: 0,
         reason: `Database error: ${dbError.message}`,

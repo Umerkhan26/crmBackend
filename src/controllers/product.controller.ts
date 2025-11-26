@@ -377,7 +377,6 @@ export const getProductsByCampaignAndAssignee = async (
 //     }
 
 //     const invoice = await ProductSaleService.getInvoiceByLeadId(Number(leadId));
-//     console.log(`Invoice fetched for leadId ${leadId}:`, invoice); // Debug log
 
 //     return res.status(200).json({
 //       success: true,

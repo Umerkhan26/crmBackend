@@ -141,28 +141,28 @@ export const importLeadsFromFile = async (
     try {
       console.log(`\n🔎 Processing row ${index + 2}:`, row);
 
-      // ✅ Ensure leadData exists
+      // Ensure leadData exists
       if (!row.leadData || typeof row.leadData !== "object") {
         throw new Error("Missing or invalid 'leadData'");
       }
 
-      // ✅ Convert Excel serial date if needed
+      // Convert Excel date to JS date
       if (row.leadData.date && typeof row.leadData.date === "number") {
         row.leadData.date = excelSerialDateToDate(row.leadData.date);
         console.log(`   📅 Converted Excel date: ${row.leadData.date}`);
       }
 
-      // ✅ Validate required fields
+      // Validate required fields
       if (!row.campaignName) {
         throw new Error("Missing required field: campaignName");
       }
 
-      // ✅ Validate optional assignees (ensure it's an array)
+      // Validate assignees
       if (row.assignees && !Array.isArray(row.assignees)) {
         throw new Error("Invalid assignees format (must be an array)");
       }
 
-      // ✅ Prepare Lead record
+      // Prepare lead object
       const preparedLead: LeadCreationAttributes = {
         campaignName: row.campaignName,
         leadData: row.leadData,
@@ -184,13 +184,24 @@ export const importLeadsFromFile = async (
 
   let insertedCount = 0;
 
+  // 🚀 INSERT DATA IN CHUNKS TO AVOID ECONNRESET / TIMEOUTS
   if (validLeads.length > 0) {
     try {
-      await Lead.bulkCreate(validLeads, { validate: true });
-      insertedCount = validLeads.length;
-      console.log(`\n✅ Successfully inserted ${insertedCount} leads into DB`);
+      const chunkSize = 200; // insert 200 at a time
+
+      for (let i = 0; i < validLeads.length; i += chunkSize) {
+        const chunk = validLeads.slice(i, i + chunkSize);
+
+        console.log(`📦 Inserting chunk ${i / chunkSize + 1} (${chunk.length} records)...`);
+
+        await Lead.bulkCreate(chunk, { validate: true });
+
+        insertedCount += chunk.length;
+      }
+
+      console.log(`\n✅ Successfully inserted ${insertedCount} leads in batches.`);
     } catch (dbError: any) {
-      console.error("❌ Database error during bulkCreate:", dbError);
+      console.error("❌ Database error during chunked bulkCreate:", dbError);
       skippedRows.push({
         row: 0,
         reason: `Database error: ${dbError.message}`,

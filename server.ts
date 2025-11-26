@@ -29,14 +29,13 @@ io.on("connection", (socket) => {
   const userId = socket.handshake.query.userId;
   if (userId) {
     socket.join(`user_${userId}`);
-    console.log(`User ${userId} connected to room user_${userId}`);
   }
 
   socket.on("disconnect", () => {
     console.log("User disconnected");
   });
 });
-   
+
 // DB Connect & Server Start
 const connectDB = async () => {
   try {

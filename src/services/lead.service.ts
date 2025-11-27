@@ -31,7 +31,7 @@ interface LeadQueryParams extends PaginationParams {
 export const createLead = async (
   data: LeadCreationAttributes,
   userId?: number
-): Promise<LeadAttributes> => {
+): Promise<LeadAttributes & { leadCode: string }> => {
   try {
     const lead = await Lead.create(data);
 
@@ -40,11 +40,12 @@ export const createLead = async (
       await sendNotification(userId, `New lead created with ID ${lead.id}`);
     }
 
-    return lead.get();
+    return { ...lead.get(), leadCode: lead.leadCode };
   } catch (error: any) {
     throw new Error(`Error creating lead: ${error.message}`);
   }
 };
+
 
 export const getAllLeads = async ({
   page = 1,
@@ -77,24 +78,24 @@ export const getAllLeads = async ({
     // 🔍 JSON Search
     const searchCondition = search
       ? {
-          [Op.or]: [
-            Sequelize.literal(
-              `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.first_name')) LIKE '%${search}%'`
-            ),
-            Sequelize.literal(
-              `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.last_name')) LIKE '%${search}%'`
-            ),
-            Sequelize.literal(
-              `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.agent_name')) LIKE '%${search}%'`
-            ),
-            Sequelize.literal(
-              `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.phone_number')) LIKE '%${search}%'`
-            ),
-            Sequelize.literal(
-              `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.state')) LIKE '%${search}%'`
-            ),
-          ],
-        }
+        [Op.or]: [
+          Sequelize.literal(
+            `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.first_name')) LIKE '%${search}%'`
+          ),
+          Sequelize.literal(
+            `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.last_name')) LIKE '%${search}%'`
+          ),
+          Sequelize.literal(
+            `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.agent_name')) LIKE '%${search}%'`
+          ),
+          Sequelize.literal(
+            `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.phone_number')) LIKE '%${search}%'`
+          ),
+          Sequelize.literal(
+            `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.state')) LIKE '%${search}%'`
+          ),
+        ],
+      }
       : {};
 
     // 🚀 Fetch leads
@@ -315,7 +316,7 @@ export const updateLead = async (
       await sendNotification(userId, `Lead updated with ID ${lead.id}`);
     }
 
-    return lead.get();
+    return { ...(lead.toJSON() as any) }; // ensures leadCode is included
   } catch (error: any) {
     throw new Error(`Error updating lead: ${error.message}`);
   }
@@ -418,7 +419,9 @@ export const assignLeadToUsers = async (
       }
     }
 
-    return lead.get();
+    return { ...(lead.toJSON() as any) }; // ensures leadCode is included
+
+    // return lead.get();
   } catch (error: any) {
     throw new Error(`Error assigning lead: ${error.message}`);
   }
@@ -527,11 +530,12 @@ export const getAllLeadsWithAssignee = async ({
             };
           });
         }
+        return { ...(lead.toJSON() as any), assignees: assigneesData };
 
-        return {
-          ...lead.toJSON(),
-          assignees: assigneesData,
-        };
+        // return {
+        //   ...lead.toJSON(),
+        //   assignees: assigneesData,
+        // };
       })
     );
 
@@ -654,7 +658,9 @@ export const getUnassignedLeads = async ({
           assigneesRaw = [];
         }
       }
-      return { ...lead.toJSON(), assignees: assigneesRaw };
+      // return { ...lead.toJSON(), assignees: assigneesRaw }; 
+      return { ...(lead.toJSON() as any), assignees: assigneesRaw };
+
     });
 
     // ✅ Return paginated & cleaned result
@@ -1036,7 +1042,9 @@ export const getLeadStatusSummary = async (assigneeId?: number) => {
       });
 
       statusCounts[status] = leads.length;
-      leadsByStatus[status] = leads;
+      // leadsByStatus[status] = leads;
+      leadsByStatus[status] = leads.map((lead) => ({ ...(lead.toJSON() as any) }));
+
     }
 
     return { statusCounts, leadsByStatus };
@@ -1131,7 +1139,9 @@ export const updateLeadStatusForUser = async (
     console.error("❌ Failed to log lead activity:", err);
   }
 
-  return lead;
+  // return lead;
+  return { ...(lead.toJSON() as any) };
+
 };
 
 export const getLeadsByCampaignAndAssignee = async (
@@ -1155,7 +1165,9 @@ export const getLeadsByCampaignAndAssignee = async (
       },
     });
 
-    return leads.map((lead) => lead.get());
+    return leads.map((lead) => ({ ...(lead.toJSON() as any) }));
+
+    // return leads.map((lead) => lead.get());
   } catch (error: any) {
     throw new Error(
       `Error fetching leads for campaign '${campaignName}' and assignee '${assigneeId}': ${error.message}`

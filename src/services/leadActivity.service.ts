@@ -4,7 +4,7 @@ import LeadActivity from "../models/leadActivity.model";
 import User from "../models/user.model";
 import Lead from "../models/lead.model";
 import { getPagination, getPagingData } from "../utils/paginate";
-import { Op,Sequelize,WhereOptions  } from "sequelize";
+import { Op, Sequelize, WhereOptions } from "sequelize";
 import Note from "../models/note.model";
 import ActivityLog from "../models/activityLog.model";
 interface ReportUser {
@@ -14,7 +14,7 @@ interface ReportUser {
   lastActivityAt: Date;
   notesCount: number;
   remindersCount: number;
-    statusChangeHistory?: any[]; // ✅ add this line
+  statusChangeHistory?: any[]; // ✅ add this line
 
 }
 
@@ -112,14 +112,14 @@ export const deleteLeadActivity = async (id: number, deletedBy: number) => {
     throw new Error("Lead activity not found");
   }
 
-await (ActivityLog as any).create({
-  userId: deletedBy,
-  entityType: "leadActivity",
-  entityId: id,
-  action: "delete",
-  description: `Lead activity ID ${id} deleted by user ${deletedBy}`,
-});
-  
+  await (ActivityLog as any).create({
+    userId: deletedBy,
+    entityType: "leadActivity",
+    entityId: id,
+    action: "delete",
+    description: `Lead activity ID ${id} deleted by user ${deletedBy}`,
+  });
+
 
   await activity.destroy(); // Soft delete because of `paranoid: true`
   return { message: "Lead activity deleted and logged" };
@@ -379,6 +379,7 @@ export const getLeadActivityReportByUser = async (
     const leadName =
       act.Lead?.leadData?.name ||
       act.Lead?.leadData?.fullName ||
+      act.Lead?.leadCode ||
       `Lead #${act.Lead?.id}`;
     if (act.Lead?.id) {
       report.leadsWorkedOn.set(act.Lead.id, leadName);
@@ -404,15 +405,15 @@ export const getLeadActivityReportByUser = async (
         typeof lead.assignees === "string"
           ? JSON.parse(lead.assignees)
           : Array.isArray(lead.assignees)
-          ? lead.assignees
-          : [];
+            ? lead.assignees
+            : [];
     } catch {
       assignees = [];
     }
     const assignee = assignees.find((a: any) => a.userId === userId);
     if (assignee) {
       const leadName =
-        lead.leadData?.name || lead.leadData?.fullName || `Lead #${lead.id}`;
+        lead.leadData?.name || lead.leadData?.fullName || lead.leadCode || `Lead #${lead.id}`;
       report.leadsWorkedOn.set(lead.id, leadName);
       report.totalActivities++;
       report.statusChangeHistory?.push({

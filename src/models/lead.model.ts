@@ -2,7 +2,6 @@ import { DataTypes, Model, Optional } from "sequelize";
 import db from "../../db";
 import User from "./user.model"; // Adjust path if needed
 
-// ✅ Allowed statuses
 export type LeadStatus =
   | "pending"
   | "to_call"
@@ -12,7 +11,6 @@ export type LeadStatus =
   | "not_interested"
   | "do_not_call";
 
-// ✅ Structure for each assigned user
 export interface AssigneeWithStatus {
   userId: number;
   status: LeadStatus;
@@ -20,19 +18,18 @@ export interface AssigneeWithStatus {
 }
 
 export interface LeadAttributes {
-  id: number;
+  id: number; // keep as number
   campaignName: string;
   leadData: any;
-  assignees?: AssigneeWithStatus[]; // multiple users with their statuses
+  assignees?: AssigneeWithStatus[];
 }
 
 export interface LeadCreationAttributes
-  extends Optional<LeadAttributes, "id"> {}
+  extends Optional<LeadAttributes, "id"> { }
 
 export class Lead
   extends Model<LeadAttributes, LeadCreationAttributes>
-  implements LeadAttributes
-{
+  implements LeadAttributes {
   public id!: number;
   public campaignName!: string;
   public leadData!: any;
@@ -42,6 +39,16 @@ export class Lead
   public readonly updatedAt!: Date;
 
   public readonly assignedUsers?: InstanceType<typeof User>[];
+
+  // ✅ New virtual/computed field
+  public get leadCode(): string {
+    // Example: fd1, fd2 based on campaign initials + id
+    const initials = this.campaignName
+      .split(" ")
+      .map((word) => word[0].toLowerCase())
+      .join("");
+    return `${initials}${this.id}`;
+  }
 }
 
 Lead.init(
@@ -60,9 +67,9 @@ Lead.init(
       allowNull: false,
     },
     assignees: {
-      type: DataTypes.JSON, // Store { userId, status } for each assigned user
+      type: DataTypes.JSON,
       allowNull: true,
-      defaultValue: [], // Always an array
+      defaultValue: [],
     },
   },
   {
@@ -70,10 +77,21 @@ Lead.init(
     tableName: "leads",
     timestamps: true,
     indexes: [{ fields: ["campaignName"] }],
+    getterMethods: {
+      // Optional: can also use Sequelize getter for JSON responses
+      leadCode() {
+        const lead = this as Lead;
+        const initials = lead.campaignName
+          .split(" ")
+          .map((word) => word[0].toLowerCase())
+          .join("");
+        return `${initials}${lead.id}`;
+      },
+    },
   }
 );
 
-// ✅ Allowed status list
+// Allowed statuses
 const ALLOWED_STATUSES: LeadStatus[] = [
   "pending",
   "to_call",
@@ -84,14 +102,10 @@ const ALLOWED_STATUSES: LeadStatus[] = [
   "do_not_call",
 ];
 
-// ✅ Ensure `assignees` is always an array
 Lead.beforeValidate((lead) => {
-  if (!Array.isArray(lead.assignees)) {
-    lead.assignees = [];
-  }
+  if (!Array.isArray(lead.assignees)) lead.assignees = [];
 });
 
-// ✅ Set default status & validate statuses
 Lead.beforeCreate((lead) => {
   if (Array.isArray(lead.assignees)) {
     lead.assignees = lead.assignees.map((a) => ({

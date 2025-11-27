@@ -93,7 +93,7 @@ import Lead from "./lead.model";
 
 export interface LeadActivityAttributes {
   id: number;
-  entityId: string;
+  entityId: number;
   entityType: "lead" | "clientLead";
   action: string;
   details?: string;
@@ -107,13 +107,14 @@ export interface LeadActivityCreationAttributes
   extends Optional<
     LeadActivityAttributes,
     "id" | "details" | "createdAt" | "updatedAt" | "deletedAt"
-  > { }
+  > {}
 
 class LeadActivity
   extends Model<LeadActivityAttributes, LeadActivityCreationAttributes>
-  implements LeadActivityAttributes {
+  implements LeadActivityAttributes
+{
   public id!: number;
-  public entityId!: string;
+  public entityId!: number;
   public entityType!: "lead" | "clientLead";
   public action!: string;
   public details?: string;
@@ -140,7 +141,7 @@ LeadActivity.init(
       primaryKey: true,
     },
     entityId: {
-      type: DataTypes.STRING,
+      type: DataTypes.INTEGER,
       allowNull: false,
     },
     entityType: {

@@ -1,4 +1,4 @@
-import { DataTypes, Model, Optional, Op } from "sequelize";
+import { DataTypes, Model, Optional } from "sequelize";
 import db from "../../db";
 import User from "./user.model"; // Adjust path if needed
 
@@ -20,19 +20,20 @@ export interface AssigneeWithStatus {
 }
 
 export interface LeadAttributes {
-  id: string; // Changed to string
+  id: number;
   campaignName: string;
   leadData: any;
   assignees?: AssigneeWithStatus[]; // multiple users with their statuses
 }
 
 export interface LeadCreationAttributes
-  extends Optional<LeadAttributes, "id"> { }
+  extends Optional<LeadAttributes, "id"> {}
 
 export class Lead
   extends Model<LeadAttributes, LeadCreationAttributes>
-  implements LeadAttributes {
-  public id!: string; // string ID now
+  implements LeadAttributes
+{
+  public id!: number;
   public campaignName!: string;
   public leadData!: any;
   public assignees?: AssigneeWithStatus[];
@@ -46,9 +47,9 @@ export class Lead
 Lead.init(
   {
     id: {
-      type: DataTypes.STRING,
+      type: DataTypes.INTEGER,
+      autoIncrement: true,
       primaryKey: true,
-      allowNull: false,
     },
     campaignName: {
       type: DataTypes.STRING(255),
@@ -98,29 +99,6 @@ Lead.beforeCreate((lead) => {
       status: ALLOWED_STATUSES.includes(a.status) ? a.status : "pending",
     }));
   }
-});
-
-// ✅ Generate string ID before creating
-Lead.beforeCreate(async (lead) => {
-  // Get initials from campaignName
-  const initials = lead.campaignName
-    .split(" ")
-    .map((word) => word[0].toLowerCase())
-    .join("");
-
-  // Find last lead with same initials
-  const lastLead = await Lead.findOne({
-    where: {
-      id: { [Op.like]: `${initials}%` },
-    },
-    order: [["createdAt", "DESC"]],
-  });
-
-  const nextNumber = lastLead
-    ? parseInt(lastLead.id.replace(initials, "")) + 1
-    : 1;
-
-  lead.id = `${initials}${nextNumber}`; // e.g., fd1, fd2
 });
 
 Lead.beforeUpdate((lead) => {

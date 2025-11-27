@@ -4,11 +4,11 @@ import { UserAttributes } from "../interfaces/user.interface";
 import Role from "./role.model";
 
 interface UserCreationAttributes
-  extends Optional<UserAttributes, "id" | "created_at" | "updated_at"> { }
+  extends Optional<UserAttributes, "id" | "created_at" | "updated_at"> {}
 
 interface UserModel
   extends Model<UserAttributes, UserCreationAttributes>,
-  UserAttributes {
+    UserAttributes {
   created_at: Date;
   updated_at: Date;
   role?: Role;
@@ -31,12 +31,12 @@ export const User = db.define<UserModel>(
       allowNull: true,
     },
     email: {
-      type: DataTypes.STRING(250),
+      type: DataTypes.TEXT,
       allowNull: true,
       unique: true,
     },
     password: {
-      type: DataTypes.STRING(250),
+      type: DataTypes.TEXT,
       allowNull: true,
     },
     phone: {

@@ -6,7 +6,7 @@ import Campaign from "./campaign.model";
 
 export interface ProductSaleAttributes {
   id: number;
-  leadId?: number;
+  leadId?: string;
   productType: string; // Still kept for backward compatibility
   price?: number;
   notes?: string;
@@ -16,8 +16,8 @@ export interface ProductSaleAttributes {
   campaignId: number;
   assigneeId?: number;
   products?: any[] | null; // allow null as well as array
-  
-  
+
+
 }
 
 export interface ProductSaleCreationAttributes
@@ -32,14 +32,13 @@ export interface ProductSaleCreationAttributes
     | "assigneeId"
     | "price"
     | "products" // ✅ Optional
-  > {}
+  > { }
 
 class ProductSale
   extends Model<ProductSaleAttributes, ProductSaleCreationAttributes>
-  implements ProductSaleAttributes
-{
+  implements ProductSaleAttributes {
   public id!: number;
-  public leadId?: number;
+  public leadId?: string;
   public productType!: string;
   public price?: number;
   public notes?: string;
@@ -62,7 +61,7 @@ ProductSale.init(
       primaryKey: true,
     },
     leadId: {
-      type: DataTypes.INTEGER,
+      type: DataTypes.STRING,
       allowNull: true,
       references: {
         model: Lead,

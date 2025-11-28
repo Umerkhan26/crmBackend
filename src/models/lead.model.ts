@@ -25,11 +25,12 @@ export interface LeadAttributes {
 }
 
 export interface LeadCreationAttributes
-  extends Optional<LeadAttributes, "id"> { }
+  extends Optional<LeadAttributes, "id"> {}
 
 export class Lead
   extends Model<LeadAttributes, LeadCreationAttributes>
-  implements LeadAttributes {
+  implements LeadAttributes
+{
   public id!: number;
   public campaignName!: string;
   public leadData!: any;

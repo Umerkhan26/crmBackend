@@ -235,6 +235,11 @@ export const getAllLeadsWithAssignee = async (
       : 10;
     const search = req.query.search ? (req.query.search as string).trim() : "";
 
+    // ✅ NEW: Add campaign filter
+    const campaign = req.query.campaign
+      ? (req.query.campaign as string)
+      : undefined;
+
     // ✅ Cast query param safely to FilterType
     const filterType = req.query.filterType
       ? (req.query.filterType as FilterType)
@@ -251,6 +256,7 @@ export const getAllLeadsWithAssignee = async (
       page,
       limit,
       search,
+      campaign, // ✅ NEW: Pass campaign filter
       filterType,
       startDate,
       endDate,
@@ -340,6 +346,11 @@ export const getUnassignedLeads = async (
       ? (req.query.search as string).trim()
       : "";
 
+    // ✅ NEW: Add campaign filter
+    const campaign = req.query.campaign
+      ? (req.query.campaign as string)
+      : undefined;
+
     // 🕒 Date filter params
     const filterType = req.query.filterType
       ? (req.query.filterType as FilterType)
@@ -357,6 +368,7 @@ export const getUnassignedLeads = async (
       page,
       limit,
       searchTerm,
+      campaign, // ✅ NEW: Pass campaign filter
       filterType,
       startDate,
       endDate,

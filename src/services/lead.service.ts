@@ -46,7 +46,6 @@ export const createLead = async (
   }
 };
 
-
 export const getAllLeads = async ({
   page = 1,
   limit = 10,
@@ -78,24 +77,24 @@ export const getAllLeads = async ({
     // 🔍 JSON Search
     const searchCondition = search
       ? {
-        [Op.or]: [
-          Sequelize.literal(
-            `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.first_name')) LIKE '%${search}%'`
-          ),
-          Sequelize.literal(
-            `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.last_name')) LIKE '%${search}%'`
-          ),
-          Sequelize.literal(
-            `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.agent_name')) LIKE '%${search}%'`
-          ),
-          Sequelize.literal(
-            `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.phone_number')) LIKE '%${search}%'`
-          ),
-          Sequelize.literal(
-            `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.state')) LIKE '%${search}%'`
-          ),
-        ],
-      }
+          [Op.or]: [
+            Sequelize.literal(
+              `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.first_name')) LIKE '%${search}%'`
+            ),
+            Sequelize.literal(
+              `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.last_name')) LIKE '%${search}%'`
+            ),
+            Sequelize.literal(
+              `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.agent_name')) LIKE '%${search}%'`
+            ),
+            Sequelize.literal(
+              `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.phone_number')) LIKE '%${search}%'`
+            ),
+            Sequelize.literal(
+              `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.state')) LIKE '%${search}%'`
+            ),
+          ],
+        }
       : {};
 
     // 🚀 Fetch leads
@@ -436,6 +435,7 @@ export const getAllLeadsWithAssignee = async ({
   page = 1,
   limit = 10,
   search = "",
+  campaign, // ✅ NEW: Campaign filter parameter
   filterType,
   startDate,
   endDate,
@@ -443,6 +443,7 @@ export const getAllLeadsWithAssignee = async ({
   page?: number;
   limit?: number;
   search?: string;
+  campaign?: string; // ✅ NEW
   filterType?: FilterType;
   startDate?: string;
   endDate?: string;
@@ -456,6 +457,14 @@ export const getAllLeadsWithAssignee = async ({
     const whereConditions: any = {
       [Op.and]: [baseCondition],
     };
+
+    // ✅ NEW: Add campaign filter if provided
+    if (campaign && campaign.trim() !== "") {
+      const campaignCondition = {
+        campaignName: { [Op.like]: `%${campaign.trim()}%` },
+      };
+      whereConditions[Op.and].push(campaignCondition);
+    }
 
     // ✅ Apply date filter (like in getAllLeads)
     if (filterType) {
@@ -531,11 +540,6 @@ export const getAllLeadsWithAssignee = async ({
           });
         }
         return { ...(lead.toJSON() as any), assignees: assigneesData };
-
-        // return {
-        //   ...lead.toJSON(),
-        //   assignees: assigneesData,
-        // };
       })
     );
 
@@ -590,6 +594,7 @@ export const getUnassignedLeads = async ({
   page = 1,
   limit = 10,
   searchTerm = "",
+  campaign, // ✅ NEW: Campaign filter parameter
   filterType,
   startDate,
   endDate,
@@ -597,6 +602,7 @@ export const getUnassignedLeads = async ({
   page?: number;
   limit?: number;
   searchTerm?: string;
+  campaign?: string; // ✅ NEW
   filterType?: FilterType;
   startDate?: string;
   endDate?: string;
@@ -612,6 +618,14 @@ export const getUnassignedLeads = async ({
     const andConditions: any[] = [
       Sequelize.literal("(assignees IS NULL OR JSON_LENGTH(assignees) = 0)"),
     ];
+
+    // ✅ NEW: Add campaign filter if provided
+    if (campaign && campaign.trim() !== "") {
+      const campaignCondition = {
+        campaignName: { [Op.like]: `%${campaign.trim()}%` },
+      };
+      andConditions.push(campaignCondition);
+    }
 
     // 🕒 Apply date filtering (if provided)
     if (filterType) {
@@ -658,9 +672,7 @@ export const getUnassignedLeads = async ({
           assigneesRaw = [];
         }
       }
-      // return { ...lead.toJSON(), assignees: assigneesRaw }; 
       return { ...(lead.toJSON() as any), assignees: assigneesRaw };
-
     });
 
     // ✅ Return paginated & cleaned result
@@ -1043,8 +1055,9 @@ export const getLeadStatusSummary = async (assigneeId?: number) => {
 
       statusCounts[status] = leads.length;
       // leadsByStatus[status] = leads;
-      leadsByStatus[status] = leads.map((lead) => ({ ...(lead.toJSON() as any) }));
-
+      leadsByStatus[status] = leads.map((lead) => ({
+        ...(lead.toJSON() as any),
+      }));
     }
 
     return { statusCounts, leadsByStatus };
@@ -1141,7 +1154,6 @@ export const updateLeadStatusForUser = async (
 
   // return lead;
   return { ...(lead.toJSON() as any) };
-
 };
 
 export const getLeadsByCampaignAndAssignee = async (

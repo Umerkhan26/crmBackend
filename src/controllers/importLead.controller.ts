@@ -28,7 +28,6 @@ export const importLeads = async (
       ...result,
     });
   } catch (error: any) {
-    console.error("❌ Error importing leads:", error);
     res.status(500).json({
       message: "Failed to import leads",
       error: error.message,

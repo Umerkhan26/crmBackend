@@ -156,7 +156,6 @@ export const getAllLeads = async ({
       pageLimit
     );
   } catch (error: any) {
-    console.error("Error in getAllLeads:", error.stack);
     throw new Error(`Error fetching leads: ${error.message}`);
   }
 };
@@ -207,7 +206,6 @@ export const getLeadById = async (leadId: number): Promise<LeadAttributes> => {
       assignees: assigneesData,
     };
   } catch (error: any) {
-    console.error("Error in getLeadById:", error.stack);
     throw new Error(`Error fetching lead by ID: ${error.message}`);
   }
 };
@@ -393,14 +391,6 @@ export const assignLeadToUsers = async (
     // Save in DB in a single update
     await lead.update({ assignees: updatedAssignees });
 
-    console.log("✅ Lead Assignment Details:", {
-      leadId,
-      newAssignments: newAssignees.map((a) => ({
-        userId: a.userId,
-        assignedAt: a.assignedAt,
-      })),
-      totalAssignees: updatedAssignees.length,
-    });
 
     // Log and notify new assignees
     if (assignedByUserId) {
@@ -550,7 +540,6 @@ export const getAllLeadsWithAssignee = async ({
       limit
     );
   } catch (error: any) {
-    console.error("❌ Error fetching leads with assignees:", error);
     throw new Error(`Error fetching leads with assignees: ${error.message}`);
   }
 };
@@ -682,7 +671,6 @@ export const getUnassignedLeads = async ({
       limit
     );
   } catch (error: any) {
-    console.error("❌ Error fetching unassigned leads:", error);
     throw new Error(`Error fetching unassigned leads: ${error.message}`);
   }
 };
@@ -717,7 +705,6 @@ export const getUnassignedLeads = async ({
 //       limit,
 //     });
 
-//     console.log("📊 Initial Query Results:", {
 //       filterType,
 //       totalLeads: leads.count,
 //       sampleLead: leads.rows[0]?.get?.() || leads.rows[0] || null,
@@ -737,7 +724,6 @@ export const getUnassignedLeads = async ({
 //           assignees = lead.assignees as AssigneeWithStatus[];
 //         }
 //       } catch (error) {
-//         console.warn(`Failed to parse assignees for lead ${lead.id}:`, error);
 //         return false;
 //       }
 
@@ -753,7 +739,6 @@ export const getUnassignedLeads = async ({
 //         ? new Date(userAssignment.assignedAt)
 //         : new Date(lead.createdAt);
 
-//       console.log(`🔍 Lead ${lead.id} assignment date:`, {
 //         leadId: lead.id,
 //         assignedAt: userAssignment.assignedAt,
 //         assignmentDate: assignmentDate.toISOString(),
@@ -783,7 +768,6 @@ export const getUnassignedLeads = async ({
 //           );
 //           const isToday =
 //             assignmentDate >= todayStart && assignmentDate <= todayEnd;
-//           console.log(`📅 Daily filter for lead ${lead.id}:`, {
 //             assignmentDate: assignmentDate.toISOString(),
 //             todayStart: todayStart.toISOString(),
 //             todayEnd: todayEnd.toISOString(),
@@ -804,7 +788,6 @@ export const getUnassignedLeads = async ({
 
 //           const isThisWeek =
 //             assignmentDate >= weekStart && assignmentDate <= weekEnd;
-//           console.log(`📅 Weekly filter for lead ${lead.id}:`, {
 //             assignmentDate: assignmentDate.toISOString(),
 //             weekStart: weekStart.toISOString(),
 //             weekEnd: weekEnd.toISOString(),
@@ -825,7 +808,6 @@ export const getUnassignedLeads = async ({
 //           );
 //           const isThisMonth =
 //             assignmentDate >= monthStart && assignmentDate <= monthEnd;
-//           console.log(`📅 Monthly filter for lead ${lead.id}:`, {
 //             assignmentDate: assignmentDate.toISOString(),
 //             monthStart: monthStart.toISOString(),
 //             monthEnd: monthEnd.toISOString(),
@@ -859,7 +841,6 @@ export const getUnassignedLeads = async ({
 //           assignees = lead.assignees as AssigneeWithStatus[];
 //         }
 //       } catch (error) {
-//         console.warn(`Failed to parse assignees for lead ${lead.id}:`, error);
 //         assignees = [];
 //       }
 
@@ -878,12 +859,6 @@ export const getUnassignedLeads = async ({
 //       };
 //     });
 
-//     console.log("📊 Final Filter Results:", {
-//       filterType,
-//       totalLeadsBeforeFilter: leads.count,
-//       totalLeadsAfterFilter: mappedLeads.length,
-//       sampleLead: mappedLeads[0] || null,
-//     });
 
 //     return {
 //       count: mappedLeads.length,
@@ -1055,65 +1030,50 @@ export const sendEmailToLeadUsingTemplate = async (
   templateKey: string,
   senderUserId: number
 ) => {
-  console.log("🔍 Fetching lead with ID:", leadId, "Type:", typeof leadId);
 
   try {
     // First, check if the lead exists with detailed logging
     const lead = await Lead.findByPk(leadId);
-    console.log("✅ Lead query result:", lead);
 
     if (!lead) {
-      console.log("❌ Lead not found in database");
 
       // Debug: Check all leads to see what's actually in the database
       const allLeads = await Lead.findAll();
-      console.log(
-        "📋 All leads in database:",
-        allLeads.map((l) => ({ id: l.id, campaignName: l.campaignName }))
-      );
+
 
       throw new Error("Lead not found");
     }
 
-    console.log("📋 Lead found:", lead.toJSON());
 
     let leadData;
     if (typeof lead.leadData === "string") {
       try {
         leadData = JSON.parse(lead.leadData);
-        console.log("📝 Parsed leadData:", leadData);
       } catch (error: any) {
-        console.error("❌ Error parsing leadData:", error);
         throw new Error("Invalid leadData format");
       }
     } else {
       leadData = lead.leadData;
-      console.log("📝 leadData (already object):", leadData);
     }
 
     const email = leadData?.email;
-    console.log("📧 Extracted email:", email);
 
     if (!email) {
-      console.log("❌ No email found in leadData");
       throw new Error("Lead email not found in leadData");
     }
 
     // Rest of your code...
     const sender = await User.findByPk(senderUserId);
     const senderRole = String(sender?.role || "guest");
-    console.log("👤 Sender:", sender?.id, "Role:", senderRole);
 
     const template = await EmailTemplate.findOne({
       where: { serviceName: templateKey },
     });
-    console.log("📧 Template found:", template ? template.serviceName : "None");
 
     if (!template) throw new Error("Email template not found");
 
     const filledSubject = fillTemplate(template.subjectTemplate, leadData);
     const filledBody = fillTemplate(template.bodyTemplate, leadData);
-    console.log("📨 Email subject:", filledSubject);
 
     const smtpRaw = await getSmtpConfig(senderUserId);
     const smtp = {
@@ -1122,10 +1082,7 @@ export const sendEmailToLeadUsingTemplate = async (
       user: smtpRaw.user || "",
       pass: smtpRaw.pass || "",
     };
-    console.log("🔧 SMTP config:", {
-      ...smtp,
-      pass: smtp.pass ? "***" : "empty",
-    });
+
 
     if (!smtp.host || !smtp.user || !smtp.pass) {
       throw new Error("SMTP configuration is incomplete.");
@@ -1158,10 +1115,8 @@ export const sendEmailToLeadUsingTemplate = async (
       details: `Email sent using template "${templateKey}" to ${email}`,
     });
 
-    console.log("✅ Email sent successfully to:", email);
     return { message: "Email sent successfully", to: email };
   } catch (error) {
-    console.error("💥 Error in sendEmailToLeadUsingTemplate:", error);
     throw error;
   }
 };
@@ -1216,7 +1171,6 @@ export const getLeadStatusSummary = async (assigneeId?: number) => {
 
     return { statusCounts, leadsByStatus };
   } catch (error: any) {
-    console.error("Error in getLeadStatusSummary:", error);
     throw new Error(`Error getting lead status summary: ${error.message}`);
   }
 };
@@ -1243,11 +1197,7 @@ export const updateLeadStatusForUser = async (
   userId: number,
   newStatus: LeadStatus
 ) => {
-  console.log("🔹 Updating lead status request:", {
-    leadId,
-    userId,
-    newStatus,
-  });
+
 
   if (!ALLOWED_STATUSES.includes(newStatus)) {
     throw new Error(
@@ -1271,10 +1221,7 @@ export const updateLeadStatusForUser = async (
       assignees = lead.assignees as AssigneeWithStatus[];
     }
   } catch (err) {
-    console.warn(
-      `⚠️ Failed to parse assignees for lead ${lead.id}, resetting to empty array`,
-      err
-    );
+
     assignees = [];
   }
 
@@ -1301,9 +1248,7 @@ export const updateLeadStatusForUser = async (
       details: `Status changed from "${previousStatus}" to "${newStatus}"`,
     });
 
-    console.log("✅ Lead status updated and activity logged:", logResult);
   } catch (err) {
-    console.error("❌ Failed to log lead activity:", err);
   }
 
   // return lead;

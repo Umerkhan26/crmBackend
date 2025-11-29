@@ -1,7 +1,6 @@
 import { Request, Response } from "express";
 import * as RolePermissionService from "../services/rolePermission.service";
 
-// Controller to get all role-permission relationships
 export const getAllRolePermissionsController = async (req: Request, res: Response) => {
   try {
     const rolePermissions = await RolePermissionService.getAllRolePermissions();
@@ -17,7 +16,6 @@ export const getAllRolePermissionsController = async (req: Request, res: Respons
   }
 };
 
-// Controller to get a role-permission relationship by roleId and permissionId
 export const getRolePermissionByIdsController = async (req: Request, res: Response) => {
   const { roleId, permissionId } = req.params;
   try {

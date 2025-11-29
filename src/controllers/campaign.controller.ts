@@ -42,14 +42,12 @@ export const createCampaignn = async (
       campaign,
     });
   } catch (error: any) {
-    console.error("Error in createCampaign controller:", error);
     return res.status(500).json({
       message: `Error creating campaign: ${error.message}`,
     });
   }
 };
 
-// ✅ Get all campaigns, grouped by campaignName
 export const getAllCampaigns = async (
   req: Request,
   res: Response
@@ -89,21 +87,17 @@ export const getAllCampaigns = async (
   }
 };
 
-// ✅ Get fields for a campaign by ID
 export const getCampaignById = async (
   req: Request,
   res: Response
 ): Promise<any> => {
   try {
     const { id } = req.params;
-    // const fields = await CampaignService.getCampaignById(Number(id));
     let fields;
 
     if (isNaN(Number(id))) {
-      // Treat param as campaign name
       fields = await CampaignService.getCampaignByName(id);
     } else {
-      // Treat param as numeric ID
       fields = await CampaignService.getCampaignById(Number(id));
     }
 
@@ -120,7 +114,6 @@ export const getCampaignById = async (
   }
 };
 
-// ✅ Update Campaign (with userId for activity/notification)
 export const updateCampaign = async (
   req: Request,
   res: Response
@@ -146,7 +139,6 @@ export const updateCampaign = async (
   }
 };
 
-// ✅ Delete Campaign (with userId for activity/notification)
 export const deleteCampaign = async (
   req: Request,
   res: Response
@@ -163,7 +155,6 @@ export const deleteCampaign = async (
         ":white_check_mark: Campaign and related permissions deleted successfully",
     });
   } catch (error: any) {
-    console.error("Delete campaign error:", error);
     return res.status(500).json({ message: error.message });
   }
 };

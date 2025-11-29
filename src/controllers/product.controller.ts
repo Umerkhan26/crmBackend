@@ -1,7 +1,6 @@
 import { Request, Response } from "express";
 import * as ProductSaleService from "../services/product.service";
 
-// ✅ Convert Lead to Sale
 export const convertLeadToSale = async (
   req: Request,
   res: Response
@@ -19,7 +18,6 @@ export const convertLeadToSale = async (
     } = req.body;
     const createdBy = req.user?.id;
 
-    // ✅ Validation: allow either single product OR products array
     if (!leadId || !campaignId || !assigneeId) {
       return res.status(400).json({ message: "Missing required sale data." });
     }
@@ -35,7 +33,7 @@ export const convertLeadToSale = async (
         productType,
         price,
         notes,
-        products: products ?? null, // ✅ store multiple products if passed
+        products: products ?? null,
         status: status ?? "converted",
         conversionDate: new Date(),
         createdBy: createdBy ?? undefined,
@@ -55,7 +53,6 @@ export const convertLeadToSale = async (
   }
 };
 
-// ✅ Get All Sales
 export const getAllSales = async (
   req: Request,
   res: Response
@@ -83,7 +80,6 @@ export const getAllSales = async (
   }
 };
 
-// ✅ Get Sale by ID
 export const getSaleById = async (
   req: Request,
   res: Response
@@ -109,7 +105,6 @@ export const getSaleById = async (
   }
 };
 
-// ✅ Update Sale
 export const updateSale = async (req: Request, res: Response): Promise<any> => {
   try {
     const saleId = parseInt(req.params.id, 10);
@@ -120,7 +115,6 @@ export const updateSale = async (req: Request, res: Response): Promise<any> => {
       return res.status(400).json({ message: "Invalid sale ID" });
     }
 
-    // ✅ Allow products array updates
     const updatedSale = await ProductSaleService.updateSale(
       saleId,
       {
@@ -140,7 +134,6 @@ export const updateSale = async (req: Request, res: Response): Promise<any> => {
   }
 };
 
-// ✅ Delete Sale
 export const deleteSale = async (req: Request, res: Response): Promise<any> => {
   try {
     const saleId = parseInt(req.params.id, 10);
@@ -166,12 +159,10 @@ export const deleteSale = async (req: Request, res: Response): Promise<any> => {
       return res.status(400).json({ success: false, message: error.message });
     }
 
-    // unexpected errors
     return res.status(500).json({ success: false, message: error.message });
   }
 };
 
-// ✅ Get Sales by Product Type
 export const getSalesByProductType = async (
   req: Request,
   res: Response
@@ -195,7 +186,6 @@ export const getSalesByProductType = async (
   }
 };
 
-// ✅ Create Product
 export const createProduct = async (
   req: Request,
   res: Response
@@ -205,7 +195,6 @@ export const createProduct = async (
       req.body;
     const createdBy = req.user?.id;
 
-    // ✅ Only check for productType and campaignId — price is now optional
     if (!productType || !campaignId) {
       return res.status(400).json({
         message: "Missing required fields: productType or campaignId.",
@@ -215,12 +204,12 @@ export const createProduct = async (
     const newProduct = await ProductSaleService.createProduct(
       {
         productType,
-        price, // ✅ can be undefined
+        price,
         notes,
         status,
         campaignId,
         ...(assigneeId && { assigneeId }),
-        createdBy, // ✅ passed to track who created it
+        createdBy,
       },
       createdBy
     );
@@ -329,12 +318,10 @@ export const deleteProduct = async (
       return res.status(400).json({ success: false, message: error.message });
     }
 
-    // fallback for unexpected errors
     return res.status(500).json({ success: false, message: error.message });
   }
 };
 
-// ✅ Get Products by Campaign & Assignee
 export const getProductsByCampaignAndAssignee = async (
   req: Request,
   res: Response
@@ -366,34 +353,7 @@ export const getProductsByCampaignAndAssignee = async (
   }
 };
 
-// export const getInvoice = async (req: Request, res: Response): Promise<any> => {
-//   try {
-//     const { leadId } = req.params;
 
-//     if (!leadId) {
-//       return res
-//         .status(400)
-//         .json({ success: false, message: "Lead ID is required" });
-//     }
-
-//     const invoice = await ProductSaleService.getInvoiceByLeadId(Number(leadId));
-
-//     return res.status(200).json({
-//       success: true,
-//       message: "Invoice fetched successfully",
-//       data: invoice,
-//     });
-//   } catch (error: any) {
-//     console.error(
-//       `Error in getInvoice for leadId ${req.params.leadId}:`,
-//       error
-//     );
-//     return res.status(500).json({
-//       success: false,
-//       message: error.message || "Something went wrong while fetching invoice",
-//     });
-//   }
-// };
 
 export const getInvoice = async (req: Request, res: Response): Promise<any> => {
   try {
@@ -413,7 +373,6 @@ export const getInvoice = async (req: Request, res: Response): Promise<any> => {
     }
 
     const invoice = await ProductSaleService.getInvoiceByLeadId(leadIdNum);
-    console.log(`Invoice fetched for leadId ${leadIdNum}:`, invoice); // Debug log
 
     return res.status(200).json({
       success: true,
@@ -421,10 +380,7 @@ export const getInvoice = async (req: Request, res: Response): Promise<any> => {
       data: invoice,
     });
   } catch (error: any) {
-    console.error(
-      `Error in getInvoice for leadId ${req.params.leadId}:`,
-      error
-    );
+
     return res.status(500).json({
       success: false,
       message: error.message || "Something went wrong while fetching invoice",
@@ -447,9 +403,7 @@ export const getSalesByAssigneeIdController = async (
       : 10;
     const search = (req.query.search as string) || "";
 
-    console.log(
-      `📄 Pagination => page: ${page}, limit: ${limit}, search: "${search}"`
-    );
+
 
     const salesData = await ProductSaleService.getSalesByAssigneeId(
       assigneeId,
@@ -469,7 +423,6 @@ export const getSalesByAssigneeIdController = async (
       ...salesData,
     });
   } catch (error: any) {
-    console.error("🔥 Error in getSalesByAssigneeId controller:", error);
     return res.status(500).json({
       success: false,
       message: error.message || "Internal Server Error",

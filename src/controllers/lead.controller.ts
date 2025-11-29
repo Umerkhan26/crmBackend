@@ -57,7 +57,6 @@ export const getAllLeads = async (
       ...leadsData,
     });
   } catch (error: any) {
-    console.error("Error in getAllLeads:", error);
     return res.status(500).json({
       success: false,
       message: error.message || "An error occurred while fetching leads",
@@ -86,7 +85,6 @@ export const getLeadById = async (
       data: lead,
     });
   } catch (error: any) {
-    console.error("Error in getLeadById:", error);
     return res.status(500).json({
       success: false,
       message: error.message || "An error occurred while fetching the lead",
@@ -131,7 +129,6 @@ export const getLeadsByCampaign = async (
       ...leads, // includes totalItems, data, totalPages, currentPage
     });
   } catch (error: any) {
-    console.error("❌ Error in getLeadsByCampaign controller:", error);
     return res.status(500).json({
       success: false,
       message: error.message || "Internal server error",
@@ -278,7 +275,6 @@ export const getAllLeadsWithAssignee = async (
       ...leads,
     });
   } catch (error: any) {
-    console.error("❌ Error in getAllLeadsWithAssignee controller:", error);
     return res.status(500).json({
       success: false,
       message: error.message || "Internal server error",
@@ -392,7 +388,6 @@ export const getUnassignedLeads = async (
       ...leads,
     });
   } catch (error: any) {
-    console.error("❌ Error in getUnassignedLeads controller:", error);
     return res.status(500).json({
       success: false,
       message: "Failed to fetch unassigned leads",
@@ -438,7 +433,6 @@ export const sendEmailToLead = async (
       to: result.to,
     });
   } catch (error: any) {
-    console.error("Error sending email:", error.message);
     return res.status(500).json({
       success: false,
       message:
@@ -480,7 +474,6 @@ export const getLeadStatusSummary = async (
 //     const userId = Number(req.body.userId);
 //     const status = req.body.status as LeadStatus;
 
-//     console.log("📌 Update Lead Status Request:", { leadId, userId, status });
 
 //     // ✅ Validate input
 //     if (!leadId || !userId || !status) {
@@ -503,7 +496,6 @@ export const getLeadStatusSummary = async (
 //       lead: updatedLead,
 //     });
 //   } catch (error: any) {
-//     console.error("🔥 Error in updateLeadStatus controller:", {
 //       message: error.message,
 //       stack: error.stack,
 //     });
@@ -530,7 +522,6 @@ export const updateLeadStatus = async (
     const userId = Number(req.body.userId);
     const status = req.body.status as LeadStatus;
 
-    console.log("📌 Update Lead Status Request:", { leadId, userId, status });
 
     // ✅ Validate input existence
     if (!leadId || !userId || !status) {
@@ -563,10 +554,6 @@ export const updateLeadStatus = async (
       lead: updatedLead,
     });
   } catch (error: any) {
-    console.error("🔥 Error in updateLeadStatus controller:", {
-      message: error.message,
-      stack: error.stack,
-    });
 
     return res.status(500).json({
       success: false,

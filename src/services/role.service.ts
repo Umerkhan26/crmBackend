@@ -21,7 +21,6 @@ export const createRole = async (roleData: {
       throw new Error("Role creation failed, role ID is null.");
     }
 
-    console.log("Role created with ID:", role.id); // Debugging log to verify role ID
 
     // Associate permissions if provided
     if (permissions && permissions.length > 0) {
@@ -44,14 +43,12 @@ export const createRole = async (roleData: {
       // Insert role_permissions entries in bulk
       await RolePermission.bulkCreate(rolePermissions);
 
-      console.log("Permissions associated with role successfully.");
     }
 
     // Return the created role object
     return { message: "Role created successfully", role };
   } catch (error: any) {
     // Log the error for better diagnostics
-    console.error("Error creating role:", error);
 
     // Handle Sequelize validation errors
     if (error.name === "SequelizeValidationError") {
@@ -152,7 +149,6 @@ export const deleteRole = async (roleId: number) => {
 
     return { message: "Role deleted successfully", success: true };
   } catch (error: any) {
-    console.error("Error deleting role:", error);
     return {
       message: "Error occurred while deleting the role.",
       success: false,
@@ -189,7 +185,6 @@ export const getRoleByUserId = async (userId: number) => {
       data: user,
     };
   } catch (error: any) {
-    console.error("Error fetching role by userId:", error);
     return {
       message: "Error occurred while fetching role by userId.",
       success: false,

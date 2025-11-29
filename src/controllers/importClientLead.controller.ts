@@ -29,9 +29,7 @@ export const importClientLeadsController = async (
       ? parseInt(req.body.campaign_id)
       : undefined; // Add this
 
-    console.log("Received order_id:", orderId);
-    console.log("Received campaign_id:", campaignId); // Add this
-    console.log("Received mappedData:", mappedData);
+
 
     // Add order_id and campaign_id to each leadData object if provided
     if (mappedData) {
@@ -54,7 +52,6 @@ export const importClientLeadsController = async (
       skipped: result.skipped,
     });
   } catch (error: any) {
-    console.error("❌ Client Lead Import error:", error);
     return res.status(500).json({
       success: false,
       message:

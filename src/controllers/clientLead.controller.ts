@@ -12,7 +12,6 @@ import {
 } from "../services/clientLead.service";
 import { CustomRequest } from "../types/custom";
 
-// Create a client lead
 export const createClientLeadController = async (
   req: CustomRequest,
   res: Response
@@ -37,7 +36,7 @@ export const createClientLeadController = async (
         leadData,
         created_by: userId,
       },
-      userId // ✅ pass userId for logging/notifications
+      userId
     );
 
     return res.status(201).json({
@@ -75,7 +74,7 @@ export const getAllClientLeadsController = async (
     return res.status(200).json({
       success: true,
       message: "Client leads fetched successfully",
-      ...leads, // includes: totalItems, data, totalPages, currentPage
+      ...leads,
     });
   } catch (error: any) {
     return res.status(500).json({
@@ -83,9 +82,8 @@ export const getAllClientLeadsController = async (
       message: error.message,
     });
   }
-};  
+};
 
-// Get client leads by order ID
 export const getClientLeadsByOrder = async (
   req: Request,
   res: Response
@@ -108,7 +106,6 @@ export const getClientLeadsByOrder = async (
   }
 };
 
-// Get single client lead by ID
 export const getClientLead = async (
   req: Request,
   res: Response
@@ -135,7 +132,6 @@ export const getClientLead = async (
   }
 };
 
-// Update client lead
 export const updateClientLead = async (
   req: CustomRequest,
   res: Response
@@ -163,7 +159,6 @@ export const updateClientLead = async (
 };
 
 
-// Delete client lead
 export const deleteClientLead = async (
   req: CustomRequest,
   res: Response
@@ -247,9 +242,8 @@ export const sendEmailToClientLeadController = async (
 ): Promise<any> => {
   try {
     const clientLeadId = parseInt(req.params.clientLeadId, 10);
-    const templateKey = req.body.templateKey; // e.g., "user:create"
-    const senderUserId = req.user?.id; // assumes verifyToken middleware sets req.user
-
+    const templateKey = req.body.templateKey;
+    const senderUserId = req.user?.id;
     if (isNaN(clientLeadId)) {
       return res.status(400).json({ message: "Invalid clientLead ID." });
     }
@@ -278,7 +272,6 @@ export const sendEmailToClientLeadController = async (
       to: result.to,
     });
   } catch (error: any) {
-    console.error("Error sending email to clientLead:", error.message);
     return res.status(500).json({
       success: false,
       message:

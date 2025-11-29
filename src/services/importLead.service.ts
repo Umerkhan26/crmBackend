@@ -19,18 +19,14 @@
 //   fileBuffer: Buffer,
 //   mappedData?: any[]
 // ) => {
-//   console.log("📥 Starting Lead import...");
-//   console.log("➡️ Received mappedData:", mappedData ? "Provided" : "Not Provided");
 
 //   const rows = mappedData || parseFileBuffer(fileBuffer);
-//   console.log(`➡️ Total rows to process: ${rows.length}`);
 
 //   const validLeads: LeadCreationAttributes[] = [];
 //   const skippedRows: { row: number; reason: string }[] = [];
 
 //   for (let [index, row] of rows.entries()) {
 //     try {
-//       console.log(`\n🔎 Processing row ${index + 2}:`, row);
 
 //       // ✅ Ensure leadData exists
 //       if (!row.leadData || typeof row.leadData !== "object") {
@@ -40,7 +36,6 @@
 //       // ✅ Convert Excel serial date if needed
 //       if (row.leadData.date && typeof row.leadData.date === "number") {
 //         row.leadData.date = excelSerialDateToDate(row.leadData.date);
-//         console.log(`   📅 Converted Excel date: ${row.leadData.date}`);
 //       }
 
 //       // ✅ Validate required fields
@@ -60,18 +55,14 @@
 //         assignees: Array.isArray(row.assignees) ? row.assignees : [],
 //       };
 
-//       console.log("   ✅ Valid lead prepared:", preparedLead);
 
 //       validLeads.push(preparedLead);
 //     } catch (err: any) {
-//       console.error(`   ❌ Error processing row ${index + 2}:`, err.message);
 //       skippedRows.push({ row: index + 2, reason: err.message });
 //     }
 //   }
 
-//   console.log("\n📊 Summary before DB insert:");
-//   console.log("   ✅ Valid leads:", validLeads.length);
-//   console.log("   ❌ Skipped rows:", skippedRows.length);
+
 
 //   let insertedCount = 0;
 
@@ -79,21 +70,16 @@
 //     try {
 //       await Lead.bulkCreate(validLeads, { validate: true });
 //       insertedCount = validLeads.length;
-//       console.log(`\n✅ Successfully inserted ${insertedCount} leads into DB`);
 //     } catch (dbError: any) {
-//       console.error("❌ Database error during bulkCreate:", dbError);
 //       skippedRows.push({
 //         row: 0,
 //         reason: `Database error: ${dbError.message}`,
 //       });
 //     }
 //   } else {
-//     console.warn("⚠️ No valid leads found. Skipping DB insert.");
 //   }
 
-//   console.log("\n📦 Import completed.");
-//   console.log("   ✅ Imported:", insertedCount);
-//   console.log("   ❌ Skipped:", skippedRows.length);
+
 
 //   return {
 //     imported: insertedCount,
@@ -125,21 +111,15 @@ export const importLeadsFromFile = async (
   fileBuffer: Buffer,
   mappedData?: any[]
 ) => {
-  console.log("📥 Starting Lead import...");
-  console.log(
-    "➡️ Received mappedData:",
-    mappedData ? "Provided" : "Not Provided"
-  );
+
 
   const rows = mappedData || parseFileBuffer(fileBuffer);
-  console.log(`➡️ Total rows to process: ${rows.length}`);
 
   const validLeads: LeadCreationAttributes[] = [];
   const skippedRows: { row: number; reason: string }[] = [];
 
   for (let [index, row] of rows.entries()) {
     try {
-      console.log(`\n🔎 Processing row ${index + 2}:`, row);
 
       // Ensure leadData exists
       if (!row.leadData || typeof row.leadData !== "object") {
@@ -149,7 +129,6 @@ export const importLeadsFromFile = async (
       // Convert Excel date to JS date
       if (row.leadData.date && typeof row.leadData.date === "number") {
         row.leadData.date = excelSerialDateToDate(row.leadData.date);
-        console.log(`   📅 Converted Excel date: ${row.leadData.date}`);
       }
 
       // Validate required fields
@@ -169,18 +148,14 @@ export const importLeadsFromFile = async (
         assignees: Array.isArray(row.assignees) ? row.assignees : [],
       };
 
-      console.log("   ✅ Valid lead prepared:", preparedLead);
 
       validLeads.push(preparedLead);
     } catch (err: any) {
-      console.error(`   ❌ Error processing row ${index + 2}:`, err.message);
       skippedRows.push({ row: index + 2, reason: err.message });
     }
   }
 
-  console.log("\n📊 Summary before DB insert:");
-  console.log("   ✅ Valid leads:", validLeads.length);
-  console.log("   ❌ Skipped rows:", skippedRows.length);
+
 
   let insertedCount = 0;
 
@@ -192,28 +167,22 @@ export const importLeadsFromFile = async (
       for (let i = 0; i < validLeads.length; i += chunkSize) {
         const chunk = validLeads.slice(i, i + chunkSize);
 
-        console.log(`📦 Inserting chunk ${i / chunkSize + 1} (${chunk.length} records)...`);
 
         await Lead.bulkCreate(chunk, { validate: true });
 
         insertedCount += chunk.length;
       }
 
-      console.log(`\n✅ Successfully inserted ${insertedCount} leads in batches.`);
     } catch (dbError: any) {
-      console.error("❌ Database error during chunked bulkCreate:", dbError);
       skippedRows.push({
         row: 0,
         reason: `Database error: ${dbError.message}`,
       });
     }
   } else {
-    console.warn("⚠️ No valid leads found. Skipping DB insert.");
   }
 
-  console.log("\n📦 Import completed.");
-  console.log("   ✅ Imported:", insertedCount);
-  console.log("   ❌ Skipped:", skippedRows.length);
+
 
   return {
     imported: insertedCount,

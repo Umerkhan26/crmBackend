@@ -314,7 +314,6 @@ export const getLeadActivityReportByUser = async (
       endDate.setHours(23, 59, 59, 999);
     }
   }
-  console.log(":date: Date Range:", { startDate, endDate, hasCustomDates });
   // :large_green_circle: Fetch activities
   const activities = await LeadActivity.findAll({
     where: {

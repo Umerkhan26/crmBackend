@@ -36,8 +36,7 @@ export const checkCampaignPermission = (action: "get") => {
   return (req: Request, res: Response, next: NextFunction): void => {
     const campaignId = parseInt(req.params.id, 10);
     const userPermissions = req.user?.permissions || [];
-    console.log("Campaign ID:", campaignId);
-    console.log("User Permissions:", userPermissions);
+
 
     const permissionNameMap: Record<string, string> = {
       get: "getCampaignById",
@@ -61,9 +60,7 @@ export const checkCampaignPermission = (action: "get") => {
     );
 
     if (!hasSimplePermission && !hasObjectPermission) {
-      console.log(
-        `Permission denied: Missing ${requiredPermissionName} for campaign ${campaignId}`
-      );
+
       res
         .status(403)
         .json({ message: "Forbidden: You lack permission for this campaign." });

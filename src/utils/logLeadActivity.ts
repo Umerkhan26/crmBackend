@@ -22,7 +22,6 @@ export const logLeadActivity = async ({
       details,
     });
   } catch (error: any) {
-    console.error("❌ Error logging lead activity:", error.message);
     // Optional: you can rethrow if you want to fail loudly
   }
 };

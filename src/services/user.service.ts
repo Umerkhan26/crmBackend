@@ -23,127 +23,6 @@ interface PaginationParams {
   limit?: number;
 }
 
-// export const createUser = async (
-//   userData: Partial<UserAttributes>
-// ): Promise<any> => {
-//   const { email, password, roleId } = userData;
-
-//   if (!email || !password || !roleId) {
-//     throw new Error("Email, password, and user role are required!");
-//   }
-
-//   const existingUser = await User.findOne({ where: { email } });
-//   if (existingUser) {
-//     throw new Error("Email already in use!");
-//   }
-
-//   // Hash password
-//   const salt = await bcrypt.genSalt(10);
-//   userData.password = await bcrypt.hash(password, salt);
-
-//   const newUserData: UserAttributes = {
-//     ...userData,
-//     roleId,
-//     status: "active",
-//     token: userData.token || "",
-//     created_at: new Date(),
-//     updated_at: new Date(),
-//     userImage: userData.userImage || null,
-//   };
-
-//   const user = await User.create(newUserData);
-
-//   if (!user.id) {
-//     throw new Error("User ID not found after creation");
-//   }
-
-//   // Log activity + notification
-//   await logActivity(
-//     user.id,
-//     "Registration",
-//     "User registered successfully",
-//     user.firstname + " " + user.lastname
-//   );
-
-//   await sendNotification(
-//     user.id,
-//     "Welcome! Your account has been successfully created.",
-//     user.firstname + " " + user.lastname
-//   );
-
-//   // Fetch user with role to check email permission
-//   const userWithRole = await User.findOne({
-//     where: { id: user.id },
-//     include: [
-//       {
-//         model: Role,
-//         as: "role",
-//         attributes: ["id", "name", "description"],
-//       },
-//     ],
-//   });
-
-//   const roleName = userWithRole?.role?.name || "client";
-//   console.log("➡️ Role used for permission check:", roleName);
-
-//   const canSendEmail = await checkEmailPermission("user:create", roleName);
-//   console.log("➡️ Email permission result:", canSendEmail);
-
-//   if (canSendEmail) {
-//     const smtpConfigRaw = await getSmtpConfig(user.id);
-
-//     // Merge with defaults from env
-//     const smtpConfig = {
-//       host: smtpConfigRaw.host || process.env.SMTP_HOST!,
-//       port: smtpConfigRaw.port || Number(process.env.SMTP_PORT!),
-//       user: smtpConfigRaw.user || process.env.SMTP_USER!,
-//       pass: smtpConfigRaw.pass || process.env.SMTP_PASS!,
-//     };
-
-//     const subject = "Welcome to Our Platform!";
-//     const body = userCreateEmailTemplate({
-//       firstname: userWithRole?.firstname || "",
-//       lastname: userWithRole?.lastname || "",
-//       email: userWithRole?.email || "",
-//     });
-
-//     console.log("📧 Sending email directly:");
-//     console.log("Recipient:", userWithRole?.email);
-//     console.log("Subject:", subject);
-
-//     try {
-//       await sendEmail({
-//         smtp: smtpConfig,
-//         to: userWithRole?.email!,
-//         subject,
-//         body,
-//       });
-//       console.log("✅ Email sent directly to", userWithRole?.email);
-//     } catch (err) {
-//       console.error("❌ Direct email sending failed:", err);
-//     }
-//   }
-
-//   // Fetch full user with permissions if needed
-//   const userFull = await User.findOne({
-//     where: { id: user.id },
-//     include: [
-//       {
-//         model: Role,
-//         as: "role",
-//         attributes: ["id", "name", "description"],
-//         include: [
-//           {
-//             model: Permission,
-//             attributes: ["id", "name", "resourceType", "resourceId"],
-//           },
-//         ],
-//       },
-//     ],
-//   });
-
-//   return userFull;
-// };
 
 
 export const createUser = async (
@@ -207,10 +86,8 @@ export const createUser = async (
   });
 
   const roleName = userWithRole?.role?.name || "client";
-  console.log("➡️ Role used for permission check:", roleName);
 
   const canSendEmail = await checkEmailPermission("user:create", roleName);
-  console.log("➡️ Email permission result:", canSendEmail);
 
   if (canSendEmail) {
     // 📨 Prefer user's own SMTP config if available
@@ -225,17 +102,17 @@ export const createUser = async (
     const smtpConfig =
       userSmtp.host && userSmtp.port && userSmtp.user && userSmtp.pass
         ? {
-            host: userSmtp.host,
-            port: userSmtp.port,
-            user: userSmtp.user,
-            pass: userSmtp.pass,
-          }
+          host: userSmtp.host,
+          port: userSmtp.port,
+          user: userSmtp.user,
+          pass: userSmtp.pass,
+        }
         : {
-            host: process.env.DEFAULT_SMTP_HOST!,
-            port: Number(process.env.DEFAULT_SMTP_PORT!),
-            user: process.env.DEFAULT_SMTP_EMAIL!,
-            pass: process.env.DEFAULT_SMTP_PASSWORD!,
-          };
+          host: process.env.DEFAULT_SMTP_HOST!,
+          port: Number(process.env.DEFAULT_SMTP_PORT!),
+          user: process.env.DEFAULT_SMTP_EMAIL!,
+          pass: process.env.DEFAULT_SMTP_PASSWORD!,
+        };
 
     const subject = "Welcome to Our Platform!";
     const body = userCreateEmailTemplate({
@@ -244,10 +121,6 @@ export const createUser = async (
       email: userWithRole?.email || "",
     });
 
-    console.log("📧 Sending email directly:");
-    console.log("From:", smtpConfig.user);
-    console.log("To:", userWithRole?.email);
-    console.log("Subject:", subject);
 
     try {
       await sendEmail({
@@ -256,9 +129,7 @@ export const createUser = async (
         subject,
         body,
       });
-      console.log("✅ Email sent successfully to", userWithRole?.email);
     } catch (err) {
-      console.error("❌ Email sending failed:", err);
     }
   }
 

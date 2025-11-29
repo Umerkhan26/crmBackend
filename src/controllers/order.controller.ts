@@ -12,52 +12,6 @@ import {
 } from "../services/order.service";
 import { CreateOrderDTO } from "../services/order.service";
 
-// Create Order
-// export const createOrderController = async (req: CustomRequest, res: Response): Promise<any> => {
-//   const orderData: CreateOrderDTO = req.body;
-//   const userId = req.user?.id;
-
-//   if (!userId) {
-//     return res.status(401).json({
-//       success: false,
-//       message: "User ID not found in request",
-//     });
-//   }
-
-//   if (
-//     orderData.assign_to_client &&
-//     (!orderData.assign_to_client.id || !orderData.assign_to_client.name)
-//   ) {
-//     return res.status(400).json({
-//       success: false,
-//       message: "Invalid 'assign_to_client' format. Both id and name are required.",
-//     });
-//   }
-
-//   if (
-//     orderData.assign_to_vendor &&
-//     (!orderData.assign_to_vendor.id || !orderData.assign_to_vendor.name)
-//   ) {
-//     return res.status(400).json({
-//       success: false,
-//       message: "Invalid 'assign_to_vendor' format. Both id and name are required.",
-//     });
-//   }
-
-//   try {
-//     const createdOrder = await createOrder(orderData, userId);
-//     return res.status(201).json({
-//       success: true,
-//       message: "Order created successfully",
-//       data: createdOrder,
-//     });
-//   } catch (error: any) {
-//     return res.status(400).json({
-//       success: false,
-//       message: error.message || "An error occurred while creating the order",
-//     });
-//   }
-// };
 
 export const createOrderController = async (
   req: CustomRequest,
@@ -110,7 +64,6 @@ export const createOrderController = async (
     });
   }
 };
-// Get Order by ID
 export const getOrderByIdController = async (req: CustomRequest, res: Response): Promise<any> => {
   const { id } = req.params;
 
@@ -135,7 +88,6 @@ export const getOrderByIdController = async (req: CustomRequest, res: Response):
   }
 };
 
-// Update Order by ID
 export const updateOrderByIdController = async (req: CustomRequest, res: Response): Promise<any> => {
   const { id } = req.params;
   const updatedData: Partial<CreateOrderDTO> = req.body;
@@ -190,7 +142,6 @@ export const updateOrderByIdController = async (req: CustomRequest, res: Respons
   }
 };
 
-// Delete Order by ID
 export const deleteOrderByIdController = async (req: CustomRequest, res: Response): Promise<any> => {
   const { id } = req.params;
   const userId = req.user?.id;
@@ -223,7 +174,6 @@ export const deleteOrderByIdController = async (req: CustomRequest, res: Respons
   }
 };
 
-// Get All Orders
 export const getAllOrdersController = async (
   req: CustomRequest,
   res: Response
@@ -246,7 +196,6 @@ export const getAllOrdersController = async (
   }
 };
 
-// Block or Unblock Order by ID
 export const setOrderBlockStatusController = async (req: CustomRequest, res: Response): Promise<any> => {
   const { id } = req.params;
   const { block } = req.body;
@@ -258,7 +207,7 @@ export const setOrderBlockStatusController = async (req: CustomRequest, res: Res
       message: "'block' must be a boolean value",
     });
   }
- 
+
   if (!userId) {
     return res.status(401).json({
       success: false,
@@ -310,7 +259,6 @@ export const getOrdersByVendorIdController = async (req: CustomRequest, res: Res
   }
 };
 
-// ✅ Get Orders by Client ID
 export const getOrdersByClientIdController = async (req: CustomRequest, res: Response): Promise<any> => {
   const { clientId } = req.params;
   const page = parseInt(req.query.page as string) || 1;

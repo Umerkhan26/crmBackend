@@ -1,7 +1,6 @@
 import { Request, Response } from "express";
 import * as PermissionService from "../services/permission.service";
 
-// Controller to get all permissions
 export const getAllPermissionsController = async (req: Request, res: Response) => {
   try {
     const permissions = await PermissionService.getAllPermissions();
@@ -17,7 +16,6 @@ export const getAllPermissionsController = async (req: Request, res: Response) =
   }
 };
 
-// Controller to get a permission by ID
 export const getPermissionByIdController = async (req: Request, res: Response) => {
   const { id } = req.params;
   try {

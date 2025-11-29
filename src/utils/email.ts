@@ -83,8 +83,6 @@ export const sendEmail = async ({
       text: body,
       html: body.replace(/\n/g, "<br>"),
     });
-    console.log(`✅ Email sent successfully to: ${to}`);
   } catch (error) {
-    console.error("❌ Email sending failed:", error);
   }
 };

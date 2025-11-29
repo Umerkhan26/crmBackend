@@ -21,20 +21,15 @@
 //   createdBy: number,
 //   mappedData?: any[]
 // ) => {
-//   console.log("📥 Starting client lead import...");
-//   console.log("➡️ Created By (userId):", createdBy);
-//   console.log("➡️ Received mappedData:", mappedData ? "Provided" : "Not Provided");
 
 //   // ✅ Use mappedData if passed, otherwise parse file
 //   const rows = mappedData || parseFileBuffer(fileBuffer);
-//   console.log(`➡️ Total rows to process: ${rows.length}`);
 
 //   const validLeads: ClientLeadCreationAttributes[] = [];
 //   const skippedRows: { row: number; reason: string }[] = [];
 
 //   for (let [index, row] of rows.entries()) {
 //     try {
-//       console.log(`\n🔎 Processing row ${index + 2}:`, row);
 
 //       if (!row.leadData || typeof row.leadData !== "object") {
 //         throw new Error("Missing or invalid 'leadData'");
@@ -43,8 +38,6 @@
 //       // Convert Excel serial date to string if needed
 //       if (row.leadData.date && typeof row.leadData.date === "number") {
 //         row.leadData.date = excelSerialDateToDate(row.leadData.date);
-//         console.log(`   📅 Converted Excel date: ${row.leadData.date}`);
-//       }
 
 //       // Validate required fields
 //       if (
@@ -74,18 +67,13 @@
 //         leadData: row.leadData as Record<string, any>, // ✅ force required
 //       };
 
-//       console.log("   ✅ Valid lead prepared:", preparedLead);
 
 //       validLeads.push(preparedLead);
 //     } catch (err: any) {
-//       console.error(`   ❌ Error processing row ${index + 2}:`, err.message);
 //       skippedRows.push({ row: index + 2, reason: err.message });
 //     }
 //   }
 
-//   console.log("\n📊 Summary before DB insert:");
-//   console.log("   ✅ Valid leads:", validLeads.length);
-//   console.log("   ❌ Skipped rows:", skippedRows.length);
 
 //   let insertedCount = 0;
 
@@ -93,7 +81,6 @@
 //     try {
 //       await ClientLead.bulkCreate(validLeads, { validate: true });
 //       insertedCount = validLeads.length;
-//       console.log(`\n✅ Successfully inserted ${insertedCount} leads into DB`);
 
 //       // 📧 Setup SMTP config
 //       const smtpConfig = {
@@ -114,7 +101,6 @@
 
 //       if (Object.keys(emailMap).length > 0) {
 //         for (const [email, count] of Object.entries(emailMap)) {
-//           console.log(`📧 Sending summary email to ${email} for ${count} leads`);
 //           await sendEmail({
 //             smtp: smtpConfig,
 //             to: email,
@@ -123,22 +109,17 @@
 //           });
 //         }
 //       } else {
-//         console.warn("⚠️ No lead emails found → skipping email notifications");
 //       }
 //     } catch (dbError: any) {
-//       console.error("❌ Database error during bulkCreate:", dbError);
 //       skippedRows.push({
 //         row: 0,
 //         reason: `Database error: ${dbError.message}`,
 //       });
 //     }
 //   } else {
-//     console.warn("⚠️ No valid leads found. Skipping DB insert.");
 //   }
 
-//   console.log("\n📦 Import completed.");
-//   console.log("   ✅ Imported:", insertedCount);
-//   console.log("   ❌ Skipped:", skippedRows.length);
+
 
 //   return {
 //     imported: insertedCount,
@@ -179,23 +160,16 @@ const excelSerialDateToDate = (serial: number): string => {
 //   createdBy: number,
 //   mappedData?: any[]
 // ) => {
-//   console.log("📥 Starting client lead import...");
-//   console.log("➡️ Created By (userId):", createdBy);
-//   console.log(
-//     "➡️ Received mappedData:",
-//     mappedData ? "Provided" : "Not Provided"
-//   );
+
 
 //   // ✅ Use mappedData if passed, otherwise parse file
 //   const rows = mappedData || parseFileBuffer(fileBuffer);
-//   console.log(`➡️ Total rows to process: ${rows.length}`);
 
 //   const validLeads: ClientLeadCreationAttributes[] = [];
 //   const skippedRows: { row: number; reason: string }[] = [];
 
 //   for (let [index, row] of rows.entries()) {
 //     try {
-//       console.log(`\n🔎 Processing row ${index + 2}:`, row);
 
 //       if (!row.leadData || typeof row.leadData !== "object") {
 //         throw new Error("Missing or invalid 'leadData'");
@@ -204,8 +178,6 @@ const excelSerialDateToDate = (serial: number): string => {
 //       // Convert Excel serial date to string if needed
 //       if (row.leadData.date && typeof row.leadData.date === "number") {
 //         row.leadData.date = excelSerialDateToDate(row.leadData.date);
-//         console.log(`   📅 Converted Excel date: ${row.leadData.date}`);
-//       }
 
 //       // Validate required fields
 //       if (
@@ -220,8 +192,7 @@ const excelSerialDateToDate = (serial: number): string => {
 
 //       // ✅ CampaignName check (optional but included if available)
 //       if (!row.leadData.campaignName) {
-//         console.warn(`   ⚠️ No campaignName provided in row ${index + 2}`);
-//       }
+
 
 //       // Check order validity
 //       if (row.order_id) {
@@ -251,18 +222,14 @@ const excelSerialDateToDate = (serial: number): string => {
 //         },
 //       };
 
-//       console.log("   ✅ Valid lead prepared:", preparedLead);
 
 //       validLeads.push(preparedLead);
 //     } catch (err: any) {
-//       console.error(`   ❌ Error processing row ${index + 2}:`, err.message);
 //       skippedRows.push({ row: index + 2, reason: err.message });
 //     }
 //   }
 
-//   console.log("\n📊 Summary before DB insert:");
-//   console.log("   ✅ Valid leads:", validLeads.length);
-//   console.log("   ❌ Skipped rows:", skippedRows.length);
+
 
 //   let insertedCount = 0;
 
@@ -270,7 +237,6 @@ const excelSerialDateToDate = (serial: number): string => {
 //     try {
 //       await ClientLead.bulkCreate(validLeads, { validate: true });
 //       insertedCount = validLeads.length;
-//       console.log(`\n✅ Successfully inserted ${insertedCount} leads into DB`);
 
 //       // 📧 Setup SMTP config
 //       const smtpConfig = {
@@ -291,9 +257,7 @@ const excelSerialDateToDate = (serial: number): string => {
 
 //       if (Object.keys(emailMap).length > 0) {
 //         for (const [email, count] of Object.entries(emailMap)) {
-//           console.log(
-//             `📧 Sending summary email to ${email} for ${count} leads`
-//           );
+//   
 //           await sendEmail({
 //             smtp: smtpConfig,
 //             to: email,
@@ -302,22 +266,17 @@ const excelSerialDateToDate = (serial: number): string => {
 //           });
 //         }
 //       } else {
-//         console.warn("⚠️ No lead emails found → skipping email notifications");
 //       }
 //     } catch (dbError: any) {
-//       console.error("❌ Database error during bulkCreate:", dbError);
 //       skippedRows.push({
 //         row: 0,
 //         reason: `Database error: ${dbError.message}`,
 //       });
 //     }
 //   } else {
-//     console.warn("⚠️ No valid leads found. Skipping DB insert.");
 //   }
 
-//   console.log("\n📦 Import completed.");
-//   console.log("   ✅ Imported:", insertedCount);
-//   console.log("   ❌ Skipped:", skippedRows.length);
+
 
 //   return {
 //     imported: insertedCount,
@@ -331,23 +290,16 @@ export const importClientLeadsFromFile = async (
   createdBy: number,
   mappedData?: any[]
 ) => {
-  console.log("📥 Starting client lead import...");
-  console.log("➡️ Created By (userId):", createdBy);
-  console.log(
-    "➡️ Received mappedData:",
-    mappedData ? "Provided" : "Not Provided"
-  );
+
 
   // Use mappedData if passed, otherwise parse file
   const rows = mappedData || parseFileBuffer(fileBuffer);
-  console.log(`➡️ Total rows to process: ${rows.length}`);
 
   const validLeads: ClientLeadCreationAttributes[] = [];
   const skippedRows: { row: number; reason: string }[] = [];
 
   for (let [index, row] of rows.entries()) {
     try {
-      console.log(`\n🔎 Processing row ${index + 2}:`, row);
 
       if (!row.leadData || typeof row.leadData !== "object") {
         throw new Error("Missing or invalid 'leadData'");
@@ -356,7 +308,6 @@ export const importClientLeadsFromFile = async (
       // Convert Excel serial date to string if needed
       if (row.leadData.date && typeof row.leadData.date === "number") {
         row.leadData.date = excelSerialDateToDate(row.leadData.date);
-        console.log(`   📅 Converted Excel date: ${row.leadData.date}`);
       }
 
       // Validate required fields
@@ -372,7 +323,6 @@ export const importClientLeadsFromFile = async (
 
       // Optional: campaignName check
       if (!row.leadData.campaignName) {
-        console.warn(`   ⚠️ No campaignName provided in row ${index + 2}`);
       }
 
       // Validate order_id
@@ -404,18 +354,14 @@ export const importClientLeadsFromFile = async (
         },
       };
 
-      console.log("   ✅ Valid lead prepared:", preparedLead);
 
       validLeads.push(preparedLead);
     } catch (err: any) {
-      console.error(`   ❌ Error processing row ${index + 2}:`, err.message);
       skippedRows.push({ row: index + 2, reason: err.message });
     }
   }
 
-  console.log("\n📊 Summary before DB insert:");
-  console.log("   ✅ Valid leads:", validLeads.length);
-  console.log("   ❌ Skipped rows:", skippedRows.length);
+
 
   let insertedCount = 0;
 
@@ -426,27 +372,21 @@ export const importClientLeadsFromFile = async (
 
       for (let i = 0; i < validLeads.length; i += chunkSize) {
         const chunk = validLeads.slice(i, i + chunkSize);
-        console.log(`📦 Inserting chunk ${i / chunkSize + 1}...`);
 
         await ClientLead.bulkCreate(chunk, { validate: true });
         insertedCount += chunk.length;
       }
 
-      console.log(`\n✅ Successfully inserted ${insertedCount} client leads in batches.`);
     } catch (dbError: any) {
-      console.error("❌ Database error during chunked bulkCreate:", dbError);
       skippedRows.push({
         row: 0,
         reason: `Database error: ${dbError.message}`,
       });
     }
   } else {
-    console.warn("⚠️ No valid leads found. Skipping DB insert.");
   }
 
-  console.log("\n📦 Import completed.");
-  console.log("   ✅ Imported:", insertedCount);
-  console.log("   ❌ Skipped:", skippedRows.length);
+
 
   return {
     imported: insertedCount,

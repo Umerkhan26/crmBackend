@@ -61,7 +61,6 @@ export const createCampaign = async (
             permissionId: permission.id,
           });
         } catch (error: any) {
-          console.warn(`RolePermisssion creation skipped: ${error.message}`);
         }
       }
       await logActivity(
@@ -76,7 +75,6 @@ export const createCampaign = async (
     }
     return campaign;
   } catch (error: any) {
-    console.error("Error creating campaign:", error);
     throw new Error(`Error creating campaign: ${error.message}`);
   }
 };
@@ -241,7 +239,6 @@ export const deleteCampaign = async (
     }
     return true;
   } catch (err: any) {
-    console.error("Error deleting campaign:", err);
     throw new Error(err.message || "Error deleting campaign");
   }
 };

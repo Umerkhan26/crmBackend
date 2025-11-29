@@ -15,124 +15,6 @@ import { buildSearchFilter } from "../utils/filterQuery";
 import { Op, where, json } from "sequelize"; // ✅ import helpers directly
 import { sendEmail } from "../utils/email";
 
-// export interface CreateOrderDTO {
-//   agent: string;
-//   campaign_id: number;
-//   state: string;
-//   priority_level: "High" | "Medium" | "Low" | "Gold Agent";
-//   age_range: string;
-//   lead_requested: number;
-//   fb_link?: string;
-//   notes?: string;
-//   area_to_use?: string;
-//   order_datetime: Date;
-//   assign_to_client?: {
-//     id: number;
-//     name: string;
-//   };
-//   assign_to_vendor?: {
-//     id: number;
-//     name: string;
-//   };
-// }
-
-// export const createOrder = async (
-//   orderData: CreateOrderDTO,
-//   createdBy: number
-// ): Promise<any> => {
-//   try {
-//     const campaign = await Campaign.findByPk(orderData.campaign_id);
-//     if (!campaign) {
-//       console.error("❌ Campaign not found:", orderData.campaign_id);
-//       throw new Error("Campaign not found");
-//     }
-
-//     const order = await Order.create({
-//       agent: orderData.agent,
-//       campaign_id: orderData.campaign_id,
-//       state: orderData.state,
-//       priority_level: orderData.priority_level,
-//       age_range: orderData.age_range,
-//       lead_requested: orderData.lead_requested,
-//       fb_link: orderData.fb_link,
-//       notes: orderData.notes,
-//       area_to_use: orderData.area_to_use,
-//       order_datetime: orderData.order_datetime,
-//       created_by: createdBy,
-//       assign_to_client: orderData.assign_to_client,
-//       assign_to_vendor: orderData.assign_to_vendor,
-//     });
-
-//     console.log("✅ Order created:", order.id);
-
-//     await sendNotification(
-//       createdBy,
-//       `New order created for campaign "${campaign.campaignName}"`
-//     );
-//     await logActivity(
-//       createdBy,
-//       "Order Created",
-//       `Order Created With ID: ${order.id}`
-//     );
-
-//     // ✅ Email functionality
-//     const user = await User.findByPk(createdBy);
-//     if (!user) {
-//       console.warn("⚠️ User not found for ID:", createdBy);
-//     } else {
-//       console.log(
-//         "👤 Email check for user:",
-//         user.email,
-//         "Role:",
-//         user.userrole
-//       );
-
-//       const canSendEmail = await checkEmailPermission(
-//         "order:create",
-//         user.userrole || "client"
-//       );
-//       console.log("📩 Email permission check:", canSendEmail);
-
-//       if (canSendEmail) {
-//         const smtpConfig = await getSmtpConfig(createdBy);
-//         console.log("📨 SMTP config loaded:", smtpConfig);
-
-//         const { subject, body } = await getCompiledTemplate("order:create", {
-//           agent: order.agent,
-//           campaign: campaign.campaignName,
-//           state: order.state,
-//           priority: order.priority_level,
-//           lead_requested: order.lead_requested,
-//           user: `${user.firstname} ${user.lastname}`,
-//         });
-
-//         console.log("✉️ Compiled Email Subject:", subject);
-//         console.log("📄 Compiled Email Body:", body);
-
-//         await emailQueue.add("order:create", {
-//           to: user.email,
-//           subject,
-//           body,
-//           smtpConfig,
-//           serviceName: "order:create",
-//         });
-
-//         console.log("✅ Email queued to:", user.email);
-//       } else {
-//         console.log("❌ Email not allowed for role:", user.userrole);
-//       }
-//     }
-
-//     const orderWithCampaign = await Order.findByPk(order.id, {
-//       include: [{ model: Campaign, as: "campaign" }],
-//     });
-
-//     return orderWithCampaign?.toJSON();
-//   } catch (error: any) {
-//     console.error("❌ Error in createOrder:", error.message || error);
-//     throw new Error(error.message || "Failed to create order");
-//   }
-// };
 
 
 
@@ -167,7 +49,6 @@ export const createOrder = async (
   try {
     const campaign = await Campaign.findByPk(orderData.campaign_id);
     if (!campaign) {
-      console.error("❌ Campaign not found:", orderData.campaign_id);
       throw new Error("Campaign not found");
     }
 
@@ -187,7 +68,6 @@ export const createOrder = async (
       assign_to_vendor: orderData.assign_to_vendor,
     });
 
-    console.log("✅ Order created:", order.id);
 
     await sendNotification(
       createdBy,
@@ -202,24 +82,16 @@ export const createOrder = async (
     // ✅ Email functionality (direct call to sendEmail)
     const user = await User.findByPk(createdBy);
     if (!user) {
-      console.warn("⚠️ User not found for ID:", createdBy);
     } else {
-      console.log(
-        "👤 Email check for user:",
-        user.email,
-        "Role:",
-        user.userrole
-      );
+
 
       const canSendEmail = await checkEmailPermission(
         "order:create",
         user.userrole || "client"
       );
-      console.log("📩 Email permission check:", canSendEmail);
 
       if (canSendEmail) {
         const smtpConfig = await getSmtpConfig(createdBy);
-        console.log("📨 SMTP config loaded:", smtpConfig);
 
         const { subject, body } = await getCompiledTemplate("order:create", {
           agent: order.agent,
@@ -230,49 +102,32 @@ export const createOrder = async (
           user: `${user.firstname} ${user.lastname}`,
         });
 
-        console.log("✉️ Compiled Email Subject:", subject);
-        console.log("📄 Compiled Email Body:", body);
 
-    //     await sendEmail({
-    //       smtp: smtpConfig,
-    //       to: user.email,
-    //       subject,
-    //       body,
-    //     });
 
-    //     console.log("✅ Email sent to:", user.email);
-    //   } else {
-    //     console.log("❌ Email not allowed for role:", user.userrole);
-    //   }
-    // }
 
-    await sendEmail({
-  smtp: {
-    host: user.smtpoutgoingserver || process.env.DEFAULT_SMTP_HOST || "",
-    port:
-      (user.smtpport ? Number(user.smtpport) : Number(process.env.DEFAULT_SMTP_PORT)) ||
-      587,
-    user: user.smtpemail || process.env.DEFAULT_SMTP_EMAIL || "",
-    pass: user.smtppassword || process.env.DEFAULT_SMTP_PASSWORD || "",
-  },
-  to: user.email || "",
-  subject: subject || "No Subject",
-  body: body || "",
-});
+        await sendEmail({
+          smtp: {
+            host: user.smtpoutgoingserver || process.env.DEFAULT_SMTP_HOST || "",
+            port:
+              (user.smtpport ? Number(user.smtpport) : Number(process.env.DEFAULT_SMTP_PORT)) ||
+              587,
+            user: user.smtpemail || process.env.DEFAULT_SMTP_EMAIL || "",
+            pass: user.smtppassword || process.env.DEFAULT_SMTP_PASSWORD || "",
+          },
+          to: user.email || "",
+          subject: subject || "No Subject",
+          body: body || "",
+        });
 
-console.log(
-  `✅ Email sent to: ${user.email} using ${
-    user.smtpemail ? "user SMTP" : "default SMTP"
-  }`
-);
-      }}
+
+      }
+    }
     const orderWithCampaign = await Order.findByPk(order.id, {
       include: [{ model: Campaign, as: "campaign" }],
     });
 
     return orderWithCampaign?.toJSON();
   } catch (error: any) {
-    console.error("❌ Error in createOrder:", error.message || error);
     throw new Error(error.message || "Failed to create order");
   }
 };

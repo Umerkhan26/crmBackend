@@ -26,7 +26,7 @@ export const getRolesController = async (
   try {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
-    const search = (req.query.search as string) || ""; // ✅ added search
+    const search = (req.query.search as string) || "";
 
     const paginatedRoles = await getAllRolesWithPermissions({
       page,
@@ -37,10 +37,9 @@ export const getRolesController = async (
     return res.status(200).json({
       success: true,
       message: "Roles retrieved successfully!",
-      ...paginatedRoles, // includes totalItems, data, totalPages, currentPage
+      ...paginatedRoles,
     });
   } catch (error: any) {
-    console.error("Error fetching roles:", error);
     return res.status(500).json({
       success: false,
       message: error.message || "Internal Server Error",
@@ -48,7 +47,6 @@ export const getRolesController = async (
   }
 };
 
-// controllers/role.controller.ts
 export const updateRolePermissionsController = async (
   req: Request,
   res: Response
@@ -57,7 +55,6 @@ export const updateRolePermissionsController = async (
     const roleId = parseInt(req.params.id);
     const permissions = req.body.permissions;
 
-    // Add validation
     if (!permissions || !Array.isArray(permissions)) {
       return res.status(400).json({ message: "Permissions must be an array" });
     }
@@ -67,7 +64,6 @@ export const updateRolePermissionsController = async (
       .status(200)
       .json({ message: "Role permissions updated", roles: updated });
   } catch (error: any) {
-    console.error("Error updating role permissions:", error);
     return res.status(500).json({
       message: error.message || "Failed to update role permissions",
       stack: process.env.NODE_ENV === "development" ? error.stack : undefined,
@@ -112,7 +108,6 @@ export const getRoleByUserIdController = async (
 
     return res.status(200).json(result);
   } catch (error: any) {
-    console.error("Error fetching role by userId:", error);
     return res.status(500).json({
       message: error.message || "Failed to fetch user role",
     });

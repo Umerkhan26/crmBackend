@@ -42,7 +42,6 @@ export const verifyToken = async (req: CustomRequest, res: Response, next: NextF
 
     next();
   } catch (err) {
-    console.error("Token verification error:", err);
     res.status(500).json({ message: "Server error" });
   }
 };

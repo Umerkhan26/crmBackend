@@ -12,18 +12,14 @@ export const sendBulkEmail = async (req: Request, res: Response) => {
     for (const recipient of recipients) {
       const { email, data } = recipient;
 
-      // 1. Find user by email
       const user = await User.findOne({ where: { email } });
-      if (!user || !user.id) continue; // ✅ skip if user not found or id missing
+      if (!user || !user.id) continue;
 
-      // 2. Check permission
       const allowed = await checkEmailPermission(serviceName, user.userrole || "client");
       if (!allowed) continue;
 
-      // 3. Get SMTP config (user or fallback)
       const smtpConfig = await getSmtpConfig(user.id);
 
-      // 4. Render dynamic template
       const { subject, body } = await getCompiledTemplate(
         serviceName,
         data,
@@ -31,7 +27,6 @@ export const sendBulkEmail = async (req: Request, res: Response) => {
         bodyOverride
       );
 
-      // 5. Queue the email
       await emailQueue.add(serviceName, {
         to: email,
         subject,
@@ -43,7 +38,6 @@ export const sendBulkEmail = async (req: Request, res: Response) => {
 
     res.status(200).json({ message: "Emails queued successfully." });
   } catch (err) {
-    console.error("Email send error:", err);
     res.status(500).json({ error: "Failed to queue emails." });
   }
 };

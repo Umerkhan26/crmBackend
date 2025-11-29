@@ -40,16 +40,13 @@ export const createClientLead = async (
   leadData: ClientLeadCreationAttributes,
   userId?: number
 ) => {
-  console.log("👉 Incoming leadData:", JSON.stringify(leadData, null, 2));
-  console.log("👉 Incoming userId:", userId);
+
 
   // 1️⃣ Create Lead in DB
   const lead = await ClientLead.create(leadData);
-  console.log("✅ Lead created in DB with ID:", lead.id);
 
   // 2️⃣ Log + Notify + LeadActivity if user exists
   if (userId) {
-    console.log("📌 Logging activity & notification for user:", userId);
 
     await logActivity(userId, "Client Lead Created", `Created lead with ID ${lead.id}`);
     await sendNotification(userId, `Client lead with ID ${lead.id} created successfully.`);
@@ -62,14 +59,11 @@ export const createClientLead = async (
       performedBy: userId,
     });
 
-    console.log("✅ LeadActivity record created");
   } else {
-    console.warn("⚠️ No userId provided → skipping activity log/notification");
   }
 
   // 3️⃣ Send email if leadData has email field
   if (leadData.leadData && leadData.leadData.email) {
-    console.log("📧 Preparing to send email to:", leadData.leadData.email);
 
     const smtpConfig = {
       host: process.env.DEFAULT_SMTP_HOST!,       // e.g. smtp.gmail.com
@@ -78,13 +72,6 @@ export const createClientLead = async (
       pass: process.env.DEFAULT_SMTP_PASSWORD!,   // Gmail App Password
     };
 
-    console.log("🔧 SMTP Config (sanitized):", {
-      host: smtpConfig.host,
-      port: smtpConfig.port,
-      user: smtpConfig.user,
-      // ❌ Do not log password for security
-    });
-
     try {
       await sendEmail({
         smtp: smtpConfig,
@@ -92,12 +79,9 @@ export const createClientLead = async (
         subject: "New Lead Assigned",
         body: newLeadEmailTemplate(lead.id), // 👈 dynamic HTML template
       });
-      console.log("✅ Email sent successfully to:", leadData.leadData.email);
     } catch (err: any) {
-      console.error("❌ Error sending email:", err.message, err.stack);
     }
   } else {
-    console.warn("⚠️ No email found in leadData → skipping email notification");
   }
 
   return lead;
@@ -284,37 +268,29 @@ export const sendEmailToClientLeadUsingTemplate = async (
   templateKey: string,
   senderUserId: number
 ) => {
-  console.log("🔍 Fetching clientLead with ID:", clientLeadId);
 
   try {
     // 1️⃣ Find the client lead
     const lead = await ClientLead.findByPk(clientLeadId);
-    console.log("✅ ClientLead query result:", lead);
 
     if (!lead) {
-      console.log("❌ ClientLead not found in database");
       throw new Error("ClientLead not found");
     }
 
-    console.log("📋 ClientLead found:", lead.toJSON());
 
     // 2️⃣ Parse leadData
     let leadData;
     if (typeof lead.leadData === "string") {
       try {
         leadData = JSON.parse(lead.leadData);
-        console.log("📝 Parsed leadData:", leadData);
       } catch (error: any) {
-        console.error("❌ Error parsing leadData:", error);
         throw new Error("Invalid leadData format");
       }
     } else {
       leadData = lead.leadData;
-      console.log("📝 leadData (already object):", leadData);
     }
 
     const email = leadData?.email;
-    console.log("📧 Extracted email:", email);
 
     if (!email) {
       throw new Error("ClientLead email not found in leadData");
@@ -323,19 +299,16 @@ export const sendEmailToClientLeadUsingTemplate = async (
     // 3️⃣ Sender info
     const sender = await User.findByPk(senderUserId);
     const senderRole = String(sender?.role || "guest");
-    console.log("👤 Sender:", sender?.id, "Role:", senderRole);
 
     // 4️⃣ Template
     const template = await EmailTemplate.findOne({
       where: { serviceName: templateKey },
     });
-    console.log("📧 Template found:", template ? template.serviceName : "None");
 
     if (!template) throw new Error("Email template not found");
 
     const filledSubject = fillTemplate(template.subjectTemplate, leadData);
     const filledBody = fillTemplate(template.bodyTemplate, leadData);
-    console.log("📨 Email subject:", filledSubject);
 
     // 5️⃣ SMTP Config
     const smtpRaw = await getSmtpConfig(senderUserId);
@@ -345,10 +318,7 @@ export const sendEmailToClientLeadUsingTemplate = async (
       user: smtpRaw.user || "",
       pass: smtpRaw.pass || "",
     };
-    console.log("🔧 SMTP config:", {
-      ...smtp,
-      pass: smtp.pass ? "***" : "empty",
-    });
+
 
     if (!smtp.host || !smtp.user || !smtp.pass) {
       throw new Error("SMTP configuration is incomplete.");
@@ -383,10 +353,8 @@ export const sendEmailToClientLeadUsingTemplate = async (
       details: `Email sent using template "${templateKey}" to ${email}`,
     });
 
-    console.log("✅ Email sent successfully to:", email);
     return { message: "Email sent successfully", to: email };
   } catch (error) {
-    console.error("💥 Error in sendEmailToClientLeadUsingTemplate:", error);
     throw error;
   }
 };

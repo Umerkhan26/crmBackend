@@ -10,6 +10,5 @@ export const getSmtpConfig = async (userId: number) => {
     user: user?.smtpemail || process.env.DEFAULT_SMTP_EMAIL,
     pass: user?.smtppassword || process.env.DEFAULT_SMTP_PASSWORD,
   };
-console.log("smpt configuration is ",smtpConfig)
   return smtpConfig;
 };

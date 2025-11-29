@@ -36,7 +36,6 @@ export const getLeadActivities = async (
       ...activities, // contains totalItems, data, totalPages, currentPage
     });
   } catch (error) {
-    console.error("Error fetching lead activities:", error);
     return res
       .status(500)
       .json({ message: "Failed to fetch lead activities." });
@@ -55,7 +54,6 @@ export const getAllLeadActivityLogs = async (req: Request, res: Response) => {
       ...logs, // totalItems, data, totalPages, currentPage
     });
   } catch (error) {
-    console.error("Error fetching all lead activity logs:", error);
     res.status(500).json({ message: "Failed to retrieve activity logs" });
   }
 };
@@ -87,7 +85,6 @@ export const getActivityLogsByEntity = async (
       ...logs,
     });
   } catch (error) {
-    console.error("Error fetching activity logs by entity:", error);
     res.status(500).json({ message: "Failed to fetch activity logs." });
   }
 };
@@ -132,7 +129,7 @@ export const deleteLeadActivityController = async (
   }
 };
 
-  
+
 
 // export const getLeadActivityReportByUserController = async (
 //   req: Request,
@@ -181,7 +178,6 @@ export const deleteLeadActivityController = async (
 //       data: report,
 //     });
 //   } catch (error: any) {
-//     console.error("Error generating lead activity report:", error);
 //     return res.status(500).json({
 //       success: false,
 //       message: "Failed to generate activity report",
@@ -226,7 +222,6 @@ export const deleteLeadActivityController = async (
 //       data: report,
 //     });
 //   } catch (error: any) {
-//     console.error("Error generating lead activity report:", error);
 //     return res.status(500).json({
 //       success: false,
 //       message: "Failed to generate activity report",
@@ -278,7 +273,6 @@ export const getLeadActivityReportByUserController = async (
       data: report,
     });
   } catch (error: any) {
-    console.error("Error generating lead activity report:", error);
     return res.status(500).json({
       success: false,
       message: "Failed to generate activity report",

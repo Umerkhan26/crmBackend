@@ -13,12 +13,14 @@ const router = Router();
  * ----------------------------
  */
 const storage = multer.memoryStorage();
-
 export const upload = multer({
   storage,
   limits: {
-    fileSize: 20 * 1024 * 1024,  // allow up to 20MB file
-    fieldSize: 10 * 1024 * 1024, // allow up to 10MB text fields
+    fileSize: 200 * 1024 * 1024,   // 200 MB file
+    fieldSize: 50 * 1024 * 1024,   // 50 MB fields
+    fields: 2000,                  // max number of text fields
+    files: 10,                     // max number of files
+    parts: 3000                    // total fields + files
   },
 });
 

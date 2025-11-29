@@ -3,7 +3,6 @@ import { Request, Response } from "express";
 import { importClientLeadsFromFile } from "../services/importClientLead.service";
 import { CustomRequest } from "../types/custom";
 
-// Update your importClientLeadsController
 export const importClientLeadsController = async (
   req: CustomRequest,
   res: Response
@@ -27,15 +26,14 @@ export const importClientLeadsController = async (
     const orderId = req.body.order_id ? parseInt(req.body.order_id) : undefined;
     const campaignId = req.body.campaign_id
       ? parseInt(req.body.campaign_id)
-      : undefined; // Add this
+      : undefined;
 
 
 
-    // Add order_id and campaign_id to each leadData object if provided
     if (mappedData) {
       mappedData.forEach((row: any) => {
         if (orderId) row.order_id = orderId;
-        if (campaignId) row.campaign_id = campaignId; // Add this
+        if (campaignId) row.campaign_id = campaignId;
       });
     }
 

@@ -1,94 +1,3 @@
-// import Lead from "./lead.model";
-// import { User } from "./user.model";
-// import { Message } from "./chatmodels/message.model";
-// import { Conversation } from "./chatmodels/conversation.model";
-// import { ConversationParticipant } from "./chatmodels/conversationParticipant.model";
-// import Note from "./note.model";
-// import ClientLead from "./clientLead.model"; // 👈 Ensure this import is correct
-// import LeadActivity from "./leadActivity.model";
-
-// export const associateModels = () => {
-//   // 📌 Chat-related associations
-//   Conversation.hasMany(Message, { foreignKey: "conversationId" });
-//   Message.belongsTo(Conversation, { foreignKey: "conversationId" });
-
-//   User.hasMany(Message, { foreignKey: "senderId" });
-//   Message.belongsTo(User, { foreignKey: "senderId" });
-
-//   Conversation.belongsToMany(User, {
-//     through: ConversationParticipant,
-//     foreignKey: "conversationId",
-//     otherKey: "userId",
-//   });
-
-//   User.belongsToMany(Conversation, {
-//     through: ConversationParticipant,
-//     foreignKey: "userId",
-//     otherKey: "conversationId",
-//   });
-
-//   // 📌 Lead ↔ User (assignee)
-//   Lead.belongsTo(User, {
-//     foreignKey: "assigneeId",
-//     as: "assignee",
-//   });
-
-//   User.hasMany(Lead, {
-//     foreignKey: "assigneeId",
-//     as: "assignedLeads",
-//   });
-
-//   // 📌 Note ↔ User (creator)
-//   Note.belongsTo(User, {
-//     foreignKey: "createdBy",
-//     as: "creator",
-//   });
-
-//   User.hasMany(Note, {
-//     foreignKey: "createdBy",
-//     as: "notes",
-//   });
-
-//   // 📌 Polymorphic associations: Note ↔ Lead
-//   Lead.hasMany(Note, {
-//     foreignKey: "notebleId",
-//     constraints: false,
-//     scope: {
-//       notebleType: "lead",
-//     },
-//     as: "notes",
-//   });
-
-//   Note.belongsTo(Lead, {
-//     foreignKey: "notebleId",
-//     constraints: false,
-//     as: "lead",
-//   });
-
-//   // 📌 Polymorphic associations: Note ↔ ClientLead
-//   ClientLead.hasMany(Note, {
-//     foreignKey: "notebleId",
-//     constraints: false,
-//     scope: {
-//       notebleType: "client_lead",
-//     },
-//     as: "notes",
-//   });
-
-//   Note.belongsTo(ClientLead, {
-//     foreignKey: "notebleId",
-//     constraints: false,
-//     as: "clientLead",
-//   });
-// };
-
-// Lead.hasMany(LeadActivity, { foreignKey: "leadId", as: "activities" });
-// LeadActivity.belongsTo(Lead, { foreignKey: "leadId" });
-// Lead.hasMany(Note, { foreignKey: "leadId", as: "notess",onDelete: "CASCADE" });
-// Note.belongsTo(Lead, { foreignKey: "leadId",onDelete: "CASCADE" });
-
-// LeadActivity.belongsTo(User, { foreignKey: "performedBy", as: "performedByUser",onDelete: "CASCADE" });
-// User.hasMany(LeadActivity, { foreignKey: "performedBy", as: "activitiesPerformed",onDelete: "CASCADE" });
 
 import Lead from "./lead.model";
 import { User } from "./user.model";
@@ -96,11 +5,10 @@ import { Message } from "./chatmodels/message.model";
 import { Conversation } from "./chatmodels/conversation.model";
 import { ConversationParticipant } from "./chatmodels/conversationParticipant.model";
 import Note from "./note.model";
-import ClientLead from "./clientLead.model"; // 👈 Ensure this import is correct
+import ClientLead from "./clientLead.model";
 import LeadActivity from "./leadActivity.model";
 
 export const associateModels = () => {
-  // 📌 Chat-related associations
   Conversation.hasMany(Message, {
     foreignKey: "conversationId",
     onDelete: "CASCADE",
@@ -127,7 +35,6 @@ export const associateModels = () => {
     onDelete: "CASCADE",
   });
 
-  // 📌 Lead ↔ User (assignee)
   Lead.belongsTo(User, {
     foreignKey: "assigneeId",
     as: "assignee",
@@ -140,7 +47,6 @@ export const associateModels = () => {
     onDelete: "CASCADE",
   });
 
-  // 📌 Note ↔ User (creator)
   Note.belongsTo(User, {
     foreignKey: "createdBy",
     as: "creator",
@@ -153,7 +59,6 @@ export const associateModels = () => {
     onDelete: "CASCADE",
   });
 
-  // 📌 Polymorphic associations: Note ↔ Lead
   Lead.hasMany(Note, {
     foreignKey: "notebleId",
     constraints: false,
@@ -186,13 +91,11 @@ export const associateModels = () => {
   });
 };
 
-// 📌 Lead ↔ LeadActivity + Notes
 Lead.hasMany(LeadActivity, {
   foreignKey: "leadId",
   as: "activities",
   onDelete: "CASCADE",
 });
-// LeadActivity.belongsTo(Lead, { foreignKey: "leadId", onDelete: "CASCADE" });
 
 LeadActivity.belongsTo(Lead, {
   foreignKey: "leadId",
@@ -203,7 +106,6 @@ LeadActivity.belongsTo(Lead, {
 Lead.hasMany(Note, { foreignKey: "leadId", as: "notess", onDelete: "CASCADE" });
 Note.belongsTo(Lead, { foreignKey: "leadId", onDelete: "CASCADE" });
 
-// 📌 LeadActivity ↔ User
 LeadActivity.belongsTo(User, {
   foreignKey: "performedBy",
   as: "performedByUser",
@@ -215,7 +117,6 @@ User.hasMany(LeadActivity, {
   onDelete: "CASCADE",
 });
 
-// 📌 ClientLead ↔ LeadActivity + Notes
 ClientLead.hasMany(LeadActivity, {
   foreignKey: "clientLeadId",
   as: "activities",
@@ -226,21 +127,3 @@ LeadActivity.belongsTo(ClientLead, {
   onDelete: "CASCADE",
 });
 
-// LeadActivity ↔ Lead
-// LeadActivity.belongsTo(Lead, {
-//   foreignKey: "entityId", // adjust if your column name is different
-//   as: "LeadEntity", // ✅ alias must match your include
-//   onDelete: "CASCADE",
-// });
-
-// LeadActivity.belongsTo(Lead, {
-//   foreignKey: "entityId",
-//   constraints: false, // <-- Disable actual DB-level foreign key
-//   as: "LeadEntity",
-// });
-
-// Lead.hasMany(LeadActivity, {
-//   foreignKey: "entityId", // same name
-//   as: "activitiesByEntity",
-//   onDelete: "CASCADE",
-// });

@@ -5,6 +5,6 @@ const router = Router();
 
 router.get("/getAllActivities", getAllActivities);
 router.get("/getActivitybyId/:userId", getActivitiesByUserId);
-router.delete("/activity/:id", deleteActivityById); // ✅ delete route
+router.delete("/activity/:id", deleteActivityById);
 
 export default router;

@@ -1,8 +1,4 @@
-// export const connection = {
-//     host: 'localhost',
-//     port: 6379,
-//   };
-//   //
+
 
 import dotenv from "dotenv";
 dotenv.config();

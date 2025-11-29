@@ -1,5 +1,3 @@
-// src/routes/leadActivity.routes.ts
-
 import { Router } from "express";
 import {
   deleteLeadActivityController,
@@ -13,24 +11,35 @@ import { verifyToken } from "../middleware/verifyToken.middleware";
 
 const router = Router();
 
-// GET /api/lead-activities/:leadId
-router.get("/getLeadActivityByLeadId/:leadId", verifyToken, getLeadActivities);
+router.get(
+  "/getLeadActivityByLeadId/:leadId",
+  verifyToken,
+  getLeadActivities);
 
-router.get("/getAllLeadActivities", verifyToken, getAllLeadActivityLogs);
+router.get(
+  "/getAllLeadActivities",
+  verifyToken,
+  getAllLeadActivityLogs);
 
 router.get(
   "/getActivitiesByEntity/:entityType/:entityId",
   verifyToken,
   getActivityLogsByEntity
 );
-// UPDATE lead activity
-router.put("/updateLeadActivity/:id", verifyToken, updateLeadActivityController);
+router.put(
+  "/updateLeadActivity/:id",
+  verifyToken,
+  updateLeadActivityController);
 
-// DELETE lead activity
-router.delete("/deleteLeadActivity/:id", verifyToken, deleteLeadActivityController);
+router.delete(
+  "/deleteLeadActivity/:id",
+  verifyToken,
+  deleteLeadActivityController);
 
 
-router.get("/LeadreportByUser", getLeadActivityReportByUserController
+router.get(
+  "/LeadreportByUser",
+  getLeadActivityReportByUserController
 );
 
 export default router;

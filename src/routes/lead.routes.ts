@@ -8,10 +8,6 @@ import { importLeads } from "../controllers/importLead.controller";
 
 const router = Router();
 
-/** ----------------------------
- *  FIX: UPDATED MULTER CONFIG
- * ----------------------------
- */
 const storage = multer.memoryStorage();
 export const upload = multer({
   storage,
@@ -24,41 +20,34 @@ export const upload = multer({
   },
 });
 
-// Create Lead
 router.post(
   "/leads",
   verifyToken,
   checkPermission(PERMISSIONS.LEAD_CREATE),
   LeadController.createLead
 );
-
-// Get All Leads
 router.get(
   "/getleads",
   verifyToken,
   checkPermission(PERMISSIONS.LEAD_GET_ALL),
   LeadController.getAllLeads
 );
-
-router.get("/getleadByid/:id", verifyToken, LeadController.getLeadById);
-
-// Get Leads by Campaign
+router.get(
+  "/getleadByid/:id",
+  verifyToken,
+  LeadController.getLeadById);
 router.get(
   "/leads/campaign/:campaignName",
   verifyToken,
   checkPermission(PERMISSIONS.LEAD_GET_BY_CAMPAIGN),
   LeadController.getLeadsByCampaign
 );
-
-// Update Lead
 router.put(
   "/leads/:id",
   verifyToken,
   checkPermission(PERMISSIONS.LEAD_UPDATE),
   LeadController.updateLead
 );
-
-// Delete Lead
 router.delete(
   "/leads/:id",
   verifyToken,
@@ -72,21 +61,18 @@ router.post(
   LeadController.assignUserToLead
 );
 
-// Get assigned users to a lead
 router.get(
   "/getLeadsWithAssignee",
   verifyToken,
   LeadController.getAllLeadsWithAssignee
 );
 
-// Get assignment stats
 router.get(
   "/assignment-stats",
   verifyToken,
   LeadController.getAssignmentStats
 );
 
-// Get all unassigned users for a lead
 router.get(
   "/getLeadsWithUnassigned",
   verifyToken,
@@ -127,9 +113,6 @@ router.get(
   LeadController.getLeadsByCampaignAndAssignee
 );
 
-/** ------------------------------------------
- *  FIXED IMPORT ROUTE (NO OTHER CHANGE)
- * ------------------------------------------ */
 router.post(
   "/import-leads",
   verifyToken,

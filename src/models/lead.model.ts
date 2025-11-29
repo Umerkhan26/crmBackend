@@ -1,6 +1,6 @@
 import { DataTypes, Model, Optional } from "sequelize";
 import db from "../../db";
-import User from "./user.model"; // Adjust path if needed
+import User from "./user.model";
 
 export type LeadStatus =
   | "pending"
@@ -18,19 +18,18 @@ export interface AssigneeWithStatus {
 }
 
 export interface LeadAttributes {
-  id: number; // keep as number
+  id: number;
   campaignName: string;
   leadData: any;
   assignees?: AssigneeWithStatus[];
 }
 
 export interface LeadCreationAttributes
-  extends Optional<LeadAttributes, "id"> {}
+  extends Optional<LeadAttributes, "id"> { }
 
 export class Lead
   extends Model<LeadAttributes, LeadCreationAttributes>
-  implements LeadAttributes
-{
+  implements LeadAttributes {
   public id!: number;
   public campaignName!: string;
   public leadData!: any;
@@ -41,9 +40,7 @@ export class Lead
 
   public readonly assignedUsers?: InstanceType<typeof User>[];
 
-  // ✅ New virtual/computed field
   public get leadCode(): string {
-    // Example: fd1, fd2 based on campaign initials + id
     const initials = this.campaignName
       .split(" ")
       .map((word) => word[0].toLowerCase())
@@ -79,7 +76,6 @@ Lead.init(
     timestamps: true,
     indexes: [{ fields: ["campaignName"] }],
     getterMethods: {
-      // Optional: can also use Sequelize getter for JSON responses
       leadCode() {
         const lead = this as Lead;
         const initials = lead.campaignName
@@ -92,7 +88,6 @@ Lead.init(
   }
 );
 
-// Allowed statuses
 const ALLOWED_STATUSES: LeadStatus[] = [
   "pending",
   "to_call",

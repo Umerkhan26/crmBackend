@@ -2,7 +2,6 @@ import { Optional } from "sequelize";
 import { VendorAttributes } from "../models/vendor.model";
 import { ClientAttributes } from "../models/client.model";
 
-// ✅ Define `UserAttributes` (Full user model)
 export interface UserAttributes {
   id?: number;
   firstname?: string;
@@ -33,7 +32,7 @@ export interface UserAttributes {
   branchlogo?: string;
   branchlogoheight?: string;
   branchlogowidth?: string;
-  status?: "active" | "blocked"; // ✅ Added status field here
+  status?: "active" | "blocked";
   referred_to?: string;
   last_login?: Date;
   token?: string;
@@ -44,7 +43,6 @@ export interface UserAttributes {
   roleId?: number;
 }
 
-// ✅ Define `UserCreationAttributes` (For user creation)
 export type UserCreationAttributes = Optional<
   UserAttributes,
   "id" | "created_at" | "updated_at" | "roleId"

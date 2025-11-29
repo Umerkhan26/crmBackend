@@ -1,6 +1,6 @@
 import { Router } from "express";
 import {
-    getUnreadCountController,
+  getUnreadCountController,
   getUserNotificationsController,
   markNotificationsAsReadController,
   sendNotificationController,
@@ -10,21 +10,18 @@ import { verifyToken } from "../middleware/verifyToken.middleware";
 
 const router = Router();
 
-// Send notification manually (if needed, like admin broadcast)
 router.post(
   "/send",
   verifyToken,
   sendNotificationController
 );
 
-// Get all notifications for a specific user
 router.get(
   "/getNotificationById/:userId",
   verifyToken,
   getUserNotificationsController
 );
 
-// Mark all notifications as read for a specific user
 router.put(
   "/:userId/mark-read",
   verifyToken,
@@ -33,8 +30,8 @@ router.put(
 
 
 router.get("/:userId/unread-count",
-    verifyToken,
-    getUnreadCountController
+  verifyToken,
+  getUnreadCountController
 );
 
 export default router;

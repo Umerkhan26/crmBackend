@@ -53,7 +53,6 @@ export const createClientLeadController = async (
 };
 
 
-// Get all client leads
 export const getAllClientLeadsController = async (
   req: Request,
   res: Response

@@ -15,7 +15,6 @@ export const sendNotificationController = async (
   }
 };
 
-// controller
 export const getUserNotificationsController = async (
   req: Request,
   res: Response

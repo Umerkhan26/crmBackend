@@ -15,7 +15,6 @@ export const registerUser = async (req: Request, res: Response): Promise<any> =>
   try {
     const userData: Partial<UserAttributes> = req.body;
 
-    // Validation checks
     if (!userData.email || !userData.password) {
       return res.status(400).json({
         success: false,
@@ -23,7 +22,6 @@ export const registerUser = async (req: Request, res: Response): Promise<any> =>
       });
     }
 
-    // Try creating user
     const user = await createUser(userData);
     return res.status(201).json({
       success: true,

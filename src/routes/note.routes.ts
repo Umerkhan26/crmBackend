@@ -15,7 +15,6 @@ import { PERMISSIONS } from "../constants/permissions";
 
 const router = express.Router();
 
-// ---------------- Notes ----------------
 router.post(
   "/add",
   verifyToken,
@@ -44,7 +43,6 @@ router.delete(
   deleteNote
 );
 
-// ---------------- Reminders ----------------
 router.post(
   "/addReminder",
   verifyToken,

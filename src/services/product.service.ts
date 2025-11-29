@@ -77,17 +77,13 @@ export const getAllSales = async ({
     ];
     if (search) {
       where[Op.or] = [
-        // ProductSale fields
         { productType: { [Op.like]: `%${search}%` } },
         { price: { [Op.like]: `%${search}%` } },
         { notes: { [Op.like]: `%${search}%` } },
         { status: { [Op.like]: `%${search}%` } },
-        // Campaign
         { "$Lead.campaignName$": { [Op.like]: `%${search}%` } },
-        // Created By (User)
         { "$User.firstname$": { [Op.like]: `%${search}%` } },
         { "$User.email$": { [Op.like]: `%${search}%` } },
-        // :white_check_mark: Lead JSON fields
         Sequelize.literal(
           `JSON_UNQUOTE(JSON_EXTRACT(Lead.leadData, '$.first_name')) LIKE '%${search}%'`
         ),
@@ -103,7 +99,6 @@ export const getAllSales = async ({
         Sequelize.literal(
           `JSON_UNQUOTE(JSON_EXTRACT(Lead.leadData, '$.email')) LIKE '%${search}%'`
         ),
-        // Conversion Date
         Sequelize.where(
           Sequelize.fn(
             "DATE_FORMAT",
@@ -127,7 +122,6 @@ export const getAllSales = async ({
   }
 };
 
-// ✅ Get Sale by ID
 export const getSaleById = async (id: number | string) => {
 
   try {
@@ -157,7 +151,6 @@ export const getSaleById = async (id: number | string) => {
   }
 };
 
-// ✅ Update Sale
 export const updateSale = async (
   id: number,
   updatedData: Partial<ProductSaleAttributes>,
@@ -169,7 +162,7 @@ export const updateSale = async (
 
     await sale.update({
       ...updatedData,
-      products: updatedData.products ?? sale.products, // ✅ Keep existing if not provided
+      products: updatedData.products ?? sale.products,
       status: updatedData.status || sale.status,
     });
 
@@ -184,7 +177,6 @@ export const updateSale = async (
   }
 };
 
-// ✅ Delete Sale
 export const deleteSale = async (
   id: number,
   userId?: number
@@ -193,7 +185,6 @@ export const deleteSale = async (
     const sale = await ProductSale.findByPk(id);
     if (!sale) throw new Error("Sale not found");
 
-    // ✅ Only allow deletion if status is "converted"
     if (sale.status !== "converted") {
       throw new Error("Only converted sales can be deleted");
     }
@@ -213,7 +204,6 @@ export const deleteSale = async (
   }
 };
 
-// ✅ Get Sales by Product Type
 export const getSalesByProductType = async (
   productType: string
 ): Promise<ProductSaleAttributes[]> => {
@@ -225,7 +215,6 @@ export const getSalesByProductType = async (
   }
 };
 
-// pure crud new
 export const createProduct = async (
   data: Omit<
     ProductSaleCreationAttributes,
@@ -253,16 +242,14 @@ export const createProduct = async (
       );
     }
 
-    // If campaignId is provided, fetch the campaign with alias
     let campaignDetails = null;
     if (data.campaignId) {
       campaignDetails = await Campaign.findByPk(data.campaignId);
     }
 
-    // Combine product with campaign if found
     const result: any = product.get();
     if (campaignDetails) {
-      result.campaign = campaignDetails.get(); // attach campaign info to response
+      result.campaign = campaignDetails.get();
     }
 
     return result;
@@ -271,7 +258,6 @@ export const createProduct = async (
   }
 };
 
-// ✅ Get Product by ID
 export const getProductById = async (
   id: number
 ): Promise<ProductSaleAttributes> => {
@@ -288,12 +274,12 @@ export const getAllProducts = async (
 
   const data = await ProductSale.findAndCountAll({
     where: {
-      status: "pending", // ✅ only fetch pending products
+      status: "pending",
     },
     include: [
       {
         model: Campaign,
-        as: "campaign", // match alias in association
+        as: "campaign",
       },
     ],
     order: [["createdAt", "DESC"]],
@@ -304,7 +290,6 @@ export const getAllProducts = async (
   return getPagingData(data, page, pageLimit);
 };
 
-// ✅ Update Product
 export const updateProduct = async (
   id: number,
   updatedData: Partial<ProductSaleAttributes>,
@@ -323,7 +308,6 @@ export const updateProduct = async (
   return product.get();
 };
 
-// ✅ Delete Product
 export const deleteProduct = async (
   id: number,
   userId?: number
@@ -331,7 +315,6 @@ export const deleteProduct = async (
   const product = await ProductSale.findByPk(id);
   if (!product) throw new Error("Product not found");
 
-  // ✅ Only allow deletion if product is pending
   if (product.status !== "pending") {
     throw new Error("Only pending products can be deleted");
   }
@@ -387,12 +370,10 @@ export const getInvoiceByLeadId = async (leadId: number) => {
       throw new Error("No sale found for this lead");
     }
 
-    // Robust products parsing
     let parsedProducts: any[] = [];
 
     if (sale.products) {
       if (typeof sale.products === "string") {
-        // Parse string
         try {
           const temp = JSON.parse(sale.products);
           parsedProducts = Array.isArray(temp) ? temp : [temp];
@@ -407,13 +388,10 @@ export const getInvoiceByLeadId = async (leadId: number) => {
           ];
         }
       } else if (Array.isArray(sale.products)) {
-        // Already an array
         parsedProducts = sale.products;
       } else if (typeof sale.products === "object") {
-        // Single object
         parsedProducts = [sale.products];
       } else {
-        // Fallback
         parsedProducts = [
           {
             productType: sale.productType || "N/A",
@@ -423,7 +401,6 @@ export const getInvoiceByLeadId = async (leadId: number) => {
         ];
       }
     } else {
-      // Null or undefined
       parsedProducts = [
         {
           productType: sale.productType || "N/A",
@@ -433,7 +410,6 @@ export const getInvoiceByLeadId = async (leadId: number) => {
       ];
     }
 
-    // Calculate total amount
     const totalAmount = parsedProducts.reduce(
       (sum: number, p: any) => sum + (parseFloat(p.price) || 0),
       0
@@ -444,7 +420,7 @@ export const getInvoiceByLeadId = async (leadId: number) => {
       date: sale.conversionDate,
       sale: {
         ...sale.get({ plain: true }),
-        parsedProducts, // Parsed products ready for frontend
+        parsedProducts,
       },
       lead: sale.Lead,
       assignee: sale.assignee,
@@ -483,17 +459,13 @@ export const getSalesByAssigneeId = async (
     ];
     if (search.trim()) {
       where[Op.or] = [
-        // ProductSale fields
         { productType: { [Op.like]: `%${search}%` } },
         { price: { [Op.like]: `%${search}%` } },
         { notes: { [Op.like]: `%${search}%` } },
         { status: { [Op.like]: `%${search}%` } },
-        // Campaign
         { "$Lead.campaignName$": { [Op.like]: `%${search}%` } },
-        // Created By (User)
         { "$User.firstname$": { [Op.like]: `%${search}%` } },
         { "$User.email$": { [Op.like]: `%${search}%` } },
-        // :white_check_mark: Lead JSON fields
         Sequelize.literal(
           `JSON_UNQUOTE(JSON_EXTRACT(Lead.leadData, '$.first_name')) LIKE '%${search}%'`
         ),
@@ -509,7 +481,6 @@ export const getSalesByAssigneeId = async (
         Sequelize.literal(
           `JSON_UNQUOTE(JSON_EXTRACT(Lead.leadData, '$.email')) LIKE '%${search}%'`
         ),
-        // Conversion Date
         Sequelize.where(
           Sequelize.fn(
             "DATE_FORMAT",

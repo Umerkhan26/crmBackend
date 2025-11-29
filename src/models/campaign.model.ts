@@ -1,7 +1,6 @@
 import { DataTypes, Model, Optional } from "sequelize";
 import db from "../../db";
 
-// Field definition type
 export interface FieldType {
   col_name: string;
   col_slug: string;
@@ -12,21 +11,18 @@ export interface FieldType {
   dynamic_fields?: any;
 }
 
-// Campaign attributes
 export interface CampaignAttributes {
   id: number;
   campaignName: string;
   fields: FieldType[];
 }
 
-// For creation
 export interface CampaignCreationAttributes
-  extends Optional<CampaignAttributes, "id"> {}
+  extends Optional<CampaignAttributes, "id"> { }
 
 class CampaignModel
   extends Model<CampaignAttributes, CampaignCreationAttributes>
-  implements CampaignAttributes
-{
+  implements CampaignAttributes {
   public id!: number;
   public campaignName!: string;
   public fields!: FieldType[];

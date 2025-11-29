@@ -13,11 +13,8 @@ dotenv.config();
 
 const app: Application = express();
 
-// Middleware
 app.use(express.json());
 app.use(cors());
-
-// Custom CORS Middleware
 app.use((req: Request, res: Response, next: NextFunction) => {
   const allowedOrigin = process.env.FRONT_END_URL || "http://localhost:3001";
   res.setHeader("Access-Control-Allow-Origin", allowedOrigin);
@@ -37,7 +34,6 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   next();
 });
 
-// Load routes dynamically (support .js and .ts files)
 const loadRoutes = (app: Application) => {
   const routesPath = path.join(__dirname, "src/routes");
   fs.readdirSync(routesPath).forEach((file) => {
@@ -54,16 +50,15 @@ const loadRoutes = (app: Application) => {
   });
 };
 
-// Initialize app
 const startServer = async () => {
   try {
-    await db.sync({ alter: true }); // 🟢 Sync all models
+    await db.sync({ alter: true });
     console.log("Database synced.");
 
-    await syncPermissionsToDB(); // ✅ Sync standard permissions
+    await syncPermissionsToDB();
     console.log("Permissions synced to database.");
 
-    await syncEmailPermissionsToDB(); // ✅ Sync email-specific permissions
+    await syncEmailPermissionsToDB();
     console.log("Email permissions synced to database.");
 
     loadRoutes(app);

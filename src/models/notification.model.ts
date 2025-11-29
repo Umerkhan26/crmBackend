@@ -1,4 +1,3 @@
-// models/notification.model.ts
 import { DataTypes, Model } from "sequelize";
 import db from "../../db";
 
@@ -6,7 +5,7 @@ export interface NotificationAttributes {
   id?: number;
   userId: number;
   message: string;
-  userName?: string | null;   // ✅ new field (nullable)
+  userName?: string | null;
 
   isRead: boolean;
   created_at?: Date;
@@ -26,10 +25,10 @@ export const Notification = db.define<Model<NotificationAttributes>>("Notificati
     type: DataTypes.STRING(255),
     allowNull: false,
   },
-     userName: {
-      type: DataTypes.STRING(255),  // ✅ new column
-      allowNull: true,
-    },
+  userName: {
+    type: DataTypes.STRING(255),
+    allowNull: true,
+  },
   isRead: {
     type: DataTypes.BOOLEAN,
     defaultValue: false,

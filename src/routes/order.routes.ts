@@ -46,7 +46,7 @@ router.put(
 router.patch(
   "/orders/:id/block-status",
   verifyToken,
-  checkPermission(PERMISSIONS.ORDER_UPDATESTATUS), // or another permission for block/unblock
+  checkPermission(PERMISSIONS.ORDER_UPDATESTATUS),
   setOrderBlockStatusController
 );
 
@@ -56,10 +56,7 @@ router.delete(
   checkPermission(PERMISSIONS.ORDER_DELETE),
   deleteOrderByIdController
 );
-// newly added endpoints
 router.get("/getOrderByVendorId/:vendorId",
-  // checkPermission(PERMISSIONS.ORDER_BY_VENDOR_ID),
-
   getOrdersByVendorIdController,
   verifyToken
 );

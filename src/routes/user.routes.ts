@@ -23,7 +23,7 @@ router.post(
   registerUser
 );
 
-router.post("/login", login); // No permission needed for login
+router.post("/login", login);
 
 router.get(
   "/getAllUsers",
@@ -54,7 +54,6 @@ router.delete(
   deleteUserController
 );
 
-// ✅ New route: Block or Unblock a user
 router.put(
   "/blockOrUnblockUser/:id",
   verifyToken,

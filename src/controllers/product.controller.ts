@@ -224,7 +224,6 @@ export const createProduct = async (
   }
 };
 
-// ✅ Get Product by ID
 export const getProductById = async (
   req: Request,
   res: Response
@@ -241,14 +240,12 @@ export const getProductById = async (
   }
 };
 
-// ✅ Get All Products
 
 export const getAllProducts = async (
   req: Request,
   res: Response
 ): Promise<any> => {
   try {
-    // ✅ get page & limit from query params, default to 1 and 10
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
 
@@ -256,14 +253,13 @@ export const getAllProducts = async (
 
     return res.status(200).json({
       success: true,
-      ...products, // already contains totalItems, data, totalPages, currentPage
+      ...products,
     });
   } catch (error: any) {
     return res.status(500).json({ success: false, message: error.message });
   }
 };
 
-// ✅ Update Product
 export const updateProduct = async (
   req: Request,
   res: Response
@@ -290,7 +286,6 @@ export const updateProduct = async (
   }
 };
 
-// ✅ Delete Product
 export const deleteProduct = async (
   req: Request,
   res: Response

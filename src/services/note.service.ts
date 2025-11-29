@@ -1,6 +1,5 @@
 
 
-// services/note.service.ts
 import Note from "../models/note.model";
 import User from "../models/user.model";
 import { logLeadActivity } from "../utils/logLeadActivity";
@@ -16,7 +15,7 @@ interface AddNoteParams {
 interface AddReminderParams {
   content: string;
   reminderDate?: Date;
-  reminderType?: string; // user-defined/custom type
+  reminderType?: string;
   notebleId: number;
   notebleType: "lead" | "client_lead";
   userId: number;
@@ -48,7 +47,6 @@ export const addNote = async ({
     ],
   });
 
-  // ✅ Log for both lead and client_lead
   await logLeadActivity({
     entityId: notebleId,
     entityType: notebleType === "lead" ? "lead" : "clientLead",
@@ -115,7 +113,6 @@ export const addReminder = async ({
     ],
   });
 
-  // ✅ Log for both lead and client_lead
   let datePart = "";
   if (parsedDate) {
     datePart = ` (Date: ${parsedDate.toISOString().split("T")[0]})`;
@@ -159,7 +156,6 @@ export const updateNote = async (
 
   await note.update(data);
 
-  // ✅ Log for both lead and client_lead
   await logLeadActivity({
     entityId: note.notebleId,
     entityType: note.notebleType === "lead" ? "lead" : "clientLead",
@@ -178,7 +174,6 @@ export const deleteNote = async (id: number, userId: number) => {
 
   await note.destroy();
 
-  // ✅ Log for both lead and client_lead
   await logLeadActivity({
     entityId: note.notebleId,
     entityType: note.notebleType === "lead" ? "lead" : "clientLead",
@@ -201,7 +196,6 @@ export const updateReminder = async (
 
   await reminder.update(data);
 
-  // ✅ Log for both lead and client_lead
   await logLeadActivity({
     entityId: reminder.notebleId,
     entityType: reminder.notebleType === "lead" ? "lead" : "clientLead",
@@ -220,7 +214,6 @@ export const deleteReminder = async (id: number, userId: number) => {
 
   await reminder.destroy();
 
-  // ✅ Log for both lead and client_lead
   await logLeadActivity({
     entityId: reminder.notebleId,
     entityType: reminder.notebleType === "lead" ? "lead" : "clientLead",

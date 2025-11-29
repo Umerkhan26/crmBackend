@@ -12,7 +12,7 @@ const router = express.Router();
 router.post("/create", createRoleController);
 router.get("/all", getRolesController);
 router.put("/updateRole/:id", updateRolePermissionsController);
-router.delete("/deleteRole/:id", deleteRoleController); // Delete a role by ID
+router.delete("/deleteRole/:id", deleteRoleController);
 router.get("/roles/:userId", getRoleByUserIdController);
 
 export default router;

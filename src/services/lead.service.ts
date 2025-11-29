@@ -27,7 +27,6 @@ interface LeadQueryParams extends PaginationParams {
   filters?: Record<string, any>;
   search?: string;
 }
-// Create Lead
 export const createLead = async (
   data: LeadCreationAttributes,
   userId?: number
@@ -68,13 +67,11 @@ export const getAllLeads = async ({
 
     const whereCondition: any = { ...filters };
 
-    // ⏳ Inject date filter (createdAt)
     if (filterType) {
       const dateFilter = buildDateFilter(filterType, startDate, endDate);
       Object.assign(whereCondition, dateFilter);
     }
 
-    // 🔍 JSON Search
     const searchCondition = search
       ? {
         [Op.or]: [
@@ -97,7 +94,6 @@ export const getAllLeads = async ({
       }
       : {};
 
-    // 🚀 Fetch leads
     const leadsData = await Lead.findAndCountAll({
       offset,
       limit: pageLimit,
@@ -108,12 +104,10 @@ export const getAllLeads = async ({
       order: [["createdAt", "DESC"]],
     });
 
-    // 🔗 Enrich assignees with user details
     const rowsWithAssignees = await Promise.all(
       leadsData.rows.map(async (lead) => {
         let assigneesRaw: AssigneeWithStatus[] = [];
 
-        // Parse assignees
         if (typeof lead.assignees === "string") {
           try {
             assigneesRaw = JSON.parse(lead.assignees) as AssigneeWithStatus[];
@@ -149,7 +143,6 @@ export const getAllLeads = async ({
       })
     );
 
-    // ✅ Return paginated + enriched data
     return getPagingData(
       { count: leadsData.count, rows: rowsWithAssignees },
       page,
@@ -167,7 +160,6 @@ export const getLeadById = async (leadId: number): Promise<LeadAttributes> => {
       throw new Error(`Lead not found with ID ${leadId}`);
     }
 
-    // 🧩 Enrich assignee details (same logic as getAllLeads)
     let assigneesRaw: AssigneeWithStatus[] = [];
 
     if (typeof lead.assignees === "string") {
@@ -224,7 +216,6 @@ export const getLeadsByCampaign = async ({
   try {
     const { offset, limit: paginationLimit } = getPagination({ page, limit });
 
-    // 🧠 Fetch paginated leads for the given campaign
     const leads = await Lead.findAndCountAll({
       where: { campaignName },
       order: [["createdAt", "DESC"]],
@@ -232,12 +223,10 @@ export const getLeadsByCampaign = async ({
       limit: paginationLimit,
     });
 
-    // 🔗 Enrich each lead with assignee user details
     const enrichedLeads = await Promise.all(
       leads.rows.map(async (lead) => {
         let assigneesRaw: AssigneeWithStatus[] = [];
 
-        // Normalize `assignees`
         if (typeof lead.assignees === "string") {
           try {
             assigneesRaw = JSON.parse(lead.assignees) as AssigneeWithStatus[];
@@ -253,7 +242,6 @@ export const getLeadsByCampaign = async ({
           assigneesRaw = [lead.assignees];
         }
 
-        // Extract valid user IDs
         const userIds = assigneesRaw
           .map((a) => a.userId)
           .filter((id): id is number => typeof id === "number");
@@ -279,7 +267,6 @@ export const getLeadsByCampaign = async ({
       })
     );
 
-    // 📦 Format and return paginated data
     const response = getPagingData(
       { count: leads.count, rows: enrichedLeads },
       page,
@@ -294,7 +281,6 @@ export const getLeadsByCampaign = async ({
   }
 };
 
-// Update Lead
 export const updateLead = async (
   id: number,
   updatedData: Partial<LeadCreationAttributes>,
@@ -313,13 +299,12 @@ export const updateLead = async (
       await sendNotification(userId, `Lead updated with ID ${lead.id}`);
     }
 
-    return { ...(lead.toJSON() as any) }; // ensures leadCode is included
+    return { ...(lead.toJSON() as any) };
   } catch (error: any) {
     throw new Error(`Error updating lead: ${error.message}`);
   }
 };
 
-// Delete Lead
 export const deleteLead = async (
   id: number,
   userId?: number
@@ -354,7 +339,6 @@ export const assignLeadToUsers = async (
 
     let currentAssignees: AssigneeWithStatus[] = [];
 
-    // Parse existing assignees from DB
     if (typeof lead.assignees === "string") {
       try {
         currentAssignees = JSON.parse(lead.assignees);
@@ -365,19 +349,16 @@ export const assignLeadToUsers = async (
       currentAssignees = lead.assignees as AssigneeWithStatus[];
     }
 
-    // Create set of existing user IDs
     const existingIds = new Set<number>(currentAssignees.map((a) => a.userId));
 
-    // ✅ ADDED: Current timestamp for assignment
     const assignmentTimestamp = new Date().toISOString();
 
-    // Prepare new assignees (only those not already assigned)
     const newAssignees: AssigneeWithStatus[] = userIdsToAssign
       .filter((id: number) => !existingIds.has(id))
       .map((id: number) => ({
         userId: id,
         status: "pending",
-        assignedAt: assignmentTimestamp, // ✅ ADDED: Track assignment date
+        assignedAt: assignmentTimestamp,
         status_updated: false,
       }));
 
@@ -385,14 +366,11 @@ export const assignLeadToUsers = async (
       throw new Error("All provided users are already assigned to this lead.");
     }
 
-    // Merge old + new assignments
     const updatedAssignees = [...currentAssignees, ...newAssignees];
 
-    // Save in DB in a single update
     await lead.update({ assignees: updatedAssignees });
 
 
-    // Log and notify new assignees
     if (assignedByUserId) {
       for (const newUser of newAssignees) {
         await logActivity(
@@ -408,9 +386,8 @@ export const assignLeadToUsers = async (
       }
     }
 
-    return { ...(lead.toJSON() as any) }; // ensures leadCode is included
+    return { ...(lead.toJSON() as any) };
 
-    // return lead.get();
   } catch (error: any) {
     throw new Error(`Error assigning lead: ${error.message}`);
   }
@@ -425,7 +402,7 @@ export const getAllLeadsWithAssignee = async ({
   page = 1,
   limit = 10,
   search = "",
-  campaign, // ✅ NEW: Campaign filter parameter
+  campaign,
   filterType,
   startDate,
   endDate,
@@ -433,7 +410,7 @@ export const getAllLeadsWithAssignee = async ({
   page?: number;
   limit?: number;
   search?: string;
-  campaign?: string; // ✅ NEW
+  campaign?: string;
   filterType?: FilterType;
   startDate?: string;
   endDate?: string;
@@ -441,14 +418,12 @@ export const getAllLeadsWithAssignee = async ({
   try {
     const { offset, limit: paginationLimit } = getPagination({ page, limit });
 
-    // ✅ Base condition: only leads that have at least one assignee
     const baseCondition = Sequelize.literal("JSON_LENGTH(assignees) > 0");
 
     const whereConditions: any = {
       [Op.and]: [baseCondition],
     };
 
-    // ✅ NEW: Add campaign filter if provided
     if (campaign && campaign.trim() !== "") {
       const campaignCondition = {
         campaignName: { [Op.like]: `%${campaign.trim()}%` },
@@ -456,13 +431,11 @@ export const getAllLeadsWithAssignee = async ({
       whereConditions[Op.and].push(campaignCondition);
     }
 
-    // ✅ Apply date filter (like in getAllLeads)
     if (filterType) {
       const dateFilter = buildDateFilter(filterType, startDate, endDate);
       whereConditions[Op.and].push(dateFilter);
     }
 
-    // 🔍 Search support (case-insensitive)
     if (search && search.trim() !== "") {
       const s = `%${search.trim().toLowerCase()}%`;
 
@@ -482,7 +455,6 @@ export const getAllLeadsWithAssignee = async ({
       });
     }
 
-    // 🚀 Fetch paginated leads
     const leads = await Lead.findAndCountAll({
       where: whereConditions,
       order: [["createdAt", "DESC"]],
@@ -490,7 +462,6 @@ export const getAllLeadsWithAssignee = async ({
       limit: paginationLimit,
     });
 
-    // 🧩 Enrich with user details
     const enrichedLeads = await Promise.all(
       leads.rows.map(async (lead: any) => {
         let assigneesRaw: any[] = [];
@@ -533,7 +504,6 @@ export const getAllLeadsWithAssignee = async ({
       })
     );
 
-    // ✅ Return paginated + enriched response
     return getPagingData(
       { count: leads.count, rows: enrichedLeads },
       page,
@@ -544,16 +514,14 @@ export const getAllLeadsWithAssignee = async ({
   }
 };
 
-/**
- * Get counts of assigned and unassigned leads
- */
+
 export const getAssignmentCounts = async () => {
   const assignedCount = await Lead.count({
-    where: Sequelize.literal("JSON_LENGTH(assignees) > 0"), // ✅ Has at least one assignment
+    where: Sequelize.literal("JSON_LENGTH(assignees) > 0"),
   });
 
   const unassignedCount = await Lead.count({
-    where: Sequelize.literal("JSON_LENGTH(assignees) = 0"), // ✅ No assignments
+    where: Sequelize.literal("JSON_LENGTH(assignees) = 0"),
   });
 
   return {
@@ -583,7 +551,7 @@ export const getUnassignedLeads = async ({
   page = 1,
   limit = 10,
   searchTerm = "",
-  campaign, // ✅ NEW: Campaign filter parameter
+  campaign,
   filterType,
   startDate,
   endDate,
@@ -591,7 +559,7 @@ export const getUnassignedLeads = async ({
   page?: number;
   limit?: number;
   searchTerm?: string;
-  campaign?: string; // ✅ NEW
+  campaign?: string;
   filterType?: FilterType;
   startDate?: string;
   endDate?: string;
@@ -599,16 +567,13 @@ export const getUnassignedLeads = async ({
   try {
     const { offset, limit: paginationLimit } = getPagination({ page, limit });
 
-    // 🧹 Clean and escape search term safely
     const escapedSearch = searchTerm.trim().toLowerCase().replace(/'/g, "\\'");
     const s = `%${escapedSearch}%`;
 
-    // ✅ Main conditions: only leads with NO assignees
     const andConditions: any[] = [
       Sequelize.literal("(assignees IS NULL OR JSON_LENGTH(assignees) = 0)"),
     ];
 
-    // ✅ NEW: Add campaign filter if provided
     if (campaign && campaign.trim() !== "") {
       const campaignCondition = {
         campaignName: { [Op.like]: `%${campaign.trim()}%` },
@@ -616,13 +581,11 @@ export const getUnassignedLeads = async ({
       andConditions.push(campaignCondition);
     }
 
-    // 🕒 Apply date filtering (if provided)
     if (filterType) {
       const dateFilter = buildDateFilter(filterType, startDate, endDate);
       andConditions.push(dateFilter);
     }
 
-    // 🔍 Apply search across campaignName + JSON fields
     if (escapedSearch) {
       const jsonSearchCondition = `
         LOWER(JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.agent_name'))) LIKE '${s}'
@@ -636,10 +599,8 @@ export const getUnassignedLeads = async ({
       andConditions.push(Sequelize.literal(`(${jsonSearchCondition})`));
     }
 
-    // 🧩 Combine all where conditions
     const whereCondition = { [Op.and]: andConditions };
 
-    // 🚀 Fetch unassigned leads
     const unassignedLeads = await Lead.findAndCountAll({
       where: whereCondition,
       order: [["createdAt", "DESC"]],
@@ -647,7 +608,6 @@ export const getUnassignedLeads = async ({
       limit: paginationLimit,
     });
 
-    // 🧩 Normalize assignees (parse JSON safely)
     const normalizedLeads = unassignedLeads.rows.map((lead: any) => {
       let assigneesRaw: any[] = [];
       if (lead.assignees) {
@@ -664,7 +624,6 @@ export const getUnassignedLeads = async ({
       return { ...(lead.toJSON() as any), assignees: assigneesRaw };
     });
 
-    // ✅ Return paginated & cleaned result
     return getPagingData(
       { count: unassignedLeads.count, rows: normalizedLeads },
       page,
@@ -1009,14 +968,12 @@ export const getLeadsByAssigneeId = async (
       };
     });
 
-    // ⭐ FIX STARTS HERE ⭐
     const paginatedRows = mappedLeads.slice(offset, offset + limit);
 
     return {
-      count: mappedLeads.length, // ✔ total leads after filtering
-      rows: paginatedRows,       // ✔ correct paginated data
+      count: mappedLeads.length,
+      rows: paginatedRows,
     };
-    // ⭐ FIX ENDS HERE ⭐
 
   } catch (error: any) {
     throw new Error(
@@ -1032,12 +989,10 @@ export const sendEmailToLeadUsingTemplate = async (
 ) => {
 
   try {
-    // First, check if the lead exists with detailed logging
     const lead = await Lead.findByPk(leadId);
 
     if (!lead) {
 
-      // Debug: Check all leads to see what's actually in the database
       const allLeads = await Lead.findAll();
 
 
@@ -1062,7 +1017,6 @@ export const sendEmailToLeadUsingTemplate = async (
       throw new Error("Lead email not found in leadData");
     }
 
-    // Rest of your code...
     const sender = await User.findByPk(senderUserId);
     const senderRole = String(sender?.role || "guest");
 
@@ -1106,7 +1060,6 @@ export const sendEmailToLeadUsingTemplate = async (
       status: "sent",
     });
 
-    // ✅ Log the activity here
     await logLeadActivity({
       entityId: leadId,
       entityType: "lead",
@@ -1121,7 +1074,6 @@ export const sendEmailToLeadUsingTemplate = async (
   }
 };
 
-// ✅ Helper: replace {{key}} in text with values from leadData
 function fillTemplate(template: string, data: any): string {
   return template.replace(/{{(.*?)}}/g, (_, key) => {
     const trimmedKey = key.trim();
@@ -1145,13 +1097,11 @@ export const getLeadStatusSummary = async (assigneeId?: number) => {
       let whereCondition;
 
       if (assigneeId) {
-        // ✅ PROVEN WORKING: Simple JSON_CONTAINS approach
         whereCondition = Sequelize.literal(`
           JSON_CONTAINS(assignees, JSON_OBJECT('userId', ${assigneeId}))
           AND JSON_CONTAINS(assignees, JSON_OBJECT('status', '${status}'))
         `);
       } else {
-        // For no assigneeId filter
         whereCondition = Sequelize.literal(`
           JSON_CONTAINS(assignees, JSON_OBJECT('status', '${status}'))
         `);
@@ -1163,7 +1113,6 @@ export const getLeadStatusSummary = async (assigneeId?: number) => {
       });
 
       statusCounts[status] = leads.length;
-      // leadsByStatus[status] = leads;
       leadsByStatus[status] = leads.map((lead) => ({
         ...(lead.toJSON() as any),
       }));
@@ -1225,7 +1174,6 @@ export const updateLeadStatusForUser = async (
     assignees = [];
   }
 
-  // ✅ Normalize userId comparison
   const index = assignees.findIndex((a) => Number(a.userId) === Number(userId));
 
   if (index === -1) {
@@ -1235,10 +1183,8 @@ export const updateLeadStatusForUser = async (
   const previousStatus = assignees[index].status;
   assignees[index].status = newStatus;
 
-  // ✅ Directly update JSON column
   await lead.update({ assignees });
 
-  // ✅ Log the activity
   try {
     const logResult = await logLeadActivity({
       entityId: leadId,
@@ -1251,7 +1197,6 @@ export const updateLeadStatusForUser = async (
   } catch (err) {
   }
 
-  // return lead;
   return { ...(lead.toJSON() as any) };
 };
 
@@ -1278,7 +1223,6 @@ export const getLeadsByCampaignAndAssignee = async (
 
     return leads.map((lead) => ({ ...(lead.toJSON() as any) }));
 
-    // return leads.map((lead) => lead.get());
   } catch (error: any) {
     throw new Error(
       `Error fetching leads for campaign '${campaignName}' and assignee '${assigneeId}': ${error.message}`

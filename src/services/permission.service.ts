@@ -1,6 +1,5 @@
 import { Permission } from "../models/permission.model";
 
-// Service to get all permissions
 export const getAllPermissions = async () => {
   try {
     const permissions = await Permission.findAll();
@@ -10,7 +9,6 @@ export const getAllPermissions = async () => {
   }
 };
 
-// Service to get a permission by ID
 export const getPermissionById = async (id: number) => {
   try {
     const permission = await Permission.findByPk(id);

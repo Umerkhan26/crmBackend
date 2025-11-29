@@ -1,4 +1,3 @@
-// src/controllers/leadActivity.controller.ts
 
 import { Request, Response } from "express";
 import {
@@ -10,7 +9,6 @@ import {
   updateLeadActivity,
 } from "../services/leadActivity.service";
 
-// src/controllers/leadActivity.controller.ts
 
 export const getLeadActivities = async (
   req: Request,
@@ -24,16 +22,14 @@ export const getLeadActivities = async (
       return res.status(400).json({ message: "Invalid lead ID." });
     }
 
-    // Parse page and limit from query params
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
 
-    // Fetch paginated activities from service
     const activities = await getLeadActivitiesByLeadId(leadId, page, limit);
 
     return res.status(200).json({
       success: true,
-      ...activities, // contains totalItems, data, totalPages, currentPage
+      ...activities,
     });
   } catch (error) {
     return res
@@ -51,7 +47,7 @@ export const getAllLeadActivityLogs = async (req: Request, res: Response) => {
 
     res.status(200).json({
       success: true,
-      ...logs, // totalItems, data, totalPages, currentPage
+      ...logs,
     });
   } catch (error) {
     res.status(500).json({ message: "Failed to retrieve activity logs" });
@@ -112,7 +108,7 @@ export const deleteLeadActivityController = async (
 ): Promise<any> => {
   try {
     const id = parseInt(req.params.id, 10);
-    const deletedBy = req.user?.id || req.body.deletedBy; // assuming middleware sets req.user or frontend sends deletedBy
+    const deletedBy = req.user?.id || req.body.deletedBy;
 
     if (isNaN(id)) {
       return res.status(400).json({ message: "Invalid activity ID" });
@@ -131,112 +127,12 @@ export const deleteLeadActivityController = async (
 
 
 
-// export const getLeadActivityReportByUserController = async (
-//   req: Request,
-//   res: Response
-// ): Promise<any> => {
-//   try {
-//     const { userId, period } = req.query;
-
-//     // 🟢 Validate 'period'
-//     if (
-//       !period ||
-//       typeof period !== "string" ||
-//       !["daily", "weekly", "monthly"].includes(period)
-//     ) {
-//       return res
-//         .status(400)
-//         .json({ message: "Invalid or missing 'period' parameter" });
-//     }
-
-//     // 🟢 Validate 'userId'
-//     if (!userId || isNaN(Number(userId))) {
-//       return res
-//         .status(400)
-//         .json({ message: "Invalid or missing 'userId' parameter" });
-//     }
-
-//     // 🟢 Fetch report for specific user
-//     const report = await getLeadActivityReportByUser(
-//       Number(userId),
-//       period as "daily" | "weekly" | "monthly"
-//     );
-
-//     // 🟢 Handle case: no data found
-//     if (!report || (Array.isArray(report) && report.length === 0)) {
-//       return res.status(200).json({
-//         success: true,
-//         message: "No lead activity found for this user and period",
-//         data: [],
-//       });
-//     }
-
-//     // 🟢 Successful response
-//     return res.status(200).json({
-//       success: true,
-//       message: "Lead activity report fetched successfully",
-//       data: report,
-//     });
-//   } catch (error: any) {
-//     return res.status(500).json({
-//       success: false,
-//       message: "Failed to generate activity report",
-//       error: error.message,
-//     });
-//   }
-// };
-
-// export const getLeadActivityReportByUserController = async (
-//   req: Request,
-//   res: Response
-// ): Promise<any> => {
-//   try {
-//     const { period } = req.query;
-
-//     // ✅ Validate query param type and value
-//     if (
-//       !period ||
-//       typeof period !== "string" ||
-//       !["daily", "weekly", "monthly"].includes(period)
-//     ) {
-//       return res.status(400).json({ message: "Invalid or missing 'period' parameter" });
-//     }
-
-//     // ✅ Fetch report
-//     const report = await getLeadActivityReportByUser(period as "daily" | "weekly" | "monthly");
-
-//     // ✅ Handle empty case gracefully
-//     if (!report || report.length === 0) {
-//       return res.status(200).json({
-//         success: true,
-//         message: "No lead activity found for this period",
-//         totalUsers: 0,
-//         data: [],
-//       });
-//     }
-
-//     // ✅ Successful response
-//     return res.status(200).json({
-//       success: true,
-//       totalUsers: report.length,
-//       data: report,
-//     });
-//   } catch (error: any) {
-//     return res.status(500).json({
-//       success: false,
-//       message: "Failed to generate activity report",
-//       error: error.message,
-//     });
-//   }
-// };
-
 export const getLeadActivityReportByUserController = async (
   req: Request,
   res: Response
 ): Promise<any> => {
   try {
-    const { userId, period, ...customFilter } = req.query; // :white_check_mark: collect other filters
-    // :large_green_circle: Validate 'period' - ADD "custom" to allowed periods
+    const { userId, period, ...customFilter } = req.query;
     if (
       !period ||
       typeof period !== "string" ||
@@ -246,19 +142,16 @@ export const getLeadActivityReportByUserController = async (
         .status(400)
         .json({ message: "Invalid or missing 'period' parameter" });
     }
-    // :large_green_circle: Validate 'userId'
     if (!userId || isNaN(Number(userId))) {
       return res
         .status(400)
         .json({ message: "Invalid or missing 'userId' parameter" });
     }
-    // :large_green_circle: Fetch report for specific user + filters
     const report = await getLeadActivityReportByUser(
       Number(userId),
       period as "daily" | "weekly" | "monthly" | "custom",
-      customFilter // :white_check_mark: pass filters here
+      customFilter
     );
-    // :large_green_circle: Handle case: no data found
     if (!report || (Array.isArray(report) && report.length === 0)) {
       return res.status(200).json({
         success: true,
@@ -266,7 +159,6 @@ export const getLeadActivityReportByUserController = async (
         data: [],
       });
     }
-    // :large_green_circle: Successful response
     return res.status(200).json({
       success: true,
       message: "Lead activity report fetched successfully",

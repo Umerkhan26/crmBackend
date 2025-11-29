@@ -180,13 +180,13 @@ export const getAllOrdersController = async (
 ): Promise<any> => {
   const page = parseInt(req.query.page as string) || 1;
   const limit = parseInt(req.query.limit as string) || 10;
-  const search = (req.query.search as string) || ""; // ✅ Include search param
+  const search = (req.query.search as string) || "";
 
   try {
-    const orders = await getAllOrders(page, limit, search); // ✅ Pass search to service
+    const orders = await getAllOrders(page, limit, search);
     return res.status(200).json({
       success: true,
-      ...orders, // data, totalPages, totalItems, currentPage, etc.
+      ...orders,
     });
   } catch (error: any) {
     return res.status(400).json({

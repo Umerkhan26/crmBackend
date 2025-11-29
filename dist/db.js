@@ -18,15 +18,12 @@ dotenv_1.default.config();
 const db = new sequelize_1.Sequelize("crm", "root", "", {
     host: process.env.DB_HOST,
     dialect: "mysql",
-    // logging: console.log, // Enable logging to see SQL queries
 });
 const connectDB = () => __awaiter(void 0, void 0, void 0, function* () {
     try {
         yield db.authenticate();
         console.log("✅ Database connected successfully");
-        // Force sync (WARNING: This will DROP and recreate tables)
         yield db.sync({ force: true });
-        // console.log("✅ All models synchronized (Tables Created)");
     }
     catch (error) {
         console.error("❌ Unable to connect to the database:", error);

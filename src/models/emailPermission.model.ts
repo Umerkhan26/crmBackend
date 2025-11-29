@@ -1,29 +1,25 @@
 import { DataTypes, Model, Optional } from "sequelize";
 import db from "../../db";
 
-// Update interface to allow null for allowedRoles
 export interface EmailPermissionAttributes {
   id?: number;
   serviceName: string;
   canSend: boolean;
-  allowedRoles?: string | null; // ✅ Allow null
+  allowedRoles?: string | null;
 }
 
-// Optional ID for creation
 interface EmailPermissionCreationAttributes
-  extends Optional<EmailPermissionAttributes, "id"> {}
+  extends Optional<EmailPermissionAttributes, "id"> { }
 
 export class EmailPermission
   extends Model<EmailPermissionAttributes, EmailPermissionCreationAttributes>
-  implements EmailPermissionAttributes
-{
+  implements EmailPermissionAttributes {
   public id!: number;
   public serviceName!: string;
   public canSend!: boolean;
-  public allowedRoles?: string | null; // ✅ Allow null in class too
+  public allowedRoles?: string | null;
 }
 
-// Sequelize model definition
 EmailPermission.init(
   {
     id: {
@@ -42,7 +38,7 @@ EmailPermission.init(
     },
     allowedRoles: {
       type: DataTypes.STRING,
-      allowNull: true, // ✅ Sequelize also allows null
+      allowNull: true,
     },
   },
   {

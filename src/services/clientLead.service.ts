@@ -4,36 +4,9 @@ import Order from "../models/order.model";
 import { getPagination, getPagingData } from "../utils/paginate";
 import { logActivity } from "./activity.service";
 import { sendNotification } from "./notification.service";
-import LeadActivity from "../models/leadActivity.model"; // ✅ Activity tracking
-import User from "../models/user.model"; // ✅ For joining user info in activities
+import LeadActivity from "../models/leadActivity.model";
+import User from "../models/user.model";
 import { sendEmail } from "../utils/email";
-
-// ✅ Create a new client lead
-// export const createClientLead = async (
-//   leadData: ClientLeadCreationAttributes,
-//   userId?: number
-// ) => {
-//   const lead = await ClientLead.create(leadData);
-
-//   if (userId) {
-//     await logActivity(userId, "Client Lead Created", `Created lead with ID ${lead.id}`);
-//     await sendNotification(userId, `Client lead with ID ${lead.id} created successfully.`);
-
-//     // ✅ Log into LeadActivity (polymorphic)
-//     await LeadActivity.create({
-//       entityId: lead.id,
-//       entityType: "clientLead",
-//       action: "create",
-//       details: `Client Lead created by user ID ${userId}`,
-//       performedBy: userId,
-//     });
-//   }
-
-//   return lead;
-// };
-
-
-
 
 
 export const createClientLead = async (
@@ -42,10 +15,8 @@ export const createClientLead = async (
 ) => {
 
 
-  // 1️⃣ Create Lead in DB
   const lead = await ClientLead.create(leadData);
 
-  // 2️⃣ Log + Notify + LeadActivity if user exists
   if (userId) {
 
     await logActivity(userId, "Client Lead Created", `Created lead with ID ${lead.id}`);
@@ -62,14 +33,13 @@ export const createClientLead = async (
   } else {
   }
 
-  // 3️⃣ Send email if leadData has email field
   if (leadData.leadData && leadData.leadData.email) {
 
     const smtpConfig = {
-      host: process.env.DEFAULT_SMTP_HOST!,       // e.g. smtp.gmail.com
-      port: Number(process.env.DEFAULT_SMTP_PORT!), // e.g. 587
-      user: process.env.DEFAULT_SMTP_EMAIL!,      // your Gmail
-      pass: process.env.DEFAULT_SMTP_PASSWORD!,   // Gmail App Password
+      host: process.env.DEFAULT_SMTP_HOST!,
+      port: Number(process.env.DEFAULT_SMTP_PORT!),
+      user: process.env.DEFAULT_SMTP_EMAIL!,
+      pass: process.env.DEFAULT_SMTP_PASSWORD!,
     };
 
     try {
@@ -77,7 +47,7 @@ export const createClientLead = async (
         smtp: smtpConfig,
         to: leadData.leadData.email,
         subject: "New Lead Assigned",
-        body: newLeadEmailTemplate(lead.id), // 👈 dynamic HTML template
+        body: newLeadEmailTemplate(lead.id),
       });
     } catch (err: any) {
     }
@@ -89,7 +59,6 @@ export const createClientLead = async (
 
 
 
-// ✅ Get all leads by order ID
 export const getClientLeadsByOrderId = async (orderId: number) => {
   const leads = await ClientLead.findAll({
     where: { order_id: orderId },
@@ -101,7 +70,6 @@ export const getClientLeadsByOrderId = async (orderId: number) => {
   return leads;
 };
 
-// ✅ Get a single lead by ID
 export const getClientLeadById = async (id: number) => {
   const lead = await ClientLead.findByPk(id, {
     include: [
@@ -112,14 +80,12 @@ export const getClientLeadById = async (id: number) => {
   return lead;
 };
 
-// ✅ Get paginated leads
 export const getAllClientLeads = async (
   page = 1,
   limit = 10,
   filters: { orderId?: number; status?: string; search?: string } = {}
 ) => {
   const { offset } = getPagination({ page, limit });
-  // Build where clause for filtering
   const whereClause: any = {};
   if (filters.orderId) {
     whereClause.order_id = filters.orderId;
@@ -127,7 +93,6 @@ export const getAllClientLeads = async (
   if (filters.status && filters.status !== "all") {
     whereClause.status = filters.status;
   }
-  // For search functionality (if needed)
   if (filters.search) {
     whereClause.leadData = {
       [Op.or]: [
@@ -152,7 +117,6 @@ export const getAllClientLeads = async (
   return getPagingData(data, page, limit);
 };
 
-// ✅ Update a client lead by ID
 export const updateClientLeadById = async (
   id: number,
   updateData: Partial<ClientLeadCreationAttributes>,
@@ -167,7 +131,6 @@ export const updateClientLeadById = async (
     await logActivity(userId, "Client Lead Updated", `Updated lead with ID ${lead.id}`);
     await sendNotification(userId, `Client lead with ID ${lead.id} has been updated.`);
 
-    // ✅ Log activity
     await LeadActivity.create({
       entityId: lead.id,
       entityType: "clientLead",
@@ -180,7 +143,6 @@ export const updateClientLeadById = async (
   return lead;
 };
 
-// ✅ Delete a client lead by ID
 export const deleteClientLeadById = async (
   id: number,
   userId?: number
@@ -194,7 +156,6 @@ export const deleteClientLeadById = async (
     await logActivity(userId, "Client Lead Deleted", `Deleted lead with ID ${id}`);
     await sendNotification(userId, `Client lead with ID ${id} has been deleted.`);
 
-    // ✅ Log activity
     await LeadActivity.create({
       entityId: id,
       entityType: "clientLead",
@@ -207,7 +168,6 @@ export const deleteClientLeadById = async (
   return { message: "Client lead deleted successfully" };
 };
 
-// ✅ Accept or Reject a client lead (status update)
 export const updateClientLeadStatus = async (
   id: number,
   status: "accepted" | "rejected",
@@ -222,7 +182,6 @@ export const updateClientLeadStatus = async (
     await logActivity(userId, `Lead ${status}`, `Marked lead ID ${id} as ${status}`);
     await sendNotification(userId, `Client lead ID ${id} has been ${status}.`);
 
-    // ✅ Log activity
     await LeadActivity.create({
       entityId: lead.id,
       entityType: "clientLead",
@@ -235,7 +194,6 @@ export const updateClientLeadStatus = async (
   return { message: `Client lead ${status} successfully`, lead };
 };
 
-// ✅ Get activity history of a client lead
 export const getClientLeadActivities = async (clientLeadId: number) => {
   const activities = await LeadActivity.findAll({
     where: { entityId: clientLeadId, entityType: "clientLead" },
@@ -262,7 +220,6 @@ import { newLeadEmailTemplate } from "../Templetes/newLeadEmail";
 import { Op } from "sequelize";
 
 
-// ✅ Send email to ClientLead using template
 export const sendEmailToClientLeadUsingTemplate = async (
   clientLeadId: number,
   templateKey: string,
@@ -270,7 +227,6 @@ export const sendEmailToClientLeadUsingTemplate = async (
 ) => {
 
   try {
-    // 1️⃣ Find the client lead
     const lead = await ClientLead.findByPk(clientLeadId);
 
     if (!lead) {
@@ -278,7 +234,6 @@ export const sendEmailToClientLeadUsingTemplate = async (
     }
 
 
-    // 2️⃣ Parse leadData
     let leadData;
     if (typeof lead.leadData === "string") {
       try {
@@ -296,11 +251,9 @@ export const sendEmailToClientLeadUsingTemplate = async (
       throw new Error("ClientLead email not found in leadData");
     }
 
-    // 3️⃣ Sender info
     const sender = await User.findByPk(senderUserId);
     const senderRole = String(sender?.role || "guest");
 
-    // 4️⃣ Template
     const template = await EmailTemplate.findOne({
       where: { serviceName: templateKey },
     });
@@ -310,7 +263,6 @@ export const sendEmailToClientLeadUsingTemplate = async (
     const filledSubject = fillTemplate(template.subjectTemplate, leadData);
     const filledBody = fillTemplate(template.bodyTemplate, leadData);
 
-    // 5️⃣ SMTP Config
     const smtpRaw = await getSmtpConfig(senderUserId);
     const smtp = {
       host: smtpRaw.host || "",
@@ -324,7 +276,6 @@ export const sendEmailToClientLeadUsingTemplate = async (
       throw new Error("SMTP configuration is incomplete.");
     }
 
-    // 6️⃣ Send Email
     await sendEmail({
       smtp,
       to: email,
@@ -332,7 +283,6 @@ export const sendEmailToClientLeadUsingTemplate = async (
       body: filledBody,
     });
 
-    // 7️⃣ Log email status
     await logEmailStatus({
       clientLeadId,
       to: email,
@@ -344,7 +294,6 @@ export const sendEmailToClientLeadUsingTemplate = async (
       status: "sent",
     });
 
-    // 8️⃣ Log activity
     await logLeadActivity({
       entityId: clientLeadId,
       entityType: "clientLead",
@@ -359,7 +308,6 @@ export const sendEmailToClientLeadUsingTemplate = async (
   }
 };
 
-// ✅ Helper: replace {{key}} in text with values from leadData
 function fillTemplate(template: string, data: any): string {
   return template.replace(/{{(.*?)}}/g, (_, key) => {
     const trimmedKey = key.trim();

@@ -1,7 +1,6 @@
 import { DataTypes, Model, Optional } from "sequelize";
 import db from "../../../db";
 
-// Attributes for the Conversation model
 export interface ConversationAttributes {
   id: number;
   type: "private" | "group";
@@ -10,14 +9,12 @@ export interface ConversationAttributes {
   updatedAt?: Date;
 }
 
-// For creation, some fields are optional
 export interface ConversationCreationAttributes
-  extends Optional<ConversationAttributes, "id" | "name" | "createdAt" | "updatedAt"> {}
+  extends Optional<ConversationAttributes, "id" | "name" | "createdAt" | "updatedAt"> { }
 
-// Explicit Model instance type
 export interface ConversationInstance
   extends Model<ConversationAttributes, ConversationCreationAttributes>,
-    ConversationAttributes {}
+  ConversationAttributes { }
 
 export const Conversation = db.define<ConversationInstance>(
   "Conversation",

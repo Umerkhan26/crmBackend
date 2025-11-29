@@ -1,4 +1,3 @@
-// models/role.model.ts
 import { DataTypes, Model, Optional } from "sequelize";
 import db from "../../db";
 
@@ -8,13 +7,11 @@ export interface RoleAttributes {
   description?: string;
 }
 
-// Optional fields for creation
-interface RoleCreationAttributes extends Optional<RoleAttributes, "id"> {}
+interface RoleCreationAttributes extends Optional<RoleAttributes, "id"> { }
 
 export class Role
   extends Model<RoleAttributes, RoleCreationAttributes>
-  implements RoleAttributes
-{
+  implements RoleAttributes {
   public id!: number;
   public name!: string;
   public description?: string;

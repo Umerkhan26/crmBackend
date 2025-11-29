@@ -11,7 +11,7 @@
   },
   "include": [
     "src/**/*.ts",
-    "src/types/**/*.d.ts" // Make sure TypeScript picks up your custom types
+    "src/types/**/*.d.ts" 
   ],
   "exclude": ["node_modules", "dist"]
 }

@@ -1,20 +1,19 @@
-// src/services/chat.service.ts
 import { Conversation } from "../models/chatmodels/conversation.model";
 import { Message } from "../models/chatmodels/message.model";
 import { ConversationParticipant } from "../models/chatmodels/conversationParticipant.model";
 import { User } from "../models/user.model";
 
 export const createConversation = async (participantIds: number[]) => {
-    const conversation = await Conversation.create();
-    await ConversationParticipant.bulkCreate(
-      participantIds.map(userId => ({
-        userId,
-        conversationId: conversation.id,
-      }))
-    );
-    return conversation;
-  };
-  
+  const conversation = await Conversation.create();
+  await ConversationParticipant.bulkCreate(
+    participantIds.map(userId => ({
+      userId,
+      conversationId: conversation.id,
+    }))
+  );
+  return conversation;
+};
+
 
 export const sendMessage = async (
   conversationId: number,

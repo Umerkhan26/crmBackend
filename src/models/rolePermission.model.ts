@@ -11,28 +11,28 @@ RolePermission.init(
     roleId: {
       type: DataTypes.INTEGER,
       references: {
-        model: "roles", // Foreign key referencing the roles table
+        model: "roles",
         key: "id",
       },
-      allowNull: false, // Ensure it's not null
+      allowNull: false,
     },
     permissionId: {
       type: DataTypes.INTEGER,
       references: {
-        model: "permissions", // Foreign key referencing the permissions table
+        model: "permissions",
         key: "id",
       },
-      allowNull: false, // Ensure it's not null
+      allowNull: false,
     },
   },
   {
     sequelize: db,
     tableName: "role_permissions",
     modelName: "RolePermission",
-    timestamps: false, // No timestamps needed for join table
+    timestamps: false,
     indexes: [
       {
-        unique: true, // Ensure there are no duplicate role-permission pairs
+        unique: true,
         fields: ["roleId", "permissionId"],
       },
     ],

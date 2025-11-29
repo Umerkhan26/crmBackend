@@ -7,7 +7,7 @@ import Campaign from "./campaign.model";
 export interface ProductSaleAttributes {
   id: number;
   leadId?: number;
-  productType: string; // Still kept for backward compatibility
+  productType: string;
   price?: number;
   notes?: string;
   conversionDate?: Date;
@@ -15,9 +15,9 @@ export interface ProductSaleAttributes {
   status: "pending" | "converted" | "cancelled";
   campaignId: number;
   assigneeId?: number;
-  products?: any[] | null; // allow null as well as array
-  
-  
+  products?: any[] | null;
+
+
 }
 
 export interface ProductSaleCreationAttributes
@@ -31,13 +31,12 @@ export interface ProductSaleCreationAttributes
     | "conversionDate"
     | "assigneeId"
     | "price"
-    | "products" // ✅ Optional
-  > {}
+    | "products"
+  > { }
 
 class ProductSale
   extends Model<ProductSaleAttributes, ProductSaleCreationAttributes>
-  implements ProductSaleAttributes
-{
+  implements ProductSaleAttributes {
   public id!: number;
   public leadId?: number;
   public productType!: string;
@@ -123,7 +122,7 @@ ProductSale.init(
       onUpdate: "CASCADE",
     },
     products: {
-      type: DataTypes.JSON, // ✅ Can store multiple products
+      type: DataTypes.JSON,
       allowNull: true,
     },
   },

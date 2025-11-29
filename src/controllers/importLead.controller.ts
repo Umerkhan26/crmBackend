@@ -1,4 +1,3 @@
-// controllers/lead.controller.ts
 import { Request, Response } from "express";
 import { importLeadsFromFile } from "../services/importLead.service";
 

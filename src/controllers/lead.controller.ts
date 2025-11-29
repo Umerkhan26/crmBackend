@@ -4,7 +4,6 @@ import { LeadStatus } from "../models/lead.model";
 import { FilterType } from "../utils/dateFilters";
 import { getPagingData } from "../utils/paginate";
 
-// Create Lead
 export const createLead = async (req: Request, res: Response): Promise<any> => {
   try {
     const { campaignName, leadData } = req.body;
@@ -29,18 +28,15 @@ export const getAllLeads = async (
     const limit = parseInt(req.query.limit as string) || 10;
     const search = (req.query.search as string) || "";
 
-    // ⏳ Date filter handling
     const filterType = req.query.filterType as FilterType;
     const startDate = req.query.startDate as string;
     const endDate = req.query.endDate as string;
 
-    // Other filters
     const filters: any = {};
     if (req.query.status) filters.status = req.query.status;
     if (req.query.campaign_id)
       filters.campaign_id = Number(req.query.campaign_id);
 
-    // Call the service
     const leadsData = await LeadService.getAllLeads({
       page,
       limit,
@@ -92,7 +88,6 @@ export const getLeadById = async (
   }
 };
 
-// Get Leads by Campaign
 export const getLeadsByCampaign = async (
   req: Request,
   res: Response
@@ -104,14 +99,12 @@ export const getLeadsByCampaign = async (
       ? parseInt(req.query.limit as string, 10)
       : 10;
 
-    // Call service with pagination
     const leads = await LeadService.getLeadsByCampaign({
       campaignName,
       page,
       limit,
     });
 
-    // ✅ Return empty (not 404) if no leads found
     if (!leads || !leads.data || leads.data.length === 0) {
       return res.status(200).json({
         success: true,
@@ -123,10 +116,9 @@ export const getLeadsByCampaign = async (
       });
     }
 
-    // ✅ Success response
     return res.status(200).json({
       success: true,
-      ...leads, // includes totalItems, data, totalPages, currentPage
+      ...leads,
     });
   } catch (error: any) {
     return res.status(500).json({
@@ -136,7 +128,6 @@ export const getLeadsByCampaign = async (
   }
 };
 
-// Update Lead
 export const updateLead = async (req: Request, res: Response): Promise<any> => {
   try {
     const leadId = parseInt(req.params.id, 10);
@@ -155,7 +146,6 @@ export const updateLead = async (req: Request, res: Response): Promise<any> => {
   }
 };
 
-// Delete Lead
 export const deleteLead = async (req: Request, res: Response): Promise<any> => {
   try {
     const leadId = parseInt(req.params.id, 10);
@@ -176,17 +166,15 @@ export const assignUserToLead = async (
 ): Promise<any> => {
   try {
     const leadId = parseInt(req.params.leadId, 10);
-    const assignedByUserId = req.user?.id; // from verifyToken middleware
+    const assignedByUserId = req.user?.id;
 
     let userIds: number[] = [];
 
-    // Multiple IDs case
     if (Array.isArray(req.body.userIds)) {
       userIds = req.body.userIds
         .map((id: string | number) => parseInt(id as string, 10))
         .filter((id: number) => !isNaN(id));
     }
-    // Single ID case
     else if (req.body.userId) {
       const singleId = parseInt(req.body.userId, 10);
       if (!isNaN(singleId)) {
@@ -198,7 +186,6 @@ export const assignUserToLead = async (
       return res.status(400).json({ message: "Invalid lead ID or user IDs." });
     }
 
-    // Bulk assign in one DB update
     const updatedLead = await LeadService.assignLeadToUsers(
       leadId,
       userIds,
@@ -232,12 +219,10 @@ export const getAllLeadsWithAssignee = async (
       : 10;
     const search = req.query.search ? (req.query.search as string).trim() : "";
 
-    // ✅ NEW: Add campaign filter
     const campaign = req.query.campaign
       ? (req.query.campaign as string)
       : undefined;
 
-    // ✅ Cast query param safely to FilterType
     const filterType = req.query.filterType
       ? (req.query.filterType as FilterType)
       : undefined;
@@ -253,7 +238,7 @@ export const getAllLeadsWithAssignee = async (
       page,
       limit,
       search,
-      campaign, // ✅ NEW: Pass campaign filter
+      campaign,
       filterType,
       startDate,
       endDate,
@@ -333,7 +318,6 @@ export const getUnassignedLeads = async (
   res: Response
 ): Promise<any> => {
   try {
-    // 📦 Extract pagination, search, and date filter params from query
     const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
     const limit = req.query.limit
       ? parseInt(req.query.limit as string, 10)
@@ -342,12 +326,10 @@ export const getUnassignedLeads = async (
       ? (req.query.search as string).trim()
       : "";
 
-    // ✅ NEW: Add campaign filter
     const campaign = req.query.campaign
       ? (req.query.campaign as string)
       : undefined;
 
-    // 🕒 Date filter params
     const filterType = req.query.filterType
       ? (req.query.filterType as FilterType)
       : undefined;
@@ -359,18 +341,16 @@ export const getUnassignedLeads = async (
       ? (req.query.endDate as string)
       : undefined;
 
-    // 🚀 Call service with all params
     const leads = await LeadService.getUnassignedLeads({
       page,
       limit,
       searchTerm,
-      campaign, // ✅ NEW: Pass campaign filter
+      campaign,
       filterType,
       startDate,
       endDate,
     });
 
-    // ✅ Return empty list (not 404)
     if (!leads || !leads.data || leads.data.length === 0) {
       return res.status(200).json({
         success: true,
@@ -382,7 +362,6 @@ export const getUnassignedLeads = async (
       });
     }
 
-    // ✅ Success response
     return res.status(200).json({
       success: true,
       ...leads,
@@ -402,8 +381,8 @@ export const sendEmailToLead = async (
 ): Promise<any> => {
   try {
     const leadId = parseInt(req.params.leadId, 10);
-    const templateKey = req.body.templateKey; // e.g., "user:create"
-    const senderUserId = req.user?.id; // assumes `verifyToken` middleware sets req.user
+    const templateKey = req.body.templateKey;
+    const senderUserId = req.user?.id;
 
     if (isNaN(leadId)) {
       return res.status(400).json({ message: "Invalid lead ID." });
@@ -465,47 +444,7 @@ export const getLeadStatusSummary = async (
     });
   }
 };
-// export const updateLeadStatus = async (
-//   req: Request,
-//   res: Response
-// ): Promise<any> => {
-//   try {
-//     const leadId = Number(req.params.leadId);
-//     const userId = Number(req.body.userId);
-//     const status = req.body.status as LeadStatus;
 
-
-//     // ✅ Validate input
-//     if (!leadId || !userId || !status) {
-//       return res.status(400).json({
-//         success: false,
-//         message: "Lead ID, user ID, and status are required",
-//       });
-//     }
-
-//     // ✅ Call service function
-//     const updatedLead = await LeadService.updateLeadStatusForUser(
-//       leadId,
-//       userId,
-//       status
-//     );
-
-//     return res.status(200).json({
-//       success: true,
-//       message: `Status updated to "${status}" for user ${userId} on lead ${leadId}`,
-//       lead: updatedLead,
-//     });
-//   } catch (error: any) {
-//       message: error.message,
-//       stack: error.stack,
-//     });
-
-//     return res.status(500).json({
-//       success: false,
-//       message: error.message || "An error occurred while updating lead status",
-//     });
-//   }
-// };
 const ALLOWED_STATUSES: LeadStatus[] = [
   "pending",
   "sold",
@@ -523,7 +462,6 @@ export const updateLeadStatus = async (
     const status = req.body.status as LeadStatus;
 
 
-    // ✅ Validate input existence
     if (!leadId || !userId || !status) {
       return res.status(400).json({
         success: false,
@@ -531,7 +469,6 @@ export const updateLeadStatus = async (
       });
     }
 
-    // ✅ Validate status value
     if (!ALLOWED_STATUSES.includes(status)) {
       return res.status(400).json({
         success: false,
@@ -541,7 +478,6 @@ export const updateLeadStatus = async (
       });
     }
 
-    // ✅ Call service function
     const updatedLead = await LeadService.updateLeadStatusForUser(
       leadId,
       userId,

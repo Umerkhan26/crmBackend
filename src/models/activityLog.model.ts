@@ -1,11 +1,10 @@
-// models/activitylog.model.ts
 import { DataTypes, Model } from "sequelize";
 import db from "../../db";
 
 export interface ActivityLogAttributes {
   id?: number;
   userId: number;
-  userName?: string | null;   // ✅ allow null
+  userName?: string | null;
   action: string;
   details?: string;
   created_at?: Date;
@@ -24,7 +23,7 @@ export const ActivityLog = db.define<Model<ActivityLogAttributes>>(
       allowNull: false,
     },
     userName: {
-      type: DataTypes.STRING(255), // ✅ add username
+      type: DataTypes.STRING(255),
       allowNull: true,
     },
     action: {

@@ -9,18 +9,17 @@ import {
   getSaleById,
   updateSale,
   deleteSale,
-  createProduct, // ✅ new controller
-  updateProduct, // ✅ new controller
-  deleteProduct, // ✅ new controller
-  getProductById, // ✅ new controller
+  createProduct,
+  updateProduct,
+  deleteProduct,
+  getProductById,
   getAllProducts,
   getInvoice,
-  getSalesByAssigneeIdController, // ✅ new controller
+  getSalesByAssigneeIdController,
 } from "../controllers/product.controller";
 
 const router = Router();
 
-// ✅ Convert Lead to Sale
 router.post(
   "/convertLeadToSale",
   verifyToken,
@@ -28,7 +27,6 @@ router.post(
   convertLeadToSale
 );
 
-// ✅ Get All Sales
 router.get(
   "/getAllSales",
   verifyToken,
@@ -36,7 +34,6 @@ router.get(
   getAllSales
 );
 
-// ✅ Get Sale by ID
 router.get(
   "/getSalesById/:id",
   verifyToken,
@@ -49,7 +46,6 @@ router.get(
   checkPermission(PERMISSIONS.SALE_GET_BY_ASSIGNEE),
   getSalesByAssigneeIdController
 );
-// ✅ Update Sale
 router.put(
   "/updateSalesById/:id",
   verifyToken,
@@ -57,7 +53,6 @@ router.put(
   updateSale
 );
 
-// ✅ Delete Sale
 router.delete(
   "/deleteSalesById/:id",
   verifyToken,
@@ -65,11 +60,7 @@ router.delete(
   deleteSale
 );
 
-//
-// ✅✅✅ New Routes for Manual Product CRUD (without lead conversion)
-//
 
-// ✅ Create Product
 router.post(
   "/createProduct",
   verifyToken,
@@ -77,7 +68,6 @@ router.post(
   createProduct
 );
 
-// ✅ Get All Products
 router.get(
   "/getAll",
   verifyToken,
@@ -85,7 +75,6 @@ router.get(
   getAllProducts
 );
 
-// ✅ Get Product by ID
 router.get(
   "/getById/:id",
   verifyToken,
@@ -93,7 +82,6 @@ router.get(
   getProductById
 );
 
-// ✅ Update Product by ID
 router.put(
   "/updateProduct/:id",
   verifyToken,
@@ -101,7 +89,6 @@ router.put(
   updateProduct
 );
 
-// ✅ Delete Product by ID
 router.delete(
   "/deleteProduct/:id",
   verifyToken,

@@ -12,7 +12,7 @@ import { emailQueue } from "../queue/emailQueue";
 import { getSmtpConfig } from "../utils/getSmtpConfig";
 import User from "../models/user.model";
 import { buildSearchFilter } from "../utils/filterQuery";
-import { Op, where, json } from "sequelize"; // ✅ import helpers directly
+import { Op, where, json } from "sequelize";
 import { sendEmail } from "../utils/email";
 
 
@@ -79,7 +79,6 @@ export const createOrder = async (
       `Order Created With ID: ${order.id}`
     );
 
-    // ✅ Email functionality (direct call to sendEmail)
     const user = await User.findByPk(createdBy);
     if (!user) {
     } else {
@@ -139,7 +138,7 @@ export const getOrderById = async (
       include: [
         {
           model: Campaign,
-          as: "campaign", // This should match the alias used in your model association
+          as: "campaign",
         },
       ],
     });
@@ -154,7 +153,6 @@ export const getOrderById = async (
   }
 };
 
-// Function to update an order by ID
 export const updateOrderById = async (
   id: number,
   updatedData: Partial<CreateOrderDTO>,
@@ -172,7 +170,6 @@ export const updateOrderById = async (
       created_by: updatedBy,
     });
 
-    // 🔔 Notify and 📝 Log
     await sendNotification(updatedBy, `Order ID ${id} updated.`);
     await logActivity(
       updatedBy,
@@ -186,7 +183,6 @@ export const updateOrderById = async (
   }
 };
 
-// Function to delete an order by ID
 export const deleteOrderById = async (
   id: number,
   deletedBy: number
@@ -198,7 +194,6 @@ export const deleteOrderById = async (
     }
 
     await order.destroy();
-    // 🔔 Notify and 📝 Log
     await sendNotification(deletedBy, `Order ID ${id} has been deleted.`);
     await logActivity(
       deletedBy,
@@ -219,7 +214,7 @@ export const getAllOrders = async (
   try {
     const { offset, limit: pageLimit } = getPagination({ page, limit });
 
-    const searchFilter = buildSearchFilter(search, ["agent"]); // Add searchable fields from Order table
+    const searchFilter = buildSearchFilter(search, ["agent"]);
 
     const result = await Order.findAndCountAll({
       where: {
@@ -294,7 +289,6 @@ export const setOrderBlockStatus = async (
 
     await order.update({ is_blocked: blockStatus });
 
-    // 🔔 Notify and 📝 Log
     await sendNotification(
       userId,
       `Order ID ${id} has been ${blockStatus ? "blocked" : "unblocked"}.`
@@ -337,7 +331,6 @@ export const getOrdersByVendorId = async (
   );
 };
 
-// ✅ Get Orders by Client ID
 export const getOrdersByClientId = async (
   clientId: number,
   page: number = 1,
@@ -368,7 +361,6 @@ export const getOrdersByClientId = async (
   );
 };
 
-// helper function
 const attachRemainingLeads = async (orders: any[]) => {
   const orderIds = orders.map((order) => order.id);
 

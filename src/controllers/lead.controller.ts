@@ -293,6 +293,8 @@ export const getLeadsByAssigneeId = async (
     const endDate = req.query.endDate as string | undefined;
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
+    const campaignName = req.query.campaignName as string | undefined;
+
     if (isNaN(assigneeId)) {
       return res.status(400).json({ message: "Invalid assignee ID." });
     }
@@ -303,12 +305,16 @@ export const getLeadsByAssigneeId = async (
       startDate,
       endDate,
       page,
-      limit
+      limit,
+      campaignName
     );
+
     const responseData = getPagingData(leadsResult, page, limit);
+
     return res.status(200).json({
       success: true,
       message: `Leads assigned to user ID ${assigneeId} fetched successfully.`,
+      // Use the totalItems from responseData (which comes from leadsResult.count)
       ...responseData,
     });
   } catch (error: any) {
@@ -474,7 +480,6 @@ export const getLeadStatusSummary = async (
 //     const userId = Number(req.body.userId);
 //     const status = req.body.status as LeadStatus;
 
-
 //     // ✅ Validate input
 //     if (!leadId || !userId || !status) {
 //       return res.status(400).json({
@@ -522,7 +527,6 @@ export const updateLeadStatus = async (
     const userId = Number(req.body.userId);
     const status = req.body.status as LeadStatus;
 
-
     // ✅ Validate input existence
     if (!leadId || !userId || !status) {
       return res.status(400).json({
@@ -554,7 +558,6 @@ export const updateLeadStatus = async (
       lead: updatedLead,
     });
   } catch (error: any) {
-
     return res.status(500).json({
       success: false,
       message: error.message || "An error occurred while updating lead status",

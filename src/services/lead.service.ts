@@ -77,24 +77,24 @@ export const getAllLeads = async ({
     // 🔍 JSON Search
     const searchCondition = search
       ? {
-        [Op.or]: [
-          Sequelize.literal(
-            `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.first_name')) LIKE '%${search}%'`
-          ),
-          Sequelize.literal(
-            `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.last_name')) LIKE '%${search}%'`
-          ),
-          Sequelize.literal(
-            `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.agent_name')) LIKE '%${search}%'`
-          ),
-          Sequelize.literal(
-            `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.phone_number')) LIKE '%${search}%'`
-          ),
-          Sequelize.literal(
-            `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.state')) LIKE '%${search}%'`
-          ),
-        ],
-      }
+          [Op.or]: [
+            Sequelize.literal(
+              `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.first_name')) LIKE '%${search}%'`
+            ),
+            Sequelize.literal(
+              `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.last_name')) LIKE '%${search}%'`
+            ),
+            Sequelize.literal(
+              `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.agent_name')) LIKE '%${search}%'`
+            ),
+            Sequelize.literal(
+              `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.phone_number')) LIKE '%${search}%'`
+            ),
+            Sequelize.literal(
+              `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.state')) LIKE '%${search}%'`
+            ),
+          ],
+        }
       : {};
 
     // 🚀 Fetch leads
@@ -390,7 +390,6 @@ export const assignLeadToUsers = async (
 
     // Save in DB in a single update
     await lead.update({ assignees: updatedAssignees });
-
 
     // Log and notify new assignees
     if (assignedByUserId) {
@@ -859,7 +858,6 @@ export const getUnassignedLeads = async ({
 //       };
 //     });
 
-
 //     return {
 //       count: mappedLeads.length,
 //       rows: mappedLeads,
@@ -877,17 +875,29 @@ export const getLeadsByAssigneeId = async (
   startDate?: string,
   endDate?: string,
   page: number = 1,
-  limit: number = 10
+  limit: number = 10,
+  campaignName?: string
 ) => {
   try {
     const { offset } = getPagination({ page, limit });
 
-    const leads = await Lead.findAndCountAll({
-      where: {
-        [Op.and]: Sequelize.literal(
-          `JSON_CONTAINS(assignees, '{"userId": ${assigneeId}}', '$')`
-        ),
-      },
+    // Build the base query with JSON search for assignee
+    const baseWhereClause: any = {
+      [Op.and]: Sequelize.literal(
+        `JSON_CONTAINS(assignees, '{"userId": ${assigneeId}}', '$')`
+      ),
+    };
+
+    // Add campaign filter
+    if (campaignName) {
+      baseWhereClause.campaignName = {
+        [Op.like]: `%${campaignName}%`,
+      };
+    }
+
+    // ✅ STEP 1: Get ALL leads that match the base filters (without pagination)
+    const allLeads = await Lead.findAll({
+      where: baseWhereClause,
       attributes: [
         "id",
         "campaignName",
@@ -896,10 +906,12 @@ export const getLeadsByAssigneeId = async (
         "createdAt",
         "updatedAt",
       ],
+      order: [["createdAt", "DESC"]],
     });
 
+    // ✅ STEP 2: Apply date filtering to ALL records
     const now = new Date();
-    const filteredLeads = leads.rows.filter((lead) => {
+    const filteredLeads = allLeads.filter((lead) => {
       let assignees: AssigneeWithStatus[] = [];
 
       try {
@@ -967,7 +979,6 @@ export const getLeadsByAssigneeId = async (
             59,
             999
           );
-
           return assignmentDate >= monthStart && assignmentDate <= monthEnd;
 
         case "custom":
@@ -983,7 +994,14 @@ export const getLeadsByAssigneeId = async (
       }
     });
 
-    const mappedLeads = filteredLeads.map((lead) => {
+    // ✅ STEP 3: Apply pagination to the FINAL filtered dataset
+    const totalCount = filteredLeads.length;
+    const startIndex = offset;
+    const endIndex = offset + limit;
+    const paginatedLeads = filteredLeads.slice(startIndex, endIndex);
+
+    // ✅ STEP 4: Map the paginated results
+    const mappedLeads = paginatedLeads.map((lead) => {
       let assignees: AssigneeWithStatus[] = [];
 
       try {
@@ -1009,15 +1027,10 @@ export const getLeadsByAssigneeId = async (
       };
     });
 
-    // ⭐ FIX STARTS HERE ⭐
-    const paginatedRows = mappedLeads.slice(offset, offset + limit);
-
     return {
-      count: mappedLeads.length, // ✔ total leads after filtering
-      rows: paginatedRows,       // ✔ correct paginated data
+      count: totalCount, // ✅ Correct total count after ALL filtering
+      rows: mappedLeads, // ✅ Correct paginated data
     };
-    // ⭐ FIX ENDS HERE ⭐
-
   } catch (error: any) {
     throw new Error(
       `Error fetching leads for assignee ID ${assigneeId}: ${error.message}`
@@ -1030,20 +1043,16 @@ export const sendEmailToLeadUsingTemplate = async (
   templateKey: string,
   senderUserId: number
 ) => {
-
   try {
     // First, check if the lead exists with detailed logging
     const lead = await Lead.findByPk(leadId);
 
     if (!lead) {
-
       // Debug: Check all leads to see what's actually in the database
       const allLeads = await Lead.findAll();
 
-
       throw new Error("Lead not found");
     }
-
 
     let leadData;
     if (typeof lead.leadData === "string") {
@@ -1082,7 +1091,6 @@ export const sendEmailToLeadUsingTemplate = async (
       user: smtpRaw.user || "",
       pass: smtpRaw.pass || "",
     };
-
 
     if (!smtp.host || !smtp.user || !smtp.pass) {
       throw new Error("SMTP configuration is incomplete.");
@@ -1197,8 +1205,6 @@ export const updateLeadStatusForUser = async (
   userId: number,
   newStatus: LeadStatus
 ) => {
-
-
   if (!ALLOWED_STATUSES.includes(newStatus)) {
     throw new Error(
       `Invalid status. Allowed statuses: ${ALLOWED_STATUSES.join(", ")}`
@@ -1221,7 +1227,6 @@ export const updateLeadStatusForUser = async (
       assignees = lead.assignees as AssigneeWithStatus[];
     }
   } catch (err) {
-
     assignees = [];
   }
 
@@ -1247,9 +1252,7 @@ export const updateLeadStatusForUser = async (
       performedBy: userId,
       details: `Status changed from "${previousStatus}" to "${newStatus}"`,
     });
-
-  } catch (err) {
-  }
+  } catch (err) {}
 
   // return lead;
   return { ...(lead.toJSON() as any) };

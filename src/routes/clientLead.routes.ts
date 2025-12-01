@@ -37,7 +37,7 @@ router.get(
 router.get(
   "/getClientLeadById/:id",
   verifyToken,
-  checkPermission(PERMISSIONS.CLIENT_LEAD_GET_BY_ID),
+  // checkPermission(PERMISSIONS.CLIENT_LEAD_GET_BY_ID),
   getClientLead
 );
 router.put(

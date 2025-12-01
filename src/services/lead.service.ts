@@ -903,6 +903,8 @@ export const getLeadsByAssigneeId = async (
         "campaignName",
         "leadData",
         "assignees",
+        "leadCode",      // ⬅️ added
+
         "createdAt",
         "updatedAt",
       ],
@@ -1032,6 +1034,8 @@ export const getLeadsByAssigneeId = async (
         ...lead.get(),
         status: userAssignment?.status || "pending",
         assignedAt: userAssignment?.assignedAt,
+        leadCode: lead.leadCode,  // ⬅️ added
+
         assignmentDate: userAssignment?.assignedAt
           ? new Date(userAssignment.assignedAt).toISOString()
           : lead.createdAt.toISOString(),

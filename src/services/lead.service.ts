@@ -654,11 +654,13 @@ export const getLeadsByAssigneeId = async (
       ),
     };
 
-    // Add campaign filter
+    // Add campaign filter if provided
     if (campaignName) {
-      baseWhereClause.campaignName = {
-        [Op.like]: `%${campaignName}%`,
-      };
+      // If Op.and already exists, append campaignName as an additional condition
+      baseWhereClause[Op.and] = Sequelize.and(
+        baseWhereClause[Op.and],
+        { campaignName: { [Op.like]: `%${campaignName}%` } }
+      );
     }
 
     // ✅ STEP 1: Get ALL leads that match the base filters (without pagination)
@@ -678,7 +680,6 @@ export const getLeadsByAssigneeId = async (
     // ✅ STEP 2: Apply date filtering to ALL records
     const now = new Date();
     const filteredLeads = allLeads.filter((lead) => {
-      // Normalize assignees for consistent userId checking
       let assignees: AssigneeWithStatus[] = [];
       try {
         if (Array.isArray(lead.assignees)) {
@@ -770,7 +771,6 @@ export const getLeadsByAssigneeId = async (
 
     // ✅ STEP 4: Map the paginated results
     const mappedLeads = paginatedLeads.map((lead) => {
-      // Normalize assignees again for mapping
       let assignees: AssigneeWithStatus[] = [];
       try {
         if (Array.isArray(lead.assignees)) {
@@ -797,7 +797,7 @@ export const getLeadsByAssigneeId = async (
 
       return {
         ...lead.get(),
-        leadCode: lead.leadCode, // ✅ included
+        leadCode: lead.leadCode,
         status: userAssignment?.status || "pending",
         assignedAt: userAssignment?.assignedAt,
         assignmentDate: userAssignment?.assignedAt
@@ -816,6 +816,7 @@ export const getLeadsByAssigneeId = async (
     );
   }
 };
+
 
 
 export const sendEmailToLeadUsingTemplate = async (

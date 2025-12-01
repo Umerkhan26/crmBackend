@@ -18,6 +18,7 @@ import { UserAttributes } from "../interfaces/user.interface";
 import { buildDateFilter, FilterType } from "../utils/dateFilters";
 import { logLeadActivity } from "../utils/logLeadActivity";
 import Campaign from "../models/campaign.model";
+import { DateTime } from "luxon";
 
 interface PaginationParams {
   page?: number;
@@ -635,6 +636,7 @@ export const getUnassignedLeads = async ({
 
 
 
+
 export const getLeadsByAssigneeId = async (
   assigneeId: number,
   filterType: FilterType = "daily",
@@ -647,12 +649,14 @@ export const getLeadsByAssigneeId = async (
   try {
     const { offset } = getPagination({ page, limit });
 
+    // Build the base query with JSON search for assignee
     const baseWhereClause: any = {
       [Op.and]: Sequelize.literal(
         `JSON_CONTAINS(assignees, '{"userId": ${assigneeId}}', '$')`
       ),
     };
 
+    // Add campaign filter if provided
     if (campaignName) {
       baseWhereClause[Op.and] = Sequelize.and(
         baseWhereClause[Op.and],
@@ -660,6 +664,7 @@ export const getLeadsByAssigneeId = async (
       );
     }
 
+    // STEP 1: Get all leads matching base filters
     const allLeads = await Lead.findAll({
       where: baseWhereClause,
       attributes: [
@@ -673,7 +678,8 @@ export const getLeadsByAssigneeId = async (
       order: [["createdAt", "DESC"]],
     });
 
-    const now = new Date();
+    // STEP 2: Apply date filtering to ALL records (PST)
+    const nowPST = DateTime.now().setZone("Asia/Karachi"); // Pakistan Time
     const filteredLeads = allLeads.filter((lead) => {
       let assignees: AssigneeWithStatus[] = [];
       try {
@@ -701,55 +707,34 @@ export const getLeadsByAssigneeId = async (
       if (!userAssignment) return false;
 
       const assignmentDate = userAssignment.assignedAt
-        ? new Date(userAssignment.assignedAt)
-        : new Date(lead.createdAt);
+        ? DateTime.fromISO(userAssignment.assignedAt).setZone("Asia/Karachi")
+        : DateTime.fromJSDate(lead.createdAt).setZone("Asia/Karachi");
 
+      // Apply date filters based on PST
       switch (filterType) {
         case "daily":
-          const todayStart = new Date(
-            now.getFullYear(),
-            now.getMonth(),
-            now.getDate()
-          );
-          const todayEnd = new Date(
-            now.getFullYear(),
-            now.getMonth(),
-            now.getDate(),
-            23,
-            59,
-            59,
-            999
-          );
+          const todayStart = nowPST.startOf("day");
+          const todayEnd = nowPST.endOf("day");
           return assignmentDate >= todayStart && assignmentDate <= todayEnd;
 
         case "weekly":
-          const startOfWeek = new Date(now);
-          const day = startOfWeek.getDay();
-          const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1);
-          const weekStart = new Date(startOfWeek.setDate(diff));
-          weekStart.setHours(0, 0, 0, 0);
-          const weekEnd = new Date(weekStart);
-          weekEnd.setDate(weekStart.getDate() + 6);
-          weekEnd.setHours(23, 59, 59, 999);
+          const weekStart = nowPST.startOf("week"); // Monday
+          const weekEnd = nowPST.endOf("week");     // Sunday
           return assignmentDate >= weekStart && assignmentDate <= weekEnd;
 
         case "monthly":
-          const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-          const monthEnd = new Date(
-            now.getFullYear(),
-            now.getMonth() + 1,
-            0,
-            23,
-            59,
-            59,
-            999
-          );
+          const monthStart = nowPST.startOf("month");
+          const monthEnd = nowPST.endOf("month");
           return assignmentDate >= monthStart && assignmentDate <= monthEnd;
 
         case "custom":
           if (startDate && endDate) {
-            const customStart = new Date(`${startDate}T00:00:00`);
-            const customEnd = new Date(`${endDate}T23:59:59`);
+            const customStart = DateTime.fromISO(startDate)
+              .startOf("day")
+              .setZone("Asia/Karachi");
+            const customEnd = DateTime.fromISO(endDate)
+              .endOf("day")
+              .setZone("Asia/Karachi");
             return assignmentDate >= customStart && assignmentDate <= customEnd;
           }
           return true;
@@ -759,9 +744,11 @@ export const getLeadsByAssigneeId = async (
       }
     });
 
+    // STEP 3: Apply pagination
     const totalCount = filteredLeads.length;
     const paginatedLeads = filteredLeads.slice(offset, offset + limit);
 
+    // STEP 4: Map paginated results
     const mappedLeads = paginatedLeads.map((lead) => {
       let assignees: AssigneeWithStatus[] = [];
       try {
@@ -793,8 +780,10 @@ export const getLeadsByAssigneeId = async (
         status: userAssignment?.status || "pending",
         assignedAt: userAssignment?.assignedAt,
         assignmentDate: userAssignment?.assignedAt
-          ? new Date(userAssignment.assignedAt).toISOString()
-          : lead.createdAt.toISOString(),
+          ? DateTime.fromISO(userAssignment.assignedAt)
+            .setZone("Asia/Karachi")
+            .toISO()
+          : DateTime.fromJSDate(lead.createdAt).setZone("Asia/Karachi").toISO(),
       };
     });
 
@@ -808,6 +797,7 @@ export const getLeadsByAssigneeId = async (
     );
   }
 };
+
 
 
 

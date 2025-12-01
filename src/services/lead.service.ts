@@ -674,60 +674,64 @@ export const getLeadsByAssigneeId = async (
         "assignees",
         "createdAt",
         "updatedAt",
+        "leadCode",
       ],
       order: [["createdAt", "DESC"]],
     });
 
-    // STEP 2: Apply date filtering to ALL records (PST)
     const nowPST = DateTime.now().setZone("Asia/Karachi"); // Pakistan Time
-    const filteredLeads = allLeads.filter((lead) => {
-      let assignees: AssigneeWithStatus[] = [];
+
+    // Helper to parse assignees
+    const parseAssignees = (assignees: any): AssigneeWithStatus[] => {
       try {
-        if (Array.isArray(lead.assignees)) {
-          assignees = lead.assignees.map((a: any) => ({
+        if (Array.isArray(assignees)) {
+          return assignees.map((a: any) => ({
             userId: Number(a.userId ?? a.userid),
             status: a.status,
             assignedAt: a.assignedAt,
           }));
-        } else if (typeof lead.assignees === "string") {
-          const parsed = JSON.parse(lead.assignees);
-          assignees = parsed.map((a: any) => ({
+        } else if (typeof assignees === "string") {
+          const parsed = JSON.parse(assignees);
+          return parsed.map((a: any) => ({
             userId: Number(a.userId ?? a.userid),
             status: a.status,
             assignedAt: a.assignedAt,
           }));
         }
       } catch {
-        assignees = [];
+        return [];
       }
+      return [];
+    };
 
-      const userAssignment = assignees.find(
-        (a) => Number(a.userId) === assigneeId
-      );
+    // STEP 2: Apply date filtering
+    const filteredLeads = allLeads.filter((lead) => {
+      const assignees = parseAssignees(lead.assignees);
+      const userAssignment = assignees.find((a) => a.userId === assigneeId);
       if (!userAssignment) return false;
 
       const assignmentDate = userAssignment.assignedAt
         ? DateTime.fromISO(userAssignment.assignedAt).setZone("Asia/Karachi")
         : DateTime.fromJSDate(lead.createdAt).setZone("Asia/Karachi");
 
-      // Apply date filters based on PST
       switch (filterType) {
-        case "daily":
+        case "daily": {
           const todayStart = nowPST.startOf("day");
           const todayEnd = nowPST.endOf("day");
           return assignmentDate >= todayStart && assignmentDate <= todayEnd;
-
-        case "weekly":
-          const weekStart = nowPST.startOf("week"); // Monday
-          const weekEnd = nowPST.endOf("week");     // Sunday
+        }
+        case "weekly": {
+          // Week starting Sunday, ending Saturday
+          const weekStart = nowPST.startOf("week").minus({ days: 1 });
+          const weekEnd = nowPST.endOf("week").minus({ days: 1 });
           return assignmentDate >= weekStart && assignmentDate <= weekEnd;
-
-        case "monthly":
+        }
+        case "monthly": {
           const monthStart = nowPST.startOf("month");
           const monthEnd = nowPST.endOf("month");
           return assignmentDate >= monthStart && assignmentDate <= monthEnd;
-
-        case "custom":
+        }
+        case "custom": {
           if (startDate && endDate) {
             const customStart = DateTime.fromISO(startDate)
               .startOf("day")
@@ -738,7 +742,7 @@ export const getLeadsByAssigneeId = async (
             return assignmentDate >= customStart && assignmentDate <= customEnd;
           }
           return true;
-
+        }
         default:
           return true;
       }
@@ -750,29 +754,8 @@ export const getLeadsByAssigneeId = async (
 
     // STEP 4: Map paginated results
     const mappedLeads = paginatedLeads.map((lead) => {
-      let assignees: AssigneeWithStatus[] = [];
-      try {
-        if (Array.isArray(lead.assignees)) {
-          assignees = lead.assignees.map((a: any) => ({
-            userId: Number(a.userId ?? a.userid),
-            status: a.status,
-            assignedAt: a.assignedAt,
-          }));
-        } else if (typeof lead.assignees === "string") {
-          const parsed = JSON.parse(lead.assignees);
-          assignees = parsed.map((a: any) => ({
-            userId: Number(a.userId ?? a.userid),
-            status: a.status,
-            assignedAt: a.assignedAt,
-          }));
-        }
-      } catch {
-        assignees = [];
-      }
-
-      const userAssignment = assignees.find(
-        (a) => Number(a.userId) === assigneeId
-      );
+      const assignees = parseAssignees(lead.assignees);
+      const userAssignment = assignees.find((a) => a.userId === assigneeId);
 
       return {
         ...lead.get(),
@@ -783,7 +766,9 @@ export const getLeadsByAssigneeId = async (
           ? DateTime.fromISO(userAssignment.assignedAt)
             .setZone("Asia/Karachi")
             .toISO()
-          : DateTime.fromJSDate(lead.createdAt).setZone("Asia/Karachi").toISO(),
+          : DateTime.fromJSDate(lead.createdAt)
+            .setZone("Asia/Karachi")
+            .toISO(),
       };
     });
 

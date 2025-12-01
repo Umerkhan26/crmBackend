@@ -739,7 +739,7 @@ export const getLeadsByAssigneeId = async (
           return assignmentDate >= weekStart && assignmentDate <= weekEnd;
 
         case "monthly":
-          const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+          const monthStart = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
           const monthEnd = new Date(
             now.getFullYear(),
             now.getMonth() + 1,
@@ -749,8 +749,9 @@ export const getLeadsByAssigneeId = async (
             59,
             999
           );
-          return assignmentDate >= monthStart && assignmentDate <= monthEnd;
-
+          // Use lead.createdAt for monthly filter
+          const leadDate = new Date(lead.createdAt);
+          return leadDate >= monthStart && leadDate <= monthEnd;
         case "custom":
           if (startDate && endDate) {
             const customStart = new Date(`${startDate}T00:00:00`);

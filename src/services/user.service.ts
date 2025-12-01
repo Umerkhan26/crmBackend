@@ -9,7 +9,7 @@ import { getPagination, getPagingData } from "../utils/paginate";
 import { getSmtpConfig } from "../utils/getSmtpConfig";
 import { checkEmailPermission } from "./email.service";
 import { getCompiledTemplate } from "./template.service";
-import { emailQueue } from "../queue/emailQueue"; // or wherever your queue is defined
+import { emailQueue } from "../queue/emailQueue";
 import { buildSearchFilter } from "../utils/filterQuery";
 import Permission from "../models/permission.model";
 import ActivityLog from "../models/activityLog.model";
@@ -39,7 +39,6 @@ export const createUser = async (
     throw new Error("Email already in use!");
   }
 
-  // 🔐 Hash password
   const salt = await bcrypt.genSalt(10);
   userData.password = await bcrypt.hash(password, salt);
 
@@ -59,7 +58,6 @@ export const createUser = async (
     throw new Error("User ID not found after creation");
   }
 
-  // 🗒️ Log & notify
   await logActivity(
     user.id,
     "Registration",
@@ -73,7 +71,6 @@ export const createUser = async (
     `${user.firstname || ""} ${user.lastname || ""}`
   );
 
-  // 🔍 Fetch role and permissions
   const userWithRole = await User.findOne({
     where: { id: user.id },
     include: [
@@ -90,7 +87,6 @@ export const createUser = async (
   const canSendEmail = await checkEmailPermission("user:create", roleName);
 
   if (canSendEmail) {
-    // 📨 Prefer user's own SMTP config if available
     const userSmtp = {
       host: userWithRole?.smtpoutgoingserver,
       port: userWithRole?.smtpport ? Number(userWithRole.smtpport) : undefined,
@@ -98,7 +94,6 @@ export const createUser = async (
       pass: userWithRole?.smtppassword,
     };
 
-    // 🧩 Use user SMTP if all required fields are filled, else fallback to global .env config
     const smtpConfig =
       userSmtp.host && userSmtp.port && userSmtp.user && userSmtp.pass
         ? {
@@ -133,7 +128,6 @@ export const createUser = async (
     }
   }
 
-  // 🧠 Fetch full user with permissions
   const userFull = await User.findOne({
     where: { id: user.id },
     include: [
@@ -235,7 +229,7 @@ export const loginUser = async (userData: {
       status: user.status,
       last_login: user.last_login,
       userImage: user.userImage || null,
-      role: user.role, // includes permissions
+      role: user.role,
     },
     token,
   };
@@ -304,27 +298,23 @@ export const updateUser = async (
       throw new Error("User not found!");
     }
 
-    // ✅ Hash password if being updated
     if (updatedData.password) {
       const salt = await bcrypt.genSalt(10);
       updatedData.password = await bcrypt.hash(updatedData.password, salt);
     }
 
-    // ✅ Handle userImage properly
     if (updatedData.userImage === undefined) {
-      delete updatedData.userImage; // preserve existing
+      delete updatedData.userImage;
     } else if (updatedData.userImage === null || updatedData.userImage === "") {
-      updatedData.userImage = null; // clear image
+      updatedData.userImage = null;
     }
 
-    // ✅ Apply updates
     await user.update(updatedData);
 
     const fullName = `${user.firstname ?? ""} ${user.lastname ?? ""}`.trim();
 
-    // ✅ Log activity & send notification with non-null assertion
     await logActivity(
-      user.id!, // assert that id exists
+      user.id!,
       "Profile Update",
       "User updated profile information",
       fullName
@@ -351,9 +341,8 @@ export const deleteUser = async (userId: string): Promise<string> => {
 
     const fullName = `${user.firstname ?? ""} ${user.lastname ?? ""}`.trim();
 
-    // ✅ Log activity & notification before deletion
     await logActivity(
-      user.id!, // non-null assertion
+      user.id!,
       "Account Deletion",
       "User account has been deleted",
       fullName

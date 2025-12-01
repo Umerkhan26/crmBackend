@@ -1,4 +1,3 @@
-// models/emailTemplate.model.ts
 import { DataTypes, Model, Optional } from "sequelize";
 import db from "../../db";
 
@@ -11,7 +10,7 @@ export interface EmailTemplateAttributes {
   createdBy?: number;
 }
 
-interface EmailTemplateCreationAttributes extends Optional<EmailTemplateAttributes, "id"> {}
+interface EmailTemplateCreationAttributes extends Optional<EmailTemplateAttributes, "id"> { }
 
 class EmailTemplateModel extends Model<EmailTemplateAttributes, EmailTemplateCreationAttributes>
   implements EmailTemplateAttributes {

@@ -1,4 +1,3 @@
-// utils/paginate.ts
 import { FindAndCountOptions } from "sequelize";
 
 interface PaginationParams {

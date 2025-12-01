@@ -1,10 +1,8 @@
-// utils/syncEmailPermissions.ts
 import EmailPermission from "../models/emailPermission.model";
 import EmailTemplate from "../models/emailTemplate.model";
 import { EMAIL_PERMISSIONS } from "../constants/emailPermissions";
 
 export const syncEmailPermissionsToDB = async () => {
-  // 🔁 Sync email permissions
   for (const serviceName of EMAIL_PERMISSIONS) {
     const exists = await EmailPermission.findOne({ where: { serviceName } });
 
@@ -17,7 +15,6 @@ export const syncEmailPermissionsToDB = async () => {
     }
   }
 
-  // 📨 Define default templates
   const defaultTemplates: {
     [key: string]: { name: string; subject: string; body: string };
   } = {
@@ -31,10 +28,8 @@ export const syncEmailPermissionsToDB = async () => {
       subject: "New Order Created for Campaign {{campaign}}",
       body: `Hello {{user}},\n\nA new order has been created under the campaign "{{campaign}}".\n\nOrder Details:\n- Leads Requested: {{lead_requested}}\n- State: {{state}}\n\nThanks,\nCRM Team`,
     },
-    // ➕ Add more templates here as needed
   };
 
-  // 🧩 Sync templates if not already present
   for (const serviceName of EMAIL_PERMISSIONS) {
     const existingTemplate = await EmailTemplate.findOne({ where: { serviceName } });
 

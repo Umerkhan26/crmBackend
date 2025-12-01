@@ -647,23 +647,19 @@ export const getLeadsByAssigneeId = async (
   try {
     const { offset } = getPagination({ page, limit });
 
-    // Build the base query with JSON search for assignee
     const baseWhereClause: any = {
       [Op.and]: Sequelize.literal(
         `JSON_CONTAINS(assignees, '{"userId": ${assigneeId}}', '$')`
       ),
     };
 
-    // Add campaign filter if provided
     if (campaignName) {
-      // If Op.and already exists, append campaignName as an additional condition
       baseWhereClause[Op.and] = Sequelize.and(
         baseWhereClause[Op.and],
         { campaignName: { [Op.like]: `%${campaignName}%` } }
       );
     }
 
-    // ✅ STEP 1: Get ALL leads that match the base filters (without pagination)
     const allLeads = await Lead.findAll({
       where: baseWhereClause,
       attributes: [
@@ -677,7 +673,6 @@ export const getLeadsByAssigneeId = async (
       order: [["createdAt", "DESC"]],
     });
 
-    // ✅ STEP 2: Apply date filtering to ALL records
     const now = new Date();
     const filteredLeads = allLeads.filter((lead) => {
       let assignees: AssigneeWithStatus[] = [];
@@ -709,7 +704,6 @@ export const getLeadsByAssigneeId = async (
         ? new Date(userAssignment.assignedAt)
         : new Date(lead.createdAt);
 
-      // Apply date filters
       switch (filterType) {
         case "daily":
           const todayStart = new Date(
@@ -765,11 +759,9 @@ export const getLeadsByAssigneeId = async (
       }
     });
 
-    // ✅ STEP 3: Apply pagination to the FINAL filtered dataset
     const totalCount = filteredLeads.length;
     const paginatedLeads = filteredLeads.slice(offset, offset + limit);
 
-    // ✅ STEP 4: Map the paginated results
     const mappedLeads = paginatedLeads.map((lead) => {
       let assignees: AssigneeWithStatus[] = [];
       try {
@@ -828,7 +820,6 @@ export const sendEmailToLeadUsingTemplate = async (
     const lead = await Lead.findByPk(leadId);
 
     if (!lead) {
-      // Debug: Check all leads to see what's actually in the database
       const allLeads = await Lead.findAll();
 
       throw new Error("Lead not found");

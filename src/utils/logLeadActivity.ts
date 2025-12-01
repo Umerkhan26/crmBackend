@@ -1,4 +1,4 @@
-import LeadActivity from "../models/leadActivity.model"; // adjust path if needed
+import LeadActivity from "../models/leadActivity.model";
 
 export const logLeadActivity = async ({
   entityId,
@@ -22,6 +22,5 @@ export const logLeadActivity = async ({
       details,
     });
   } catch (error: any) {
-    // Optional: you can rethrow if you want to fail loudly
   }
 };

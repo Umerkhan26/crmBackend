@@ -4,7 +4,7 @@ export const mapClientLeadRow = (
   row: any
 ): Partial<ClientLeadCreationAttributes> => {
   return {
-    leadData: row.leadData || {}, // Use row.leadData directly
+    leadData: row.leadData || {},
     status: (row.status || "pending") as ClientLeadCreationAttributes["status"],
   };
 };

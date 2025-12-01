@@ -1,4 +1,4 @@
-import EmailTemplate from "../models/emailTemplate.model"; // already typed now
+import EmailTemplate from "../models/emailTemplate.model";
 import { renderTemplate } from "../utils/templateRenderer";
 
 export const getCompiledTemplate = async (

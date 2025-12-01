@@ -3,6 +3,6 @@ import { sendBulkEmail } from "../controllers/email.controller";
 
 const router = Router();
 
-router.post("/email/bulk", sendBulkEmail); // POST /api/email/bulk
+router.post("/email/bulk", sendBulkEmail);
 
 export default router;

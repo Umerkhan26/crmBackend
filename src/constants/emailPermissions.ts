@@ -1,4 +1,3 @@
-// constants/emailPermissions.ts
 
 import { PERMISSIONS } from "./permissions";
 

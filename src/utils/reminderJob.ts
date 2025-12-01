@@ -5,9 +5,8 @@ import Note from "../models/note.model";
 import User from "../models/user.model";
 import { sendNotification } from "../services/notification.service";
 import { sendEmail } from "../utils/email";
-import { reminderEmailTemplate } from "../Templetes/reminderEmailTemplate"; // ✅ import template
+import { reminderEmailTemplate } from "../Templetes/reminderEmailTemplate";
 
-// ✅ SMTP Config
 const SMTP_CONFIG = {
   host: process.env.DEFAULT_SMTP_HOST || "smtp.gmail.com",
   port: parseInt(process.env.DEFAULT_SMTP_PORT || "587", 10),
@@ -15,13 +14,11 @@ const SMTP_CONFIG = {
   pass: process.env.DEFAULT_SMTP_PASSWORD || "idcn eevf qdxv muad",
 };
 
-// ✅ Run every minute
 cron.schedule("* * * * *", async () => {
   try {
     const now = new Date();
     const oneMinuteAgo = new Date(now.getTime() - 60 * 1000);
 
-    // ✅ Fetch all due reminders
     const dueReminders = await Note.findAll({
       where: {
         type: "reminder",
@@ -38,11 +35,9 @@ cron.schedule("* * * * *", async () => {
     for (const reminder of dueReminders) {
       const message = `⏰ Reminder: ${reminder.content}`;
 
-      // ✅ Send in-app notification (unchanged)
       if (reminder.createdBy) {
         await sendNotification(reminder.createdBy, message);
 
-        // ✅ Send email to creator if available
         const user = await User.findByPk(reminder.createdBy);
         if (user?.email) {
           const emailBody = reminderEmailTemplate(reminder.content, reminder.reminderDate?.toISOString());

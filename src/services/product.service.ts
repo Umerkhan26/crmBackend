@@ -35,7 +35,7 @@ export const convertLeadToSale = async (
 
     const sale = await ProductSale.create({
       ...data,
-      products: products ?? null, // ✅ Store multiple products if given
+      products: products ?? null,
       status: "converted",
       conversionDate: new Date(),
       createdBy: userId ?? undefined,

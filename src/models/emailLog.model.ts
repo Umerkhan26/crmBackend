@@ -6,7 +6,7 @@ export const EmailLog = db.define("EmailLog", {
   to: { type: DataTypes.STRING, allowNull: false },
   subject: { type: DataTypes.TEXT },
   body: { type: DataTypes.TEXT },
-  status: { type: DataTypes.STRING }, // success, failed
+  status: { type: DataTypes.STRING },
   serviceName: { type: DataTypes.STRING },
   errorMsg: { type: DataTypes.TEXT },
   sentAt: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },

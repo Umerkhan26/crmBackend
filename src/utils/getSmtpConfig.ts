@@ -1,4 +1,3 @@
-// utils/getSmtpConfig.ts
 import User from "../models/user.model";
 
 export const getSmtpConfig = async (userId: number) => {

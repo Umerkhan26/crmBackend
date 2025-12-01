@@ -299,7 +299,6 @@ export const getLeadsByAssigneeId = async (
     return res.status(200).json({
       success: true,
       message: `Leads assigned to user ID ${assigneeId} fetched successfully.`,
-      // Use the totalItems from responseData (which comes from leadsResult.count)
       ...responseData,
     });
   } catch (error: any) {
@@ -450,46 +449,7 @@ export const getLeadStatusSummary = async (
     });
   }
 };
-// export const updateLeadStatus = async (
-//   req: Request,
-//   res: Response
-// ): Promise<any> => {
-//   try {
-//     const leadId = Number(req.params.leadId);
-//     const userId = Number(req.body.userId);
-//     const status = req.body.status as LeadStatus;
 
-//     // ✅ Validate input
-//     if (!leadId || !userId || !status) {
-//       return res.status(400).json({
-//         success: false,
-//         message: "Lead ID, user ID, and status are required",
-//       });
-//     }
-
-//     // ✅ Call service function
-//     const updatedLead = await LeadService.updateLeadStatusForUser(
-//       leadId,
-//       userId,
-//       status
-//     );
-
-//     return res.status(200).json({
-//       success: true,
-//       message: `Status updated to "${status}" for user ${userId} on lead ${leadId}`,
-//       lead: updatedLead,
-//     });
-//   } catch (error: any) {
-//       message: error.message,
-//       stack: error.stack,
-//     });
-
-//     return res.status(500).json({
-//       success: false,
-//       message: error.message || "An error occurred while updating lead status",
-//     });
-//   }
-// };
 const ALLOWED_STATUSES: LeadStatus[] = [
   "pending",
   "sold",

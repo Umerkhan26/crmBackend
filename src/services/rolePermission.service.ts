@@ -1,6 +1,5 @@
 import { RolePermission } from "../models/rolePermission.model";
 
-// Service to get all role-permission relationships
 export const getAllRolePermissions = async () => {
   try {
     const rolePermissions = await RolePermission.findAll();

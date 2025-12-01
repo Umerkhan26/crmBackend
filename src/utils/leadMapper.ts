@@ -1,4 +1,3 @@
-// utils/leadMapper.ts
 import { LeadCreationAttributes } from "../models/lead.model";
 
 export const mapLeadRow = (row: any): Partial<LeadCreationAttributes> => ({

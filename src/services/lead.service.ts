@@ -370,7 +370,6 @@ export const assignLeadToUsers = async (
 
     await lead.update({ assignees: updatedAssignees });
 
-
     if (assignedByUserId) {
       for (const newUser of newAssignees) {
         await logActivity(
@@ -818,7 +817,6 @@ export const getUnassignedLeads = async ({
 //       };
 //     });
 
-
 //     return {
 //       count: mappedLeads.length,
 //       rows: mappedLeads,
@@ -836,17 +834,29 @@ export const getLeadsByAssigneeId = async (
   startDate?: string,
   endDate?: string,
   page: number = 1,
-  limit: number = 10
+  limit: number = 10,
+  campaignName?: string
 ) => {
   try {
     const { offset } = getPagination({ page, limit });
 
-    const leads = await Lead.findAndCountAll({
-      where: {
-        [Op.and]: Sequelize.literal(
-          `JSON_CONTAINS(assignees, '{"userId": ${assigneeId}}', '$')`
-        ),
-      },
+    // Build the base query with JSON search for assignee
+    const baseWhereClause: any = {
+      [Op.and]: Sequelize.literal(
+        `JSON_CONTAINS(assignees, '{"userId": ${assigneeId}}', '$')`
+      ),
+    };
+
+    // Add campaign filter
+    if (campaignName) {
+      baseWhereClause.campaignName = {
+        [Op.like]: `%${campaignName}%`,
+      };
+    }
+
+    // ✅ STEP 1: Get ALL leads that match the base filters (without pagination)
+    const allLeads = await Lead.findAll({
+      where: baseWhereClause,
       attributes: [
         "id",
         "campaignName",
@@ -855,41 +865,49 @@ export const getLeadsByAssigneeId = async (
         "createdAt",
         "updatedAt",
       ],
+      order: [["createdAt", "DESC"]],
     });
 
+    // ✅ STEP 2: Apply date filtering to ALL records
     const now = new Date();
-    const filteredLeads = leads.rows.filter((lead) => {
+    const filteredLeads = allLeads.filter((lead) => {
+      // Normalize assignees for consistent userId checking
       let assignees: AssigneeWithStatus[] = [];
-
       try {
-        if (Array.isArray(lead.assignees)) assignees = lead.assignees;
-        else if (typeof lead.assignees === "string")
-          assignees = JSON.parse(lead.assignees);
-        else assignees = lead.assignees || [];
+        if (Array.isArray(lead.assignees)) {
+          assignees = lead.assignees.map((a: any) => ({
+            userId: Number(a.userId ?? a.userid),
+            status: a.status,
+            assignedAt: a.assignedAt,
+          }));
+        } else if (typeof lead.assignees === "string") {
+          const parsed = JSON.parse(lead.assignees);
+          assignees = parsed.map((a: any) => ({
+            userId: Number(a.userId ?? a.userid),
+            status: a.status,
+            assignedAt: a.assignedAt,
+          }));
+        }
       } catch {
-        return false;
+        assignees = [];
       }
 
       const userAssignment = assignees.find(
         (a) => Number(a.userId) === assigneeId
       );
-
       if (!userAssignment) return false;
 
       const assignmentDate = userAssignment.assignedAt
         ? new Date(userAssignment.assignedAt)
         : new Date(lead.createdAt);
 
+      // Apply date filters
       switch (filterType) {
         case "daily":
           const todayStart = new Date(
             now.getFullYear(),
             now.getMonth(),
-            now.getDate(),
-            0,
-            0,
-            0,
-            0
+            now.getDate()
           );
           const todayEnd = new Date(
             now.getFullYear(),
@@ -908,11 +926,9 @@ export const getLeadsByAssigneeId = async (
           const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1);
           const weekStart = new Date(startOfWeek.setDate(diff));
           weekStart.setHours(0, 0, 0, 0);
-
           const weekEnd = new Date(weekStart);
           weekEnd.setDate(weekStart.getDate() + 6);
           weekEnd.setHours(23, 59, 59, 999);
-
           return assignmentDate >= weekStart && assignmentDate <= weekEnd;
 
         case "monthly":
@@ -926,7 +942,6 @@ export const getLeadsByAssigneeId = async (
             59,
             999
           );
-
           return assignmentDate >= monthStart && assignmentDate <= monthEnd;
 
         case "custom":
@@ -942,14 +957,29 @@ export const getLeadsByAssigneeId = async (
       }
     });
 
-    const mappedLeads = filteredLeads.map((lead) => {
-      let assignees: AssigneeWithStatus[] = [];
+    // ✅ STEP 3: Apply pagination to the FINAL filtered dataset
+    const totalCount = filteredLeads.length;
+    const paginatedLeads = filteredLeads.slice(offset, offset + limit);
 
+    // ✅ STEP 4: Map the paginated results
+    const mappedLeads = paginatedLeads.map((lead) => {
+      // Normalize assignees again for mapping
+      let assignees: AssigneeWithStatus[] = [];
       try {
-        if (Array.isArray(lead.assignees)) assignees = lead.assignees;
-        else if (typeof lead.assignees === "string")
-          assignees = JSON.parse(lead.assignees);
-        else assignees = lead.assignees || [];
+        if (Array.isArray(lead.assignees)) {
+          assignees = lead.assignees.map((a: any) => ({
+            userId: Number(a.userId ?? a.userid),
+            status: a.status,
+            assignedAt: a.assignedAt,
+          }));
+        } else if (typeof lead.assignees === "string") {
+          const parsed = JSON.parse(lead.assignees);
+          assignees = parsed.map((a: any) => ({
+            userId: Number(a.userId ?? a.userid),
+            status: a.status,
+            assignedAt: a.assignedAt,
+          }));
+        }
       } catch {
         assignees = [];
       }
@@ -960,6 +990,7 @@ export const getLeadsByAssigneeId = async (
 
       return {
         ...lead.get(),
+        leadCode: lead.leadCode, // ✅ included
         status: userAssignment?.status || "pending",
         assignedAt: userAssignment?.assignedAt,
         assignmentDate: userAssignment?.assignedAt
@@ -968,13 +999,10 @@ export const getLeadsByAssigneeId = async (
       };
     });
 
-    const paginatedRows = mappedLeads.slice(offset, offset + limit);
-
     return {
-      count: mappedLeads.length,
-      rows: paginatedRows,
+      count: totalCount,
+      rows: mappedLeads,
     };
-
   } catch (error: any) {
     throw new Error(
       `Error fetching leads for assignee ID ${assigneeId}: ${error.message}`
@@ -982,23 +1010,21 @@ export const getLeadsByAssigneeId = async (
   }
 };
 
+
 export const sendEmailToLeadUsingTemplate = async (
   leadId: number,
   templateKey: string,
   senderUserId: number
 ) => {
-
   try {
     const lead = await Lead.findByPk(leadId);
 
     if (!lead) {
-
+      // Debug: Check all leads to see what's actually in the database
       const allLeads = await Lead.findAll();
-
 
       throw new Error("Lead not found");
     }
-
 
     let leadData;
     if (typeof lead.leadData === "string") {
@@ -1036,7 +1062,6 @@ export const sendEmailToLeadUsingTemplate = async (
       user: smtpRaw.user || "",
       pass: smtpRaw.pass || "",
     };
-
 
     if (!smtp.host || !smtp.user || !smtp.pass) {
       throw new Error("SMTP configuration is incomplete.");
@@ -1146,8 +1171,6 @@ export const updateLeadStatusForUser = async (
   userId: number,
   newStatus: LeadStatus
 ) => {
-
-
   if (!ALLOWED_STATUSES.includes(newStatus)) {
     throw new Error(
       `Invalid status. Allowed statuses: ${ALLOWED_STATUSES.join(", ")}`
@@ -1170,7 +1193,6 @@ export const updateLeadStatusForUser = async (
       assignees = lead.assignees as AssigneeWithStatus[];
     }
   } catch (err) {
-
     assignees = [];
   }
 
@@ -1193,9 +1215,7 @@ export const updateLeadStatusForUser = async (
       performedBy: userId,
       details: `Status changed from "${previousStatus}" to "${newStatus}"`,
     });
-
-  } catch (err) {
-  }
+  } catch (err) { }
 
   return { ...(lead.toJSON() as any) };
 };

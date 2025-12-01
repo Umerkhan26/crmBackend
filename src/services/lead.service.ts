@@ -77,24 +77,24 @@ export const getAllLeads = async ({
     // 🔍 JSON Search
     const searchCondition = search
       ? {
-          [Op.or]: [
-            Sequelize.literal(
-              `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.first_name')) LIKE '%${search}%'`
-            ),
-            Sequelize.literal(
-              `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.last_name')) LIKE '%${search}%'`
-            ),
-            Sequelize.literal(
-              `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.agent_name')) LIKE '%${search}%'`
-            ),
-            Sequelize.literal(
-              `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.phone_number')) LIKE '%${search}%'`
-            ),
-            Sequelize.literal(
-              `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.state')) LIKE '%${search}%'`
-            ),
-          ],
-        }
+        [Op.or]: [
+          Sequelize.literal(
+            `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.first_name')) LIKE '%${search}%'`
+          ),
+          Sequelize.literal(
+            `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.last_name')) LIKE '%${search}%'`
+          ),
+          Sequelize.literal(
+            `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.agent_name')) LIKE '%${search}%'`
+          ),
+          Sequelize.literal(
+            `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.phone_number')) LIKE '%${search}%'`
+          ),
+          Sequelize.literal(
+            `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.state')) LIKE '%${search}%'`
+          ),
+        ],
+      }
       : {};
 
     // 🚀 Fetch leads
@@ -913,14 +913,25 @@ export const getLeadsByAssigneeId = async (
     const now = new Date();
     const filteredLeads = allLeads.filter((lead) => {
       let assignees: AssigneeWithStatus[] = [];
-
       try {
-        if (Array.isArray(lead.assignees)) assignees = lead.assignees;
-        else if (typeof lead.assignees === "string")
-          assignees = JSON.parse(lead.assignees);
-        else assignees = lead.assignees || [];
+        if (Array.isArray(lead.assignees)) {
+          assignees = lead.assignees.map((a: any) => ({
+            userId: Number(a.userId ?? a.userid),
+            status: a.status,
+            assignedAt: a.assignedAt,
+          }));
+        } else if (typeof lead.assignees === "string") {
+          const parsed = JSON.parse(lead.assignees);
+          assignees = parsed.map((a: any) => ({
+            userId: Number(a.userId ?? a.userid),
+            status: a.status,
+            assignedAt: a.assignedAt,
+          }));
+        } else {
+          assignees = [];
+        }
       } catch {
-        return false;
+        assignees = [];
       }
 
       const userAssignment = assignees.find(
@@ -1252,7 +1263,7 @@ export const updateLeadStatusForUser = async (
       performedBy: userId,
       details: `Status changed from "${previousStatus}" to "${newStatus}"`,
     });
-  } catch (err) {}
+  } catch (err) { }
 
   // return lead;
   return { ...(lead.toJSON() as any) };

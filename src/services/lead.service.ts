@@ -638,6 +638,8 @@ export const getUnassignedLeads = async ({
 
 
 
+
+
 export const getLeadsByAssigneeId = async (
   assigneeId: number,
   filterType: FilterType = "daily",
@@ -708,7 +710,7 @@ export const getLeadsByAssigneeId = async (
       if (!userAssignment) return false;
 
       const assignmentDate = userAssignment.assignedAt
-        ? DateTime.fromISO(userAssignment.assignedAt).setZone("Asia/Karachi")
+        ? DateTime.fromISO(userAssignment.assignedAt, { zone: "Asia/Karachi" }) // FIXED monthly filter issue
         : DateTime.fromJSDate(lead.createdAt).setZone("Asia/Karachi");
 
       // Apply date filters based on PST
@@ -720,7 +722,6 @@ export const getLeadsByAssigneeId = async (
         }
 
         case "weekly": {
-          // Week starting Sunday, ending Saturday
           const weekStart = nowPST.startOf("week").minus({ days: 1 }); // Sunday
           const weekEnd = nowPST.endOf("week").minus({ days: 1 });     // Saturday
           return assignmentDate >= weekStart && assignmentDate <= weekEnd;
@@ -803,6 +804,7 @@ export const getLeadsByAssigneeId = async (
     );
   }
 };
+
 
 
 

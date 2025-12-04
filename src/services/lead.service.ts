@@ -406,6 +406,7 @@ export const getAllLeadsWithAssignee = async ({
   filterType,
   startDate,
   endDate,
+  conditions = [], // ← added
 }: {
   page?: number;
   limit?: number;
@@ -414,6 +415,7 @@ export const getAllLeadsWithAssignee = async ({
   filterType?: FilterType;
   startDate?: string;
   endDate?: string;
+  conditions?: any[]; // ← added
 }) => {
   try {
     const { offset, limit: paginationLimit } = getPagination({ page, limit });
@@ -424,18 +426,34 @@ export const getAllLeadsWithAssignee = async ({
       [Op.and]: [baseCondition],
     };
 
+    // ─────────────────────────────────────────
+    // Campaign filter
+    // ─────────────────────────────────────────
     if (campaign && campaign.trim() !== "") {
-      const campaignCondition = {
+      whereConditions[Op.and].push({
         campaignName: { [Op.like]: `%${campaign.trim()}%` },
-      };
-      whereConditions[Op.and].push(campaignCondition);
+      });
     }
 
+    // ─────────────────────────────────────────
+    // Date filter
+    // ─────────────────────────────────────────
     if (filterType) {
       const dateFilter = buildDateFilter(filterType, startDate, endDate);
       whereConditions[Op.and].push(dateFilter);
     }
 
+    // ─────────────────────────────────────────
+    // ⭐ Dynamic JSON field filtering (main part)
+    // ─────────────────────────────────────────
+    if (conditions.length > 0) {
+      const dynamicFilter = buildDynamicFilters(conditions);
+      whereConditions[Op.and].push(dynamicFilter);
+    }
+
+    // ─────────────────────────────────────────
+    // Search filter
+    // ─────────────────────────────────────────
     if (search && search.trim() !== "") {
       const s = `%${search.trim().toLowerCase()}%`;
 
@@ -451,10 +469,16 @@ export const getAllLeadsWithAssignee = async ({
       `);
 
       whereConditions[Op.and].push({
-        [Op.or]: [{ campaignName: { [Op.like]: s } }, jsonSearchCondition],
+        [Op.or]: [
+          { campaignName: { [Op.like]: s } },
+          jsonSearchCondition,
+        ],
       });
     }
 
+    // ─────────────────────────────────────────
+    // Fetch leads
+    // ─────────────────────────────────────────
     const leads = await Lead.findAndCountAll({
       where: whereConditions,
       order: [["createdAt", "DESC"]],
@@ -462,6 +486,9 @@ export const getAllLeadsWithAssignee = async ({
       limit: paginationLimit,
     });
 
+    // ─────────────────────────────────────────
+    // Enrich assignees
+    // ─────────────────────────────────────────
     const enrichedLeads = await Promise.all(
       leads.rows.map(async (lead: any) => {
         let assigneesRaw: any[] = [];
@@ -500,10 +527,14 @@ export const getAllLeadsWithAssignee = async ({
             };
           });
         }
+
         return { ...(lead.toJSON() as any), assignees: assigneesData };
       })
     );
 
+    // ─────────────────────────────────────────
+    // Pagination response
+    // ─────────────────────────────────────────
     return getPagingData(
       { count: leads.count, rows: enrichedLeads },
       page,
@@ -513,6 +544,7 @@ export const getAllLeadsWithAssignee = async ({
     throw new Error(`Error fetching leads with assignees: ${error.message}`);
   }
 };
+
 
 
 export const getAssignmentCounts = async () => {
@@ -638,6 +670,82 @@ export const getUnassignedLeads = async ({
 
 
 
+const buildDynamicFilters = (conditions: any[]) => {
+  if (!conditions || conditions.length === 0) return {};
+
+  const sequelizeFilters: any[] = [];
+
+  conditions.forEach((c) => {
+    const jsonField = Sequelize.literal(
+      `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.${c.field}'))`
+    );
+
+    let condition: any;
+
+    switch (c.operator) {
+      case "is":
+        condition = Sequelize.where(jsonField, c.value);
+        break;
+
+      case "is not":
+        condition = Sequelize.where(jsonField, { [Op.ne]: c.value });
+        break;
+
+      case "contains":
+        condition = Sequelize.where(jsonField, {
+          [Op.like]: `%${c.value}%`,
+        });
+        break;
+
+      case "does not contain":
+        condition = Sequelize.where(jsonField, {
+          [Op.notLike]: `%${c.value}%`,
+        });
+        break;
+
+      case "is blank":
+        condition = {
+          [Op.or]: [
+            Sequelize.where(jsonField, ""),
+            Sequelize.where(jsonField, null),
+          ],
+        };
+        break;
+
+      case "is not blank":
+        condition = {
+          [Op.and]: [
+            Sequelize.where(jsonField, { [Op.ne]: "" }),
+            Sequelize.where(jsonField, { [Op.ne]: null }),
+          ],
+        };
+        break;
+    }
+
+    sequelizeFilters.push({
+      logic: c.logic || "AND",
+      condition,
+    });
+  });
+
+  // Combine using AND / OR dynamic grouping
+  let finalWhere: any = {};
+
+  sequelizeFilters.forEach((f, index) => {
+    if (index === 0) {
+      finalWhere = { [Op.and]: [f.condition] };
+    } else {
+      if (f.logic === "AND") {
+        finalWhere[Op.and].push(f.condition);
+      } else {
+        if (!finalWhere[Op.or]) finalWhere[Op.or] = [];
+        finalWhere[Op.or].push(f.condition);
+      }
+    }
+  });
+
+  return finalWhere;
+};
 
 
 export const getLeadsByAssigneeId = async (

@@ -174,8 +174,7 @@ export const assignUserToLead = async (
       userIds = req.body.userIds
         .map((id: string | number) => parseInt(id as string, 10))
         .filter((id: number) => !isNaN(id));
-    }
-    else if (req.body.userId) {
+    } else if (req.body.userId) {
       const singleId = parseInt(req.body.userId, 10);
       if (!isNaN(singleId)) {
         userIds = [singleId];
@@ -234,6 +233,16 @@ export const getAllLeadsWithAssignee = async (
       ? (req.query.endDate as string)
       : undefined;
 
+    let conditions: any[] = [];
+    if (req.query.conditions) {
+      try {
+        conditions = JSON.parse(req.query.conditions as string);
+        console.log("📋 Backend received conditions:", conditions);
+      } catch (error) {
+        console.error("Error parsing conditions:", error);
+      }
+    }
+
     const leads = await LeadService.getAllLeadsWithAssignee({
       page,
       limit,
@@ -242,6 +251,7 @@ export const getAllLeadsWithAssignee = async (
       filterType,
       startDate,
       endDate,
+      conditions,
     });
 
     if (!leads || !leads.data || leads.data.length === 0) {

@@ -75,24 +75,24 @@ export const getAllLeads = async ({
 
     const searchCondition = search
       ? {
-        [Op.or]: [
-          Sequelize.literal(
-            `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.first_name')) LIKE '%${search}%'`
-          ),
-          Sequelize.literal(
-            `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.last_name')) LIKE '%${search}%'`
-          ),
-          Sequelize.literal(
-            `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.agent_name')) LIKE '%${search}%'`
-          ),
-          Sequelize.literal(
-            `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.phone_number')) LIKE '%${search}%'`
-          ),
-          Sequelize.literal(
-            `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.state')) LIKE '%${search}%'`
-          ),
-        ],
-      }
+          [Op.or]: [
+            Sequelize.literal(
+              `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.first_name')) LIKE '%${search}%'`
+            ),
+            Sequelize.literal(
+              `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.last_name')) LIKE '%${search}%'`
+            ),
+            Sequelize.literal(
+              `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.agent_name')) LIKE '%${search}%'`
+            ),
+            Sequelize.literal(
+              `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.phone_number')) LIKE '%${search}%'`
+            ),
+            Sequelize.literal(
+              `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.state')) LIKE '%${search}%'`
+            ),
+          ],
+        }
       : {};
 
     const leadsData = await Lead.findAndCountAll({
@@ -387,7 +387,6 @@ export const assignLeadToUsers = async (
     }
 
     return { ...(lead.toJSON() as any) };
-
   } catch (error: any) {
     throw new Error(`Error assigning lead: ${error.message}`);
   }
@@ -469,10 +468,7 @@ export const getAllLeadsWithAssignee = async ({
       `);
 
       whereConditions[Op.and].push({
-        [Op.or]: [
-          { campaignName: { [Op.like]: s } },
-          jsonSearchCondition,
-        ],
+        [Op.or]: [{ campaignName: { [Op.like]: s } }, jsonSearchCondition],
       });
     }
 
@@ -544,8 +540,6 @@ export const getAllLeadsWithAssignee = async ({
     throw new Error(`Error fetching leads with assignees: ${error.message}`);
   }
 };
-
-
 
 export const getAssignmentCounts = async () => {
   const assignedCount = await Lead.count({
@@ -666,66 +660,94 @@ export const getUnassignedLeads = async ({
   }
 };
 
-
-
-
-
 const buildDynamicFilters = (conditions: any[]) => {
   if (!conditions || conditions.length === 0) return {};
 
   const sequelizeFilters: any[] = [];
 
   conditions.forEach((c) => {
+    console.log("🔍 Processing condition:", c);
+
+    const operator = c.condition || c.operator;
+    const value = c.value || "";
+    const field = c.field;
+    const logic = c.joinType || "AND";
+
+    if (!field) {
+      console.warn("Skipping condition - missing field:", c);
+      return;
+    }
+
     const jsonField = Sequelize.literal(
-      `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.${c.field}'))`
+      `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.${field}'))`
     );
 
     let condition: any;
 
-    switch (c.operator) {
+    switch (operator.toLowerCase()) {
+      case "equals":
       case "is":
-        condition = Sequelize.where(jsonField, c.value);
+        condition = Sequelize.where(jsonField, value);
         break;
 
+      case "notequals":
       case "is not":
-        condition = Sequelize.where(jsonField, { [Op.ne]: c.value });
+      case "not equals":
+        condition = Sequelize.where(jsonField, { [Op.ne]: value });
         break;
 
       case "contains":
         condition = Sequelize.where(jsonField, {
-          [Op.like]: `%${c.value}%`,
+          [Op.like]: `%${value}%`,
         });
         break;
 
+      case "notcontains":
       case "does not contain":
+      case "not contains":
         condition = Sequelize.where(jsonField, {
-          [Op.notLike]: `%${c.value}%`,
+          [Op.notLike]: `%${value}%`,
         });
         break;
 
+      case "isblank":
       case "is blank":
         condition = {
           [Op.or]: [
             Sequelize.where(jsonField, ""),
             Sequelize.where(jsonField, null),
+            Sequelize.where(jsonField, {
+              [Op.eq]: Sequelize.literal("JSON_UNQUOTE('')"),
+            }),
           ],
         };
         break;
 
+      case "isnotblank":
       case "is not blank":
         condition = {
           [Op.and]: [
             Sequelize.where(jsonField, { [Op.ne]: "" }),
             Sequelize.where(jsonField, { [Op.ne]: null }),
+            Sequelize.where(jsonField, {
+              [Op.not]: Sequelize.literal("JSON_UNQUOTE('')"),
+            }),
           ],
         };
+        break;
+
+      default:
+        console.warn(`Unknown operator: ${operator}, defaulting to equals`);
+        condition = Sequelize.where(jsonField, value);
         break;
     }
 
     sequelizeFilters.push({
-      logic: c.logic || "AND",
+      logic: logic,
       condition,
     });
+
+    console.log(`✅ Built filter: ${field} ${operator} "${value}"`);
   });
 
   // Combine using AND / OR dynamic grouping
@@ -735,7 +757,8 @@ const buildDynamicFilters = (conditions: any[]) => {
     if (index === 0) {
       finalWhere = { [Op.and]: [f.condition] };
     } else {
-      if (f.logic === "AND") {
+      if (f.logic.toUpperCase() === "AND") {
+        if (!finalWhere[Op.and]) finalWhere[Op.and] = [];
         finalWhere[Op.and].push(f.condition);
       } else {
         if (!finalWhere[Op.or]) finalWhere[Op.or] = [];
@@ -744,9 +767,9 @@ const buildDynamicFilters = (conditions: any[]) => {
     }
   });
 
+  console.log("🔍 Final dynamic filter:", JSON.stringify(finalWhere, null, 2));
   return finalWhere;
 };
-
 
 export const getLeadsByAssigneeId = async (
   assigneeId: number,
@@ -769,10 +792,9 @@ export const getLeadsByAssigneeId = async (
 
     // Add campaign filter if provided
     if (campaignName) {
-      baseWhereClause[Op.and] = Sequelize.and(
-        baseWhereClause[Op.and],
-        { campaignName: { [Op.like]: `%${campaignName}%` } }
-      );
+      baseWhereClause[Op.and] = Sequelize.and(baseWhereClause[Op.and], {
+        campaignName: { [Op.like]: `%${campaignName}%` },
+      });
     }
 
     // STEP 1: Get all leads matching base filters
@@ -831,7 +853,7 @@ export const getLeadsByAssigneeId = async (
 
         case "weekly": {
           const weekStart = nowPST.startOf("week").minus({ days: 1 }); // Sunday
-          const weekEnd = nowPST.endOf("week").minus({ days: 1 });     // Saturday
+          const weekEnd = nowPST.endOf("week").minus({ days: 1 }); // Saturday
           return assignmentDate >= weekStart && assignmentDate <= weekEnd;
         }
 
@@ -896,8 +918,8 @@ export const getLeadsByAssigneeId = async (
         assignedAt: userAssignment?.assignedAt,
         assignmentDate: userAssignment?.assignedAt
           ? DateTime.fromISO(userAssignment.assignedAt)
-            .setZone("Asia/Karachi")
-            .toISO()
+              .setZone("Asia/Karachi")
+              .toISO()
           : DateTime.fromJSDate(lead.createdAt).setZone("Asia/Karachi").toISO(),
       };
     });
@@ -912,10 +934,6 @@ export const getLeadsByAssigneeId = async (
     );
   }
 };
-
-
-
-
 
 export const sendEmailToLeadUsingTemplate = async (
   leadId: number,
@@ -1120,7 +1138,7 @@ export const updateLeadStatusForUser = async (
       performedBy: userId,
       details: `Status changed from "${previousStatus}" to "${newStatus}"`,
     });
-  } catch (err) { }
+  } catch (err) {}
 
   return { ...(lead.toJSON() as any) };
 };
@@ -1147,7 +1165,6 @@ export const getLeadsByCampaignAndAssignee = async (
     });
 
     return leads.map((lead) => ({ ...(lead.toJSON() as any) }));
-
   } catch (error: any) {
     throw new Error(
       `Error fetching leads for campaign '${campaignName}' and assignee '${assigneeId}': ${error.message}`

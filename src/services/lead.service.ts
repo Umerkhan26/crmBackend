@@ -222,15 +222,22 @@ export const getLeadsByCampaign = async ({
   page = 1,
   limit = 10,
   search = "",
-}: GetLeadsByCampaignParams): Promise<any> => {
+  conditions = [], // <-- dynamic filters
+}: GetLeadsByCampaignParams & { conditions?: any[] }): Promise<any> => {
   try {
-    // Step 1: Fetch ALL leads for the campaign (NO pagination)
+    // Step 1: Build dynamic filter for JSON fields
+    const dynamicFilter = conditions.length > 0 ? buildDynamicFilters(conditions) : {};
+
+    // Step 2: Fetch ALL leads for the campaign (NO pagination)
     const allLeads = await Lead.findAll({
-      where: { campaignName },
+      where: {
+        campaignName,
+        ...dynamicFilter,
+      },
       order: [["createdAt", "DESC"]],
     });
 
-    // Step 2: Enrich leads based on assignees
+    // Step 3: Enrich leads based on assignees
     const enrichedLeads = await Promise.all(
       allLeads.map(async (lead) => {
         let assigneesRaw: AssigneeWithStatus[] = [];
@@ -275,7 +282,7 @@ export const getLeadsByCampaign = async ({
       })
     );
 
-    // Step 3: GLOBAL SEARCH across all fields
+    // Step 4: GLOBAL SEARCH across all fields
     const filteredLeads = search
       ? enrichedLeads.filter((lead) => {
         const jsonStr = JSON.stringify(lead).toLowerCase();
@@ -283,7 +290,7 @@ export const getLeadsByCampaign = async ({
       })
       : enrichedLeads;
 
-    // Step 4: Pagination AFTER filtering
+    // Step 5: Pagination AFTER filtering
     const total = filteredLeads.length;
     const start = (page - 1) * limit;
     const end = start + limit;
@@ -605,19 +612,23 @@ export const getUnassignedLeads = async ({
   filterType,
   startDate,
   endDate,
-}: GetUnassignedLeadsParams) => {
+  conditions = [], // dynamic JSON filters
+}: GetUnassignedLeadsParams & { conditions?: any[] }) => {
   try {
     const { offset, limit: pageLimit } = getPagination({ page, limit });
 
-    // STEP 1: Fetch all unassigned leads
+    // STEP 1: Build base where condition (unassigned leads)
+    let whereCondition: any = Sequelize.literal(
+      "(assignees IS NULL OR JSON_LENGTH(assignees) = 0)"
+    );
+
+    // STEP 2: Fetch all unassigned leads (with Sequelize.where if other filters exist)
     const allLeads = await Lead.findAll({
-      where: Sequelize.literal(
-        "(assignees IS NULL OR JSON_LENGTH(assignees) = 0)"
-      ),
+      where: whereCondition,
       order: [["createdAt", "DESC"]],
     });
 
-    // STEP 2: Enrich assignees
+    // STEP 3: Enrich assignees
     type LeadWithAssignees = {
       id: number;
       campaignName: string;
@@ -671,15 +682,17 @@ export const getUnassignedLeads = async ({
       })
     );
 
-    // STEP 3: Optional filters (campaign + date)
+    // STEP 4: Apply optional filters (campaign, date, dynamic JSON conditions)
     let filteredLeads = enrichedLeads;
 
+    // campaign filter
     if (campaign && campaign.trim() !== "") {
       filteredLeads = filteredLeads.filter((lead) =>
         lead.campaignName.toLowerCase().includes(campaign.trim().toLowerCase())
       );
     }
 
+    // date filter
     if (filterType && (filterType === "between" || filterType === "from" || filterType === "to")) {
       const start = startDate ? new Date(startDate) : undefined;
       const end = endDate ? new Date(endDate) : undefined;
@@ -697,7 +710,47 @@ export const getUnassignedLeads = async ({
       });
     }
 
-    // STEP 4: Global search
+    // dynamic JSON filters using buildDynamicFilters
+    if (conditions.length > 0) {
+      const dynamicFilter = buildDynamicFilters(conditions);
+      filteredLeads = filteredLeads.filter((lead) => {
+        // We'll convert each lead's leadData to JSON string and evaluate dynamicFilter logic
+        // For simplicity, here we implement only "equals / contains / not contains" via string check
+        return conditions.every((c) => {
+          const fieldValue = lead.leadData?.[c.field];
+          if (fieldValue === undefined || fieldValue === null) return false;
+
+          const valStr = String(fieldValue).toLowerCase();
+          const conditionValue = String(c.value).toLowerCase();
+
+          switch (c.condition?.toLowerCase()) {
+            case "equals":
+            case "is":
+              return valStr === conditionValue;
+            case "notequals":
+            case "is not":
+            case "not equals":
+              return valStr !== conditionValue;
+            case "contains":
+              return valStr.includes(conditionValue);
+            case "notcontains":
+            case "does not contain":
+            case "not contains":
+              return !valStr.includes(conditionValue);
+            case "isblank":
+            case "is blank":
+              return valStr === "";
+            case "isnotblank":
+            case "is not blank":
+              return valStr !== "";
+            default:
+              return true;
+          }
+        });
+      });
+    }
+
+    // STEP 5: Global search
     if (searchTerm && searchTerm.trim() !== "") {
       const s = searchTerm.trim().toLowerCase();
       filteredLeads = filteredLeads.filter((lead) =>
@@ -705,7 +758,7 @@ export const getUnassignedLeads = async ({
       );
     }
 
-    // STEP 5: Pagination
+    // STEP 6: Pagination
     const total = filteredLeads.length;
     const startIndex = (page - 1) * limit;
     const endIndex = startIndex + limit;
@@ -722,6 +775,7 @@ export const getUnassignedLeads = async ({
     throw new Error(`Error fetching unassigned leads: ${error.message}`);
   }
 };
+
 const buildDynamicFilters = (conditions: any[]) => {
   if (!conditions || conditions.length === 0) return {};
 

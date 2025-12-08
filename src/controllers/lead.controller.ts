@@ -108,33 +108,46 @@ export const getLeadsByCampaign = async (
   try {
     const { campaignName } = req.params;
     const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
-    const limit = req.query.limit
-      ? parseInt(req.query.limit as string, 10)
-      : 10;
+    const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 10;
+    const search = req.query.search ? String(req.query.search).trim() : "";
 
-    const search = req.query.search ? String(req.query.search) : ""; // <-- ADD THIS
+    // Accept dynamic JSON conditions from query (optional)
+    // Example: ?conditions=[{"field":"first_name","operator":"contains","value":"john"}]
+    let conditions: any[] = [];
+    if (req.query.conditions) {
+      try {
+        conditions = JSON.parse(req.query.conditions as string);
+      } catch {
+        conditions = [];
+      }
+    }
 
+    // Call service
     const leads = await LeadService.getLeadsByCampaign({
       campaignName,
       page,
       limit,
-      search, // <-- PASS THIS
+      search,
+      conditions, // Pass dynamic filters
     });
 
+    // If no leads
     if (!leads || !leads.rows || leads.rows.length === 0) {
       return res.status(200).json({
         success: true,
         message: "No leads found for this campaign",
-        data: [],
+        rows: [],
         totalItems: 0,
         totalPages: 0,
         currentPage: page,
       });
     }
 
+    // Success response
     return res.status(200).json({
       success: true,
-      ...leads,
+      message: "Leads fetched successfully",
+      ...leads, // contains: rows, totalItems, totalPages, currentPage, pageSize
     });
   } catch (error: any) {
     return res.status(500).json({
@@ -143,6 +156,7 @@ export const getLeadsByCampaign = async (
     });
   }
 };
+
 
 
 export const updateLead = async (req: Request, res: Response): Promise<any> => {
@@ -366,6 +380,17 @@ export const getUnassignedLeads = async (
       ? (req.query.endDate as string)
       : undefined;
 
+    // Parse dynamic conditions from query if provided
+    let conditions: any[] = [];
+    if (req.query.conditions) {
+      try {
+        conditions = JSON.parse(req.query.conditions as string);
+        if (!Array.isArray(conditions)) conditions = [];
+      } catch {
+        conditions = [];
+      }
+    }
+
     // Call service
     const leads = await LeadService.getUnassignedLeads({
       page,
@@ -375,6 +400,7 @@ export const getUnassignedLeads = async (
       filterType,
       startDate,
       endDate,
+      conditions, // pass dynamic filters to service
     });
 
     // If no leads
@@ -403,6 +429,7 @@ export const getUnassignedLeads = async (
     });
   }
 };
+
 
 
 export const sendEmailToLead = async (

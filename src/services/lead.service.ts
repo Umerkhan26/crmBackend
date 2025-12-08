@@ -51,67 +51,48 @@ export const getAllLeads = async ({
   limit = 10,
   filters = {},
   search = "",
+  campaign,
+  conditions = [],
   filterType,
   startDate,
   endDate,
-}: {
-  page?: number;
-  limit?: number;
-  filters?: any;
-  search?: string;
-  filterType?: FilterType;
-  startDate?: string;
-  endDate?: string;
-}) => {
+}: GetAllLeadsParams) => {
   try {
     const { offset, limit: pageLimit } = getPagination({ page, limit });
 
+    // Base where condition
     const whereCondition: any = { ...filters };
 
+    // Optional campaign filter
+    if (campaign && campaign.trim() !== "") {
+      whereCondition.campaignName = { [Op.like]: `%${campaign.trim()}%` };
+    }
+
+    // Date filter
     if (filterType) {
       const dateFilter = buildDateFilter(filterType, startDate, endDate);
       Object.assign(whereCondition, dateFilter);
     }
 
-    const searchCondition = search
-      ? {
-          [Op.or]: [
-            Sequelize.literal(
-              `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.first_name')) LIKE '%${search}%'`
-            ),
-            Sequelize.literal(
-              `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.last_name')) LIKE '%${search}%'`
-            ),
-            Sequelize.literal(
-              `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.agent_name')) LIKE '%${search}%'`
-            ),
-            Sequelize.literal(
-              `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.phone_number')) LIKE '%${search}%'`
-            ),
-            Sequelize.literal(
-              `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.state')) LIKE '%${search}%'`
-            ),
-          ],
-        }
-      : {};
+    // Dynamic conditions (if any)
+    if (conditions.length > 0) {
+      Object.assign(whereCondition, { [Op.and]: conditions });
+    }
 
-    const leadsData = await Lead.findAndCountAll({
-      offset,
-      limit: pageLimit,
-      where: {
-        ...whereCondition,
-        ...(search ? { [Op.and]: searchCondition } : {}),
-      },
+    // STEP 1: Fetch ALL leads matching filters (no pagination yet)
+    const allLeads = await Lead.findAll({
+      where: whereCondition,
       order: [["createdAt", "DESC"]],
     });
 
-    const rowsWithAssignees = await Promise.all(
-      leadsData.rows.map(async (lead) => {
+    // STEP 2: Enrich assignees
+    const enrichedLeads = await Promise.all(
+      allLeads.map(async (lead) => {
         let assigneesRaw: AssigneeWithStatus[] = [];
 
         if (typeof lead.assignees === "string") {
           try {
-            assigneesRaw = JSON.parse(lead.assignees) as AssigneeWithStatus[];
+            assigneesRaw = JSON.parse(lead.assignees);
           } catch {
             assigneesRaw = [];
           }
@@ -144,15 +125,33 @@ export const getAllLeads = async ({
       })
     );
 
-    return getPagingData(
-      { count: leadsData.count, rows: rowsWithAssignees },
-      page,
-      pageLimit
-    );
+    // STEP 3: GLOBAL search (search anywhere in JSON + campaign + assignees)
+    const filteredLeads = search
+      ? enrichedLeads.filter((lead) =>
+        JSON.stringify(lead).toLowerCase().includes(search.toLowerCase())
+      )
+      : enrichedLeads;
+
+    // STEP 4: PAGINATION
+    const total = filteredLeads.length;
+    const start = (page - 1) * limit;
+    const end = start + limit;
+
+    const paginated = filteredLeads.slice(start, end);
+
+    // STEP 5: Return paging data
+    return {
+      totalItems: total,
+      rows: paginated,
+      currentPage: page,
+      totalPages: Math.ceil(total / limit),
+      pageSize: limit,
+    };
   } catch (error: any) {
     throw new Error(`Error fetching leads: ${error.message}`);
   }
 };
+
 export const getLeadById = async (leadId: number): Promise<LeadAttributes> => {
   try {
     const lead = await Lead.findByPk(leadId);
@@ -207,39 +206,44 @@ interface GetLeadsByCampaignParams {
   campaignName: string;
   page?: number;
   limit?: number;
+  search?: string;
+
+}export interface EnrichedAssignee {
+  id: number;
+  firstname: string;
+  lastname: string;
+  email: string;
+  status: LeadStatus;
 }
+
 
 export const getLeadsByCampaign = async ({
   campaignName,
   page = 1,
   limit = 10,
+  search = "",
 }: GetLeadsByCampaignParams): Promise<any> => {
   try {
-    const { offset, limit: paginationLimit } = getPagination({ page, limit });
-
-    const leads = await Lead.findAndCountAll({
+    // Step 1: Fetch ALL leads for the campaign (NO pagination)
+    const allLeads = await Lead.findAll({
       where: { campaignName },
       order: [["createdAt", "DESC"]],
-      offset,
-      limit: paginationLimit,
     });
 
+    // Step 2: Enrich leads based on assignees
     const enrichedLeads = await Promise.all(
-      leads.rows.map(async (lead) => {
+      allLeads.map(async (lead) => {
         let assigneesRaw: AssigneeWithStatus[] = [];
 
-        if (typeof lead.assignees === "string") {
+        if (Array.isArray(lead.assignees)) {
+          assigneesRaw = lead.assignees;
+        } else if (typeof lead.assignees === "string") {
           try {
-            assigneesRaw = JSON.parse(lead.assignees) as AssigneeWithStatus[];
+            assigneesRaw = JSON.parse(lead.assignees);
           } catch {
             assigneesRaw = [];
           }
-        } else if (Array.isArray(lead.assignees)) {
-          assigneesRaw = lead.assignees;
-        } else if (
-          typeof lead.assignees === "object" &&
-          lead.assignees !== null
-        ) {
+        } else if (typeof lead.assignees === "object" && lead.assignees !== null) {
           assigneesRaw = [lead.assignees];
         }
 
@@ -247,7 +251,7 @@ export const getLeadsByCampaign = async ({
           .map((a) => a.userId)
           .filter((id): id is number => typeof id === "number");
 
-        let assigneesData: any[] = [];
+        let assigneesData: EnrichedAssignee[] = [];
 
         if (userIds.length > 0) {
           const users = await User.findAll({
@@ -260,27 +264,44 @@ export const getLeadsByCampaign = async ({
             return {
               ...user.toJSON(),
               status: assignment?.status || "pending",
-            };
+            } as EnrichedAssignee;
           });
         }
 
-        return { ...lead.toJSON(), assignees: assigneesData };
+        return {
+          ...lead.toJSON(),
+          assignees: assigneesData,
+        };
       })
     );
 
-    const response = getPagingData(
-      { count: leads.count, rows: enrichedLeads },
-      page,
-      limit
-    );
+    // Step 3: GLOBAL SEARCH across all fields
+    const filteredLeads = search
+      ? enrichedLeads.filter((lead) => {
+        const jsonStr = JSON.stringify(lead).toLowerCase();
+        return jsonStr.includes(search.toLowerCase());
+      })
+      : enrichedLeads;
 
-    return response;
+    // Step 4: Pagination AFTER filtering
+    const total = filteredLeads.length;
+    const start = (page - 1) * limit;
+    const end = start + limit;
+
+    return {
+      totalItems: total,
+      rows: filteredLeads.slice(start, end),
+      currentPage: page,
+      totalPages: Math.ceil(total / limit),
+      pageSize: limit,
+    };
   } catch (error: any) {
     throw new Error(
       `Error fetching leads for campaign ${campaignName}: ${error.message}`
     );
   }
 };
+
 
 export const updateLead = async (
   id: number,
@@ -391,10 +412,16 @@ export const assignLeadToUsers = async (
     throw new Error(`Error assigning lead: ${error.message}`);
   }
 };
-interface GetAllLeadsParams {
+export interface GetAllLeadsParams {
   page?: number;
   limit?: number;
+  filters?: any;
   search?: string;
+  campaign?: string;
+  conditions?: any[];
+  filterType?: FilterType;
+  startDate?: string;
+  endDate?: string;
 }
 
 export const getAllLeadsWithAssignee = async ({
@@ -918,8 +945,8 @@ export const getLeadsByAssigneeId = async (
         assignedAt: userAssignment?.assignedAt,
         assignmentDate: userAssignment?.assignedAt
           ? DateTime.fromISO(userAssignment.assignedAt)
-              .setZone("Asia/Karachi")
-              .toISO()
+            .setZone("Asia/Karachi")
+            .toISO()
           : DateTime.fromJSDate(lead.createdAt).setZone("Asia/Karachi").toISO(),
       };
     });
@@ -1138,7 +1165,7 @@ export const updateLeadStatusForUser = async (
       performedBy: userId,
       details: `Status changed from "${previousStatus}" to "${newStatus}"`,
     });
-  } catch (err) {}
+  } catch (err) { }
 
   return { ...(lead.toJSON() as any) };
 };

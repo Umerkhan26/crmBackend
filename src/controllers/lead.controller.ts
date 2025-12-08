@@ -19,32 +19,44 @@ export const createLead = async (req: Request, res: Response): Promise<any> => {
   }
 };
 
-export const getAllLeads = async (
-  req: Request,
-  res: Response
-): Promise<any> => {
+export const getAllLeads = async (req: Request, res: Response): Promise<any> => {
   try {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
+
     const search = (req.query.search as string) || "";
+    const campaign = req.query.campaign as string;
 
     const filterType = req.query.filterType as FilterType;
     const startDate = req.query.startDate as string;
     const endDate = req.query.endDate as string;
 
     const filters: any = {};
+
     if (req.query.status) filters.status = req.query.status;
     if (req.query.campaign_id)
       filters.campaign_id = Number(req.query.campaign_id);
+
+    // ⭐ Read dynamic JSON filters from query
+    let conditions: any[] = [];
+    if (req.query.conditions) {
+      try {
+        conditions = JSON.parse(req.query.conditions as string);
+      } catch (e) {
+        console.log("Invalid conditions format");
+      }
+    }
 
     const leadsData = await LeadService.getAllLeads({
       page,
       limit,
       search,
       filters,
+      campaign,
       filterType,
       startDate,
       endDate,
+      conditions, // ⭐ pass dynamic filters
     });
 
     return res.status(200).json({
@@ -59,6 +71,7 @@ export const getAllLeads = async (
     });
   }
 };
+
 
 export const getLeadById = async (
   req: Request,
@@ -99,13 +112,16 @@ export const getLeadsByCampaign = async (
       ? parseInt(req.query.limit as string, 10)
       : 10;
 
+    const search = req.query.search ? String(req.query.search) : ""; // <-- ADD THIS
+
     const leads = await LeadService.getLeadsByCampaign({
       campaignName,
       page,
       limit,
+      search, // <-- PASS THIS
     });
 
-    if (!leads || !leads.data || leads.data.length === 0) {
+    if (!leads || !leads.rows || leads.rows.length === 0) {
       return res.status(200).json({
         success: true,
         message: "No leads found for this campaign",
@@ -127,6 +143,7 @@ export const getLeadsByCampaign = async (
     });
   }
 };
+
 
 export const updateLead = async (req: Request, res: Response): Promise<any> => {
   try {
@@ -174,7 +191,8 @@ export const assignUserToLead = async (
       userIds = req.body.userIds
         .map((id: string | number) => parseInt(id as string, 10))
         .filter((id: number) => !isNaN(id));
-    } else if (req.body.userId) {
+    }
+    else if (req.body.userId) {
       const singleId = parseInt(req.body.userId, 10);
       if (!isNaN(singleId)) {
         userIds = [singleId];
@@ -217,32 +235,27 @@ export const getAllLeadsWithAssignee = async (
       ? parseInt(req.query.limit as string, 10)
       : 10;
     const search = req.query.search ? (req.query.search as string).trim() : "";
-
     const campaign = req.query.campaign
       ? (req.query.campaign as string)
       : undefined;
-
     const filterType = req.query.filterType
       ? (req.query.filterType as FilterType)
       : undefined;
-
     const startDate = req.query.startDate
       ? (req.query.startDate as string)
       : undefined;
     const endDate = req.query.endDate
       ? (req.query.endDate as string)
       : undefined;
-
     let conditions: any[] = [];
     if (req.query.conditions) {
       try {
         conditions = JSON.parse(req.query.conditions as string);
-        console.log("📋 Backend received conditions:", conditions);
+        console.log(":clipboard: Backend received conditions:", conditions);
       } catch (error) {
         console.error("Error parsing conditions:", error);
       }
     }
-
     const leads = await LeadService.getAllLeadsWithAssignee({
       page,
       limit,
@@ -253,7 +266,6 @@ export const getAllLeadsWithAssignee = async (
       endDate,
       conditions,
     });
-
     if (!leads || !leads.data || leads.data.length === 0) {
       return res.status(200).json({
         success: true,
@@ -264,7 +276,6 @@ export const getAllLeadsWithAssignee = async (
         currentPage: page,
       });
     }
-
     return res.status(200).json({
       success: true,
       ...leads,
@@ -276,7 +287,6 @@ export const getAllLeadsWithAssignee = async (
     });
   }
 };
-
 export const getLeadsByAssigneeId = async (
   req: Request,
   res: Response

@@ -583,22 +583,19 @@ export const getAssignmentCounts = async () => {
   };
 };
 
-interface GetUnassignedLeadsParams {
-  page?: number;
-  limit?: number;
-}
 
-interface GetUnassignedLeadsParams {
+
+export interface GetUnassignedLeadsParams {
   page?: number;
   limit?: number;
   searchTerm?: string;
+  campaign?: string;
+  filterType?: "between" | "from" | "to"; // restrict to exact strings
+  startDate?: string;
+  endDate?: string;
 }
 
-interface GetUnassignedLeadsParams {
-  page?: number;
-  limit?: number;
-  searchTerm?: string;
-}
+
 
 export const getUnassignedLeads = async ({
   page = 1,
@@ -608,85 +605,123 @@ export const getUnassignedLeads = async ({
   filterType,
   startDate,
   endDate,
-}: {
-  page?: number;
-  limit?: number;
-  searchTerm?: string;
-  campaign?: string;
-  filterType?: FilterType;
-  startDate?: string;
-  endDate?: string;
-}) => {
+}: GetUnassignedLeadsParams) => {
   try {
-    const { offset, limit: paginationLimit } = getPagination({ page, limit });
+    const { offset, limit: pageLimit } = getPagination({ page, limit });
 
-    const escapedSearch = searchTerm.trim().toLowerCase().replace(/'/g, "\\'");
-    const s = `%${escapedSearch}%`;
+    // STEP 1: Fetch all unassigned leads
+    const allLeads = await Lead.findAll({
+      where: Sequelize.literal(
+        "(assignees IS NULL OR JSON_LENGTH(assignees) = 0)"
+      ),
+      order: [["createdAt", "DESC"]],
+    });
 
-    const andConditions: any[] = [
-      Sequelize.literal("(assignees IS NULL OR JSON_LENGTH(assignees) = 0)"),
-    ];
+    // STEP 2: Enrich assignees
+    type LeadWithAssignees = {
+      id: number;
+      campaignName: string;
+      leadData: any;
+      assignees: any[];
+      createdAt: Date;
+      updatedAt: Date;
+    };
+
+    const enrichedLeads: LeadWithAssignees[] = await Promise.all(
+      allLeads.map(async (lead) => {
+        let assigneesRaw: AssigneeWithStatus[] = [];
+
+        if (lead.assignees) {
+          try {
+            const parsed =
+              typeof lead.assignees === "string"
+                ? JSON.parse(lead.assignees)
+                : lead.assignees;
+            assigneesRaw = Array.isArray(parsed) ? parsed : [parsed];
+          } catch {
+            assigneesRaw = [];
+          }
+        }
+
+        const userIds = assigneesRaw
+          .map((a) => a.userId)
+          .filter((id): id is number => typeof id === "number");
+
+        let assigneesData: any[] = [];
+
+        if (userIds.length > 0) {
+          const users = await User.findAll({
+            where: { id: userIds },
+            attributes: ["id", "firstname", "lastname", "email"],
+          });
+
+          assigneesData = users.map((user) => {
+            const assignment = assigneesRaw.find((a) => a.userId === user.id);
+            return {
+              ...user.toJSON(),
+              status: assignment?.status || "pending",
+            };
+          });
+        }
+
+        const plainLead = lead.toJSON() as LeadWithAssignees;
+        plainLead.assignees = assigneesData;
+
+        return plainLead;
+      })
+    );
+
+    // STEP 3: Optional filters (campaign + date)
+    let filteredLeads = enrichedLeads;
 
     if (campaign && campaign.trim() !== "") {
-      const campaignCondition = {
-        campaignName: { [Op.like]: `%${campaign.trim()}%` },
-      };
-      andConditions.push(campaignCondition);
+      filteredLeads = filteredLeads.filter((lead) =>
+        lead.campaignName.toLowerCase().includes(campaign.trim().toLowerCase())
+      );
     }
 
-    if (filterType) {
-      const dateFilter = buildDateFilter(filterType, startDate, endDate);
-      andConditions.push(dateFilter);
-    }
+    if (filterType && (filterType === "between" || filterType === "from" || filterType === "to")) {
+      const start = startDate ? new Date(startDate) : undefined;
+      const end = endDate ? new Date(endDate) : undefined;
 
-    if (escapedSearch) {
-      const jsonSearchCondition = `
-        LOWER(JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.agent_name'))) LIKE '${s}'
-        OR LOWER(JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.first_name'))) LIKE '${s}'
-        OR LOWER(JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.last_name'))) LIKE '${s}'
-        OR LOWER(JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.phone_number'))) LIKE '${s}'
-        OR LOWER(JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.state'))) LIKE '${s}'
-        OR LOWER(JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.email'))) LIKE '${s}'
-        OR LOWER(campaignName) LIKE '${s}'
-      `;
-      andConditions.push(Sequelize.literal(`(${jsonSearchCondition})`));
-    }
-
-    const whereCondition = { [Op.and]: andConditions };
-
-    const unassignedLeads = await Lead.findAndCountAll({
-      where: whereCondition,
-      order: [["createdAt", "DESC"]],
-      offset,
-      limit: paginationLimit,
-    });
-
-    const normalizedLeads = unassignedLeads.rows.map((lead: any) => {
-      let assigneesRaw: any[] = [];
-      if (lead.assignees) {
-        try {
-          const parsed =
-            typeof lead.assignees === "string"
-              ? JSON.parse(lead.assignees)
-              : lead.assignees;
-          assigneesRaw = Array.isArray(parsed) ? parsed : [parsed];
-        } catch {
-          assigneesRaw = [];
+      filteredLeads = filteredLeads.filter((lead) => {
+        const createdAt = new Date(lead.createdAt);
+        if (filterType === "between" && start && end) {
+          return createdAt >= start && createdAt <= end;
+        } else if (filterType === "from" && start) {
+          return createdAt >= start;
+        } else if (filterType === "to" && end) {
+          return createdAt <= end;
         }
-      }
-      return { ...(lead.toJSON() as any), assignees: assigneesRaw };
-    });
+        return true;
+      });
+    }
 
-    return getPagingData(
-      { count: unassignedLeads.count, rows: normalizedLeads },
-      page,
-      limit
-    );
+    // STEP 4: Global search
+    if (searchTerm && searchTerm.trim() !== "") {
+      const s = searchTerm.trim().toLowerCase();
+      filteredLeads = filteredLeads.filter((lead) =>
+        JSON.stringify(lead).toLowerCase().includes(s)
+      );
+    }
+
+    // STEP 5: Pagination
+    const total = filteredLeads.length;
+    const startIndex = (page - 1) * limit;
+    const endIndex = startIndex + limit;
+    const paginatedLeads = filteredLeads.slice(startIndex, endIndex);
+
+    return {
+      totalItems: total,
+      rows: paginatedLeads,
+      currentPage: page,
+      totalPages: Math.ceil(total / limit),
+      pageSize: limit,
+    };
   } catch (error: any) {
     throw new Error(`Error fetching unassigned leads: ${error.message}`);
   }
 };
-
 const buildDynamicFilters = (conditions: any[]) => {
   if (!conditions || conditions.length === 0) return {};
 

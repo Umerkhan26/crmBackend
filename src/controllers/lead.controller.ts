@@ -356,7 +356,7 @@ export const getUnassignedLeads = async (
       : undefined;
 
     const filterType = req.query.filterType
-      ? (req.query.filterType as FilterType)
+      ? (req.query.filterType as "between" | "from" | "to")
       : undefined;
 
     const startDate = req.query.startDate
@@ -366,6 +366,7 @@ export const getUnassignedLeads = async (
       ? (req.query.endDate as string)
       : undefined;
 
+    // Call service
     const leads = await LeadService.getUnassignedLeads({
       page,
       limit,
@@ -376,20 +377,23 @@ export const getUnassignedLeads = async (
       endDate,
     });
 
-    if (!leads || !leads.data || leads.data.length === 0) {
+    // If no leads
+    if (!leads || !leads.rows || leads.rows.length === 0) {
       return res.status(200).json({
         success: true,
         message: "No unassigned leads found",
-        data: [],
+        rows: [],
         totalItems: 0,
         totalPages: 0,
         currentPage: page,
       });
     }
 
+    // Success response
     return res.status(200).json({
       success: true,
-      ...leads,
+      message: "Unassigned leads fetched successfully",
+      ...leads, // contains: rows, totalItems, totalPages, currentPage, pageSize
     });
   } catch (error: any) {
     return res.status(500).json({
@@ -399,6 +403,7 @@ export const getUnassignedLeads = async (
     });
   }
 };
+
 
 export const sendEmailToLead = async (
   req: Request,

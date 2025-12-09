@@ -19,7 +19,10 @@ export const createLead = async (req: Request, res: Response): Promise<any> => {
   }
 };
 
-export const getAllLeads = async (req: Request, res: Response): Promise<any> => {
+export const getAllLeads = async (
+  req: Request,
+  res: Response
+): Promise<any> => {
   try {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
@@ -72,7 +75,6 @@ export const getAllLeads = async (req: Request, res: Response): Promise<any> => 
   }
 };
 
-
 export const getLeadById = async (
   req: Request,
   res: Response
@@ -100,19 +102,33 @@ export const getLeadById = async (
     });
   }
 };
-
 export const getLeadsByCampaign = async (
   req: Request,
   res: Response
 ): Promise<any> => {
   try {
     const { campaignName } = req.params;
+
     const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
-    const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 10;
+    const limit = req.query.limit
+      ? parseInt(req.query.limit as string, 10)
+      : 10;
+
     const search = req.query.search ? String(req.query.search).trim() : "";
 
-    // Accept dynamic JSON conditions from query (optional)
-    // Example: ?conditions=[{"field":"first_name","operator":"contains","value":"john"}]
+    const startDate = req.query.startDate
+      ? (req.query.startDate as string)
+      : undefined;
+
+    const endDate = req.query.endDate
+      ? (req.query.endDate as string)
+      : undefined;
+
+    const filterType = req.query.filterType
+      ? (req.query.filterType as FilterType)
+      : undefined;
+
+    // Dynamic JSON filters
     let conditions: any[] = [];
     if (req.query.conditions) {
       try {
@@ -122,16 +138,18 @@ export const getLeadsByCampaign = async (
       }
     }
 
-    // Call service
+    // Service call
     const leads = await LeadService.getLeadsByCampaign({
       campaignName,
       page,
       limit,
       search,
-      conditions, // Pass dynamic filters
+      conditions,
+      startDate,
+      endDate,
+      filterType,
     });
 
-    // If no leads
     if (!leads || !leads.rows || leads.rows.length === 0) {
       return res.status(200).json({
         success: true,
@@ -143,11 +161,10 @@ export const getLeadsByCampaign = async (
       });
     }
 
-    // Success response
     return res.status(200).json({
       success: true,
       message: "Leads fetched successfully",
-      ...leads, // contains: rows, totalItems, totalPages, currentPage, pageSize
+      ...leads,
     });
   } catch (error: any) {
     return res.status(500).json({
@@ -156,8 +173,6 @@ export const getLeadsByCampaign = async (
     });
   }
 };
-
-
 
 export const updateLead = async (req: Request, res: Response): Promise<any> => {
   try {
@@ -205,8 +220,7 @@ export const assignUserToLead = async (
       userIds = req.body.userIds
         .map((id: string | number) => parseInt(id as string, 10))
         .filter((id: number) => !isNaN(id));
-    }
-    else if (req.body.userId) {
+    } else if (req.body.userId) {
       const singleId = parseInt(req.body.userId, 10);
       if (!isNaN(singleId)) {
         userIds = [singleId];
@@ -429,8 +443,6 @@ export const getUnassignedLeads = async (
     });
   }
 };
-
-
 
 export const sendEmailToLead = async (
   req: Request,

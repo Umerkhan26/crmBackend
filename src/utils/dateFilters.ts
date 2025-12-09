@@ -6,7 +6,11 @@ export type FilterType =
   | "weekly"
   | "monthly"
   | "yearly"
-  | "custom";
+  | "custom"
+  | "between"
+  | "from"
+  | "to"
+  | "";
 
 export const buildDateFilter = (
   filterType: FilterType,
@@ -105,6 +109,8 @@ export const buildDateFilter = (
       );
       break;
 
+    // Handle between/from/to cases
+    case "between":
     case "custom":
       if (startDate && endDate) {
         const localCustomStart = new Date(`${startDate}T00:00:00`);
@@ -112,7 +118,7 @@ export const buildDateFilter = (
 
         start = new Date(
           localCustomStart.getTime() -
-          localCustomStart.getTimezoneOffset() * 60000
+            localCustomStart.getTimezoneOffset() * 60000
         );
         end = new Date(
           localCustomEnd.getTime() - localCustomEnd.getTimezoneOffset() * 60000
@@ -120,6 +126,29 @@ export const buildDateFilter = (
       }
       break;
 
+    case "from":
+      if (startDate) {
+        const localFromStart = new Date(`${startDate}T00:00:00`);
+        start = new Date(
+          localFromStart.getTime() - localFromStart.getTimezoneOffset() * 60000
+        );
+        // No end date means filter from startDate onward
+        end = null;
+      }
+      break;
+
+    case "to":
+      if (endDate) {
+        const localToEnd = new Date(`${endDate}T23:59:59`);
+        end = new Date(
+          localToEnd.getTime() - localToEnd.getTimezoneOffset() * 60000
+        );
+        // No start date means filter up to endDate
+        start = null;
+      }
+      break;
+
+    case "":
     default:
       return {};
   }
@@ -128,6 +157,18 @@ export const buildDateFilter = (
     return {
       createdAt: {
         [Op.between]: [start, end],
+      },
+    };
+  } else if (start) {
+    return {
+      createdAt: {
+        [Op.gte]: start,
+      },
+    };
+  } else if (end) {
+    return {
+      createdAt: {
+        [Op.lte]: end,
       },
     };
   }

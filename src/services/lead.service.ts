@@ -128,8 +128,8 @@ export const getAllLeads = async ({
     // STEP 3: GLOBAL search (search anywhere in JSON + campaign + assignees)
     const filteredLeads = search
       ? enrichedLeads.filter((lead) =>
-        JSON.stringify(lead).toLowerCase().includes(search.toLowerCase())
-      )
+          JSON.stringify(lead).toLowerCase().includes(search.toLowerCase())
+        )
       : enrichedLeads;
 
     // STEP 4: PAGINATION
@@ -207,8 +207,9 @@ interface GetLeadsByCampaignParams {
   page?: number;
   limit?: number;
   search?: string;
-
-}export interface EnrichedAssignee {
+  filterType?: FilterType;
+}
+export interface EnrichedAssignee {
   id: number;
   firstname: string;
   lastname: string;
@@ -216,28 +217,42 @@ interface GetLeadsByCampaignParams {
   status: LeadStatus;
 }
 
-
 export const getLeadsByCampaign = async ({
   campaignName,
   page = 1,
   limit = 10,
   search = "",
-  conditions = [], // <-- dynamic filters
-}: GetLeadsByCampaignParams & { conditions?: any[] }): Promise<any> => {
+  conditions = [],
+  startDate,
+  endDate,
+  filterType,
+}: GetLeadsByCampaignParams & {
+  conditions?: any[];
+  startDate?: string;
+  endDate?: string;
+  filterType?: FilterType;
+}): Promise<any> => {
   try {
     // Step 1: Build dynamic filter for JSON fields
-    const dynamicFilter = conditions.length > 0 ? buildDynamicFilters(conditions) : {};
+    const dynamicFilter =
+      conditions.length > 0 ? buildDynamicFilters(conditions) : {};
 
-    // Step 2: Fetch ALL leads for the campaign (NO pagination)
+    // Step 2: Handle Date Filters (similar to the other function)
+    const dateFilter = filterType
+      ? buildDateFilter(filterType, startDate, endDate)
+      : {};
+
+    // Step 3: Fetch ALL leads for the campaign (NO pagination)
     const allLeads = await Lead.findAll({
       where: {
         campaignName,
         ...dynamicFilter,
+        ...dateFilter, // Add the date filter to the `where` condition
       },
       order: [["createdAt", "DESC"]],
     });
 
-    // Step 3: Enrich leads based on assignees
+    // Step 4: Enrich leads based on assignees
     const enrichedLeads = await Promise.all(
       allLeads.map(async (lead) => {
         let assigneesRaw: AssigneeWithStatus[] = [];
@@ -250,7 +265,10 @@ export const getLeadsByCampaign = async ({
           } catch {
             assigneesRaw = [];
           }
-        } else if (typeof lead.assignees === "object" && lead.assignees !== null) {
+        } else if (
+          typeof lead.assignees === "object" &&
+          lead.assignees !== null
+        ) {
           assigneesRaw = [lead.assignees];
         }
 
@@ -282,15 +300,15 @@ export const getLeadsByCampaign = async ({
       })
     );
 
-    // Step 4: GLOBAL SEARCH across all fields
+    // Step 5: GLOBAL SEARCH across all fields
     const filteredLeads = search
       ? enrichedLeads.filter((lead) => {
-        const jsonStr = JSON.stringify(lead).toLowerCase();
-        return jsonStr.includes(search.toLowerCase());
-      })
+          const jsonStr = JSON.stringify(lead).toLowerCase();
+          return jsonStr.includes(search.toLowerCase());
+        })
       : enrichedLeads;
 
-    // Step 5: Pagination AFTER filtering
+    // Step 6: Pagination AFTER filtering
     const total = filteredLeads.length;
     const start = (page - 1) * limit;
     const end = start + limit;
@@ -308,7 +326,6 @@ export const getLeadsByCampaign = async ({
     );
   }
 };
-
 
 export const updateLead = async (
   id: number,
@@ -451,14 +468,10 @@ export const getAllLeadsWithAssignee = async ({
   conditions?: any[]; // ← added
 }) => {
   try {
-    const { offset, limit: paginationLimit } = getPagination({ page, limit });
-
     const baseCondition = Sequelize.literal("JSON_LENGTH(assignees) > 0");
-
     const whereConditions: any = {
       [Op.and]: [baseCondition],
     };
-
     // ─────────────────────────────────────────
     // Campaign filter
     // ─────────────────────────────────────────
@@ -467,7 +480,6 @@ export const getAllLeadsWithAssignee = async ({
         campaignName: { [Op.like]: `%${campaign.trim()}%` },
       });
     }
-
     // ─────────────────────────────────────────
     // Date filter
     // ─────────────────────────────────────────
@@ -475,7 +487,6 @@ export const getAllLeadsWithAssignee = async ({
       const dateFilter = buildDateFilter(filterType, startDate, endDate);
       whereConditions[Op.and].push(dateFilter);
     }
-
     // ─────────────────────────────────────────
     // ⭐ Dynamic JSON field filtering (main part)
     // ─────────────────────────────────────────
@@ -483,46 +494,19 @@ export const getAllLeadsWithAssignee = async ({
       const dynamicFilter = buildDynamicFilters(conditions);
       whereConditions[Op.and].push(dynamicFilter);
     }
-
     // ─────────────────────────────────────────
-    // Search filter
+    // Fetch ALL leads (NO pagination, search applied later)
     // ─────────────────────────────────────────
-    if (search && search.trim() !== "") {
-      const s = `%${search.trim().toLowerCase()}%`;
-
-      const jsonSearchCondition = Sequelize.literal(`
-        (
-          LOWER(JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.agent_name'))) LIKE '${s}'
-          OR LOWER(JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.first_name'))) LIKE '${s}'
-          OR LOWER(JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.last_name'))) LIKE '${s}'
-          OR LOWER(JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.phone_number'))) LIKE '${s}'
-          OR LOWER(JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.state'))) LIKE '${s}'
-          OR LOWER(JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.email'))) LIKE '${s}'
-        )
-      `);
-
-      whereConditions[Op.and].push({
-        [Op.or]: [{ campaignName: { [Op.like]: s } }, jsonSearchCondition],
-      });
-    }
-
-    // ─────────────────────────────────────────
-    // Fetch leads
-    // ─────────────────────────────────────────
-    const leads = await Lead.findAndCountAll({
+    const leads = await Lead.findAll({
       where: whereConditions,
       order: [["createdAt", "DESC"]],
-      offset,
-      limit: paginationLimit,
     });
-
     // ─────────────────────────────────────────
     // Enrich assignees
     // ─────────────────────────────────────────
     const enrichedLeads = await Promise.all(
-      leads.rows.map(async (lead: any) => {
+      leads.map(async (lead: any) => {
         let assigneesRaw: any[] = [];
-
         if (lead.assignees) {
           try {
             const parsed =
@@ -534,19 +518,15 @@ export const getAllLeadsWithAssignee = async ({
             assigneesRaw = [];
           }
         }
-
         const userIds = assigneesRaw
           .map((a) => a.userId ?? a)
           .filter((id: any) => typeof id === "number");
-
         let assigneesData: any[] = [];
-
         if (userIds.length > 0) {
           const users = await User.findAll({
             where: { id: userIds },
             attributes: ["id", "firstname", "lastname", "email"],
           });
-
           assigneesData = users.map((user) => {
             const assignment = assigneesRaw.find(
               (a) => a.userId === user.id || a === user.id
@@ -557,19 +537,27 @@ export const getAllLeadsWithAssignee = async ({
             };
           });
         }
-
         return { ...(lead.toJSON() as any), assignees: assigneesData };
       })
     );
-
     // ─────────────────────────────────────────
-    // Pagination response
+    // GLOBAL SEARCH across all fields
     // ─────────────────────────────────────────
-    return getPagingData(
-      { count: leads.count, rows: enrichedLeads },
-      page,
-      limit
-    );
+    const filteredLeads =
+      search && search.trim() !== ""
+        ? enrichedLeads.filter((lead) => {
+            const jsonStr = JSON.stringify(lead).toLowerCase();
+            return jsonStr.includes(search.trim().toLowerCase());
+          })
+        : enrichedLeads;
+    // ─────────────────────────────────────────
+    // Pagination AFTER filtering
+    // ─────────────────────────────────────────
+    const total = filteredLeads.length;
+    const start = (page - 1) * limit;
+    const end = start + limit;
+    const paginatedRows = filteredLeads.slice(start, end);
+    return getPagingData({ count: total, rows: paginatedRows }, page, limit);
   } catch (error: any) {
     throw new Error(`Error fetching leads with assignees: ${error.message}`);
   }
@@ -590,19 +578,15 @@ export const getAssignmentCounts = async () => {
   };
 };
 
-
-
 export interface GetUnassignedLeadsParams {
   page?: number;
   limit?: number;
   searchTerm?: string;
   campaign?: string;
-  filterType?: "between" | "from" | "to"; // restrict to exact strings
+  filterType?: FilterType; // restrict to exact strings
   startDate?: string;
   endDate?: string;
 }
-
-
 
 export const getUnassignedLeads = async ({
   page = 1,
@@ -612,36 +596,40 @@ export const getUnassignedLeads = async ({
   filterType,
   startDate,
   endDate,
-  conditions = [], // dynamic JSON filters
+  conditions = [],
 }: GetUnassignedLeadsParams & { conditions?: any[] }) => {
   try {
-    const { offset, limit: pageLimit } = getPagination({ page, limit });
-
-    // STEP 1: Build base where condition (unassigned leads)
-    let whereCondition: any = Sequelize.literal(
-      "(assignees IS NULL OR JSON_LENGTH(assignees) = 0)"
-    );
-
-    // STEP 2: Fetch all unassigned leads (with Sequelize.where if other filters exist)
-    const allLeads = await Lead.findAll({
+    // STEP 1: Build base where condition for unassigned leads
+    const whereCondition: any = {
+      [Op.and]: [
+        Sequelize.literal("(assignees IS NULL OR JSON_LENGTH(assignees) = 0)"),
+      ],
+    };
+    // STEP 2: Campaign filter
+    if (campaign && campaign.trim() !== "") {
+      whereCondition[Op.and].push({
+        campaignName: { [Op.like]: `%${campaign.trim()}%` },
+      });
+    }
+    // STEP 3: Date filter
+    if (filterType) {
+      const dateFilter = buildDateFilter(filterType, startDate, endDate);
+      whereCondition[Op.and].push(dateFilter);
+    }
+    // STEP 4: Dynamic JSON field filtering
+    if (conditions.length > 0) {
+      const dynamicFilter = buildDynamicFilters(conditions);
+      whereCondition[Op.and].push(dynamicFilter);
+    }
+    // STEP 5: Fetch ALL leads with Sequelize (NO search or pagination here)
+    const leads = await Lead.findAll({
       where: whereCondition,
       order: [["createdAt", "DESC"]],
     });
-
-    // STEP 3: Enrich assignees
-    type LeadWithAssignees = {
-      id: number;
-      campaignName: string;
-      leadData: any;
-      assignees: any[];
-      createdAt: Date;
-      updatedAt: Date;
-    };
-
-    const enrichedLeads: LeadWithAssignees[] = await Promise.all(
-      allLeads.map(async (lead) => {
-        let assigneesRaw: AssigneeWithStatus[] = [];
-
+    // STEP 6: Enrich assignees
+    const enrichedLeads = await Promise.all(
+      leads.map(async (lead) => {
+        let assigneesRaw: any[] = [];
         if (lead.assignees) {
           try {
             const parsed =
@@ -653,19 +641,15 @@ export const getUnassignedLeads = async ({
             assigneesRaw = [];
           }
         }
-
         const userIds = assigneesRaw
           .map((a) => a.userId)
           .filter((id): id is number => typeof id === "number");
-
         let assigneesData: any[] = [];
-
         if (userIds.length > 0) {
           const users = await User.findAll({
             where: { id: userIds },
             attributes: ["id", "firstname", "lastname", "email"],
           });
-
           assigneesData = users.map((user) => {
             const assignment = assigneesRaw.find((a) => a.userId === user.id);
             return {
@@ -674,99 +658,25 @@ export const getUnassignedLeads = async ({
             };
           });
         }
-
-        const plainLead = lead.toJSON() as LeadWithAssignees;
-        plainLead.assignees = assigneesData;
-
-        return plainLead;
+        const plainLead = lead.toJSON();
+        return { ...plainLead, assignees: assigneesData };
       })
     );
-
-    // STEP 4: Apply optional filters (campaign, date, dynamic JSON conditions)
-    let filteredLeads = enrichedLeads;
-
-    // campaign filter
-    if (campaign && campaign.trim() !== "") {
-      filteredLeads = filteredLeads.filter((lead) =>
-        lead.campaignName.toLowerCase().includes(campaign.trim().toLowerCase())
-      );
-    }
-
-    // date filter
-    if (filterType && (filterType === "between" || filterType === "from" || filterType === "to")) {
-      const start = startDate ? new Date(startDate) : undefined;
-      const end = endDate ? new Date(endDate) : undefined;
-
-      filteredLeads = filteredLeads.filter((lead) => {
-        const createdAt = new Date(lead.createdAt);
-        if (filterType === "between" && start && end) {
-          return createdAt >= start && createdAt <= end;
-        } else if (filterType === "from" && start) {
-          return createdAt >= start;
-        } else if (filterType === "to" && end) {
-          return createdAt <= end;
-        }
-        return true;
-      });
-    }
-
-    // dynamic JSON filters using buildDynamicFilters
-    if (conditions.length > 0) {
-      const dynamicFilter = buildDynamicFilters(conditions);
-      filteredLeads = filteredLeads.filter((lead) => {
-        // We'll convert each lead's leadData to JSON string and evaluate dynamicFilter logic
-        // For simplicity, here we implement only "equals / contains / not contains" via string check
-        return conditions.every((c) => {
-          const fieldValue = lead.leadData?.[c.field];
-          if (fieldValue === undefined || fieldValue === null) return false;
-
-          const valStr = String(fieldValue).toLowerCase();
-          const conditionValue = String(c.value).toLowerCase();
-
-          switch (c.condition?.toLowerCase()) {
-            case "equals":
-            case "is":
-              return valStr === conditionValue;
-            case "notequals":
-            case "is not":
-            case "not equals":
-              return valStr !== conditionValue;
-            case "contains":
-              return valStr.includes(conditionValue);
-            case "notcontains":
-            case "does not contain":
-            case "not contains":
-              return !valStr.includes(conditionValue);
-            case "isblank":
-            case "is blank":
-              return valStr === "";
-            case "isnotblank":
-            case "is not blank":
-              return valStr !== "";
-            default:
-              return true;
-          }
-        });
-      });
-    }
-
-    // STEP 5: Global search
-    if (searchTerm && searchTerm.trim() !== "") {
-      const s = searchTerm.trim().toLowerCase();
-      filteredLeads = filteredLeads.filter((lead) =>
-        JSON.stringify(lead).toLowerCase().includes(s)
-      );
-    }
-
-    // STEP 6: Pagination
+    // STEP 7: GLOBAL SEARCH across all fields (applied always, after dynamic filters)
+    const filteredLeads =
+      searchTerm && searchTerm.trim() !== ""
+        ? enrichedLeads.filter((lead) => {
+            const jsonStr = JSON.stringify(lead).toLowerCase();
+            return jsonStr.includes(searchTerm.trim().toLowerCase());
+          })
+        : enrichedLeads;
+    // STEP 8: Pagination AFTER filtering
     const total = filteredLeads.length;
-    const startIndex = (page - 1) * limit;
-    const endIndex = startIndex + limit;
-    const paginatedLeads = filteredLeads.slice(startIndex, endIndex);
-
+    const start = (page - 1) * limit;
+    const end = start + limit;
     return {
       totalItems: total,
-      rows: paginatedLeads,
+      rows: filteredLeads.slice(start, end),
       currentPage: page,
       totalPages: Math.ceil(total / limit),
       pageSize: limit,
@@ -1034,8 +944,8 @@ export const getLeadsByAssigneeId = async (
         assignedAt: userAssignment?.assignedAt,
         assignmentDate: userAssignment?.assignedAt
           ? DateTime.fromISO(userAssignment.assignedAt)
-            .setZone("Asia/Karachi")
-            .toISO()
+              .setZone("Asia/Karachi")
+              .toISO()
           : DateTime.fromJSDate(lead.createdAt).setZone("Asia/Karachi").toISO(),
       };
     });
@@ -1254,7 +1164,7 @@ export const updateLeadStatusForUser = async (
       performedBy: userId,
       details: `Status changed from "${previousStatus}" to "${newStatus}"`,
     });
-  } catch (err) { }
+  } catch (err) {}
 
   return { ...(lead.toJSON() as any) };
 };

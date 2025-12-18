@@ -128,8 +128,8 @@ export const getAllLeads = async ({
     // STEP 3: GLOBAL search (search anywhere in JSON + campaign + assignees)
     const filteredLeads = search
       ? enrichedLeads.filter((lead) =>
-          JSON.stringify(lead).toLowerCase().includes(search.toLowerCase())
-        )
+        JSON.stringify(lead).toLowerCase().includes(search.toLowerCase())
+      )
       : enrichedLeads;
 
     // STEP 4: PAGINATION
@@ -303,9 +303,9 @@ export const getLeadsByCampaign = async ({
     // Step 5: GLOBAL SEARCH across all fields
     const filteredLeads = search
       ? enrichedLeads.filter((lead) => {
-          const jsonStr = JSON.stringify(lead).toLowerCase();
-          return jsonStr.includes(search.toLowerCase());
-        })
+        const jsonStr = JSON.stringify(lead).toLowerCase();
+        return jsonStr.includes(search.toLowerCase());
+      })
       : enrichedLeads;
 
     // Step 6: Pagination AFTER filtering
@@ -371,18 +371,19 @@ export const deleteLead = async (
     throw new Error(`Error deleting lead: ${error.message}`);
   }
 };
-
 export const assignLeadToUsers = async (
   leadId: number,
   userIdsToAssign: number[],
   assignedByUserId?: number
 ): Promise<LeadAttributes> => {
   try {
+    // 🔹 Fetch Lead
     const lead = await Lead.findByPk(leadId);
     if (!lead) {
       throw new Error("Lead not found");
     }
 
+    // 🔹 Normalize existing assignees
     let currentAssignees: AssigneeWithStatus[] = [];
 
     if (typeof lead.assignees === "string") {
@@ -395,13 +396,13 @@ export const assignLeadToUsers = async (
       currentAssignees = lead.assignees as AssigneeWithStatus[];
     }
 
-    const existingIds = new Set<number>(currentAssignees.map((a) => a.userId));
-
+    const existingIds = new Set(currentAssignees.map((a) => a.userId));
     const assignmentTimestamp = new Date().toISOString();
 
+    // 🔹 Prepare new assignees
     const newAssignees: AssigneeWithStatus[] = userIdsToAssign
-      .filter((id: number) => !existingIds.has(id))
-      .map((id: number) => ({
+      .filter((id) => !existingIds.has(id))
+      .map((id) => ({
         userId: id,
         status: "pending",
         assignedAt: assignmentTimestamp,
@@ -412,26 +413,53 @@ export const assignLeadToUsers = async (
       throw new Error("All provided users are already assigned to this lead.");
     }
 
-    const updatedAssignees = [...currentAssignees, ...newAssignees];
+    // 🔹 Update lead
+    await lead.update({
+      assignees: [...currentAssignees, ...newAssignees],
+    });
 
-    await lead.update({ assignees: updatedAssignees });
+    // 🔹 Fetch assigner name once
+    let assignerName: string | undefined;
 
     if (assignedByUserId) {
+      const assigner = await User.findByPk(assignedByUserId, {
+        attributes: ["firstname", "lastname"],
+      });
+
+      assignerName = assigner
+        ? `${assigner.firstname || ""} ${assigner.lastname || ""}`.trim()
+        : undefined;
+    }
+
+    // 🔹 Log activity + notify assignees
+    if (assignedByUserId) {
       for (const newUser of newAssignees) {
+        // Fetch assignee name
+        const assignee = await User.findByPk(newUser.userId, {
+          attributes: ["firstname", "lastname"],
+        });
+
+        const assigneeName = assignee
+          ? `${assignee.firstname || ""} ${assignee.lastname || ""}`.trim()
+          : `User ID ${newUser.userId}`;
+
+        // Activity log (HUMAN READABLE)
         await logActivity(
           assignedByUserId,
           "assign",
-          `Lead ID ${leadId} assigned to user ID ${newUser.userId}`
+          `Assigned lead ${lead.leadCode} to ${assigneeName}`,
+          assignerName
         );
 
+        // Notification
         await sendNotification(
           newUser.userId,
-          `You have been assigned a new lead (ID: ${leadId})`
+          `You have been assigned lead ${lead.leadCode}`
         );
       }
     }
 
-    return { ...(lead.toJSON() as any) };
+    return lead.toJSON() as LeadAttributes;
   } catch (error: any) {
     throw new Error(`Error assigning lead: ${error.message}`);
   }
@@ -546,9 +574,9 @@ export const getAllLeadsWithAssignee = async ({
     const filteredLeads =
       search && search.trim() !== ""
         ? enrichedLeads.filter((lead) => {
-            const jsonStr = JSON.stringify(lead).toLowerCase();
-            return jsonStr.includes(search.trim().toLowerCase());
-          })
+          const jsonStr = JSON.stringify(lead).toLowerCase();
+          return jsonStr.includes(search.trim().toLowerCase());
+        })
         : enrichedLeads;
     // ─────────────────────────────────────────
     // Pagination AFTER filtering
@@ -666,9 +694,9 @@ export const getUnassignedLeads = async ({
     const filteredLeads =
       searchTerm && searchTerm.trim() !== ""
         ? enrichedLeads.filter((lead) => {
-            const jsonStr = JSON.stringify(lead).toLowerCase();
-            return jsonStr.includes(searchTerm.trim().toLowerCase());
-          })
+          const jsonStr = JSON.stringify(lead).toLowerCase();
+          return jsonStr.includes(searchTerm.trim().toLowerCase());
+        })
         : enrichedLeads;
     // STEP 8: Pagination AFTER filtering
     const total = filteredLeads.length;
@@ -944,8 +972,8 @@ export const getLeadsByAssigneeId = async (
         assignedAt: userAssignment?.assignedAt,
         assignmentDate: userAssignment?.assignedAt
           ? DateTime.fromISO(userAssignment.assignedAt)
-              .setZone("Asia/Karachi")
-              .toISO()
+            .setZone("Asia/Karachi")
+            .toISO()
           : DateTime.fromJSDate(lead.createdAt).setZone("Asia/Karachi").toISO(),
       };
     });
@@ -1164,7 +1192,7 @@ export const updateLeadStatusForUser = async (
       performedBy: userId,
       details: `Status changed from "${previousStatus}" to "${newStatus}"`,
     });
-  } catch (err) {}
+  } catch (err) { }
 
   return { ...(lead.toJSON() as any) };
 };

@@ -14,7 +14,7 @@ import { buildSearchFilter } from "../utils/filterQuery";
 import Permission from "../models/permission.model";
 import ActivityLog from "../models/activityLog.model";
 import Campaign from "../models/campaign.model";
-import { Op } from "sequelize";
+import { Op, fn, col } from "sequelize";
 import { userCreateEmailTemplate } from "../Templetes/userCreateEmailTemplate";
 import { sendEmail } from "../utils/email";
 
@@ -443,4 +443,50 @@ export const getVendorsAndClients = async ({
   });
 
   return getPagingData(data, page, pageLimit);
+};
+
+
+export const getUserSummaryService = async () => {
+  // 1️⃣ TOTAL USERS
+  const totalUsers = await User.count();
+
+  // 2️⃣ USERS BY STATUS
+  const activeUsers = await User.count({
+    where: { status: "active" },
+  });
+
+  const blockedUsers = await User.count({
+    where: { status: "blocked" },
+  });
+
+  // 3️⃣ USERS BY ROLE
+  const usersByRole = await User.findAll({
+    attributes: [
+      "roleId",
+      [fn("COUNT", col("User.id")), "count"],
+    ],
+    include: [
+      {
+        model: Role,
+        as: "role",
+        attributes: ["id", "name"],
+      },
+    ],
+    group: ["roleId", "role.id"],
+  });
+
+  const roles = usersByRole.map((item: any) => ({
+    roleId: item.roleId,
+    roleName: item.role?.name || "Unknown",
+    count: Number(item.getDataValue("count")),
+  }));
+
+  return {
+    totalUsers,
+    status: {
+      active: activeUsers,
+      blocked: blockedUsers,
+    },
+    roles,
+  };
 };

@@ -8,6 +8,7 @@ import {
   updateUserController,
   blockOrUnblockUserController,
   getVendorsAndClientsHandler,
+  getUserSummaryController,
 } from "../controllers/user.controller";
 import { checkPermission } from "../middleware/checkPermission";
 import { PERMISSIONS } from "../constants/permissions";
@@ -62,5 +63,8 @@ router.put(
 );
 
 router.get("/get-vendors-clients", getVendorsAndClientsHandler);
+
+router.get("/users/summary", getUserSummaryController);
+
 
 export default router;

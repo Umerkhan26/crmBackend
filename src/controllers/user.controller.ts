@@ -7,7 +7,8 @@ import {
   loginUser,
   updateUser,
   blockOrUnblockUser,
-  getVendorsAndClients
+  getVendorsAndClients,
+  getUserSummaryService
 } from "../services/user.service";
 import { UserAttributes } from "../interfaces/user.interface";
 
@@ -223,6 +224,27 @@ export const getVendorsAndClientsHandler = async (
       success: false,
       message: "Internal Server Error",
       error: (error as Error).message,
+    });
+  }
+};
+
+
+export const getUserSummaryController = async (
+  req: Request,
+  res: Response
+): Promise<any> => {
+  try {
+    const summary = await getUserSummaryService();
+
+    return res.status(200).json({
+      success: true,
+      message: "User summary fetched successfully",
+      data: summary,
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to fetch user summary",
     });
   }
 };

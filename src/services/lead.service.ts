@@ -33,7 +33,9 @@ export const createLead = async (
   userId?: number
 ): Promise<LeadAttributes & { leadCode: string }> => {
   try {
-    const lead = await Lead.create(data);
+    // Add createdBy to the lead data if userId is provided
+    const leadDataWithCreator = userId ? { ...data, createdBy: userId } : data;
+    const lead = await Lead.create(leadDataWithCreator);
 
     if (userId) {
       await logActivity(userId, "create", `Lead created with ID ${lead.id}`);
@@ -56,7 +58,12 @@ export const getAllLeads = async ({
   filterType,
   startDate,
   endDate,
-}: GetAllLeadsParams) => {
+  userId, // Add userId parameter to filter by creator
+  isAdmin = false, // Add isAdmin flag
+}: GetAllLeadsParams & {
+  userId?: number;
+  isAdmin?: boolean;
+}) => {
   try {
     const { offset, limit: pageLimit } = getPagination({ page, limit });
 
@@ -66,6 +73,12 @@ export const getAllLeads = async ({
     // Optional campaign filter
     if (campaign && campaign.trim() !== "") {
       whereCondition.campaignName = { [Op.like]: `%${campaign.trim()}%` };
+    }
+
+    // Filter by creator if user is not admin
+    // Non-admin users should only see leads they created themselves
+    if (!isAdmin && userId) {
+      whereCondition.createdBy = userId;
     }
 
     // Date filter
@@ -121,15 +134,34 @@ export const getAllLeads = async ({
           });
         }
 
-        return { ...lead.toJSON(), assignees: assigneesData };
+        // Generate leadCode for search
+        const leadCode = (() => {
+          const initials = lead.campaignName
+            .split(" ")
+            .map((word: string) => word[0]?.toUpperCase() || "")
+            .join("");
+          return `${initials}${lead.id}`;
+        })();
+
+        return { 
+          ...lead.toJSON(), 
+          assignees: assigneesData,
+          leadCode: leadCode, // Add leadCode to the enriched lead object
+        };
       })
     );
 
-    // STEP 3: GLOBAL search (search anywhere in JSON + campaign + assignees)
+    // STEP 3: GLOBAL search (search anywhere in JSON + campaign + assignees + leadCode)
     const filteredLeads = search
-      ? enrichedLeads.filter((lead) =>
-        JSON.stringify(lead).toLowerCase().includes(search.toLowerCase())
-      )
+      ? enrichedLeads.filter((lead) => {
+        const searchLower = search.toLowerCase();
+        const jsonStr = JSON.stringify(lead).toLowerCase();
+        
+        // Explicitly check leadCode for better search accuracy
+        const leadCodeStr = (lead.leadCode || "").toLowerCase();
+        
+        return jsonStr.includes(searchLower) || leadCodeStr.includes(searchLower);
+      })
       : enrichedLeads;
 
     // STEP 4: PAGINATION
@@ -226,11 +258,15 @@ export const getLeadsByCampaign = async ({
   startDate,
   endDate,
   filterType,
+  userId, // Add userId parameter to filter by creator
+  isAdmin = false, // Add isAdmin flag to determine if user should see all leads
 }: GetLeadsByCampaignParams & {
   conditions?: any[];
   startDate?: string;
   endDate?: string;
   filterType?: FilterType;
+  userId?: number;
+  isAdmin?: boolean;
 }): Promise<any> => {
   try {
     // Step 1: Build dynamic filter for JSON fields
@@ -242,17 +278,30 @@ export const getLeadsByCampaign = async ({
       ? buildDateFilter(filterType, startDate, endDate)
       : {};
 
-    // Step 3: Fetch ALL leads for the campaign (NO pagination)
+    // Step 3: Build where condition (using old simple logic)
+    const whereCondition: any = {
+      campaignName,
+      ...dynamicFilter,
+      ...dateFilter,
+    };
+
+    // TEMPORARILY REMOVED: Filter by creator for testing
+    // if (!isAdmin && userId) {
+    //   whereCondition.createdBy = userId;
+    // }
+
+    // Step 4: Fetch ALL leads for the campaign (NO pagination)
+    console.log("🔍 getLeadsByCampaign - Campaign name:", campaignName);
+    console.log("🔍 getLeadsByCampaign - Where condition:", JSON.stringify(whereCondition, null, 2));
+    
     const allLeads = await Lead.findAll({
-      where: {
-        campaignName,
-        ...dynamicFilter,
-        ...dateFilter, // Add the date filter to the `where` condition
-      },
+      where: whereCondition,
       order: [["createdAt", "DESC"]],
     });
+    
+    console.log(`📊 Found ${allLeads.length} leads for campaign "${campaignName}"`);
 
-    // Step 4: Enrich leads based on assignees
+    // Step 5: Enrich leads based on assignees
     const enrichedLeads = await Promise.all(
       allLeads.map(async (lead) => {
         let assigneesRaw: AssigneeWithStatus[] = [];
@@ -293,18 +342,33 @@ export const getLeadsByCampaign = async ({
           });
         }
 
+        // Generate leadCode for search
+        const leadCode = (() => {
+          const initials = lead.campaignName
+            .split(" ")
+            .map((word: string) => word[0]?.toUpperCase() || "")
+            .join("");
+          return `${initials}${lead.id}`;
+        })();
+
         return {
           ...lead.toJSON(),
           assignees: assigneesData,
+          leadCode: leadCode, // Add leadCode to the enriched lead object
         };
       })
     );
 
-    // Step 5: GLOBAL SEARCH across all fields
+    // Step 5: GLOBAL SEARCH across all fields (including leadCode)
     const filteredLeads = search
       ? enrichedLeads.filter((lead) => {
+        const searchLower = search.toLowerCase();
         const jsonStr = JSON.stringify(lead).toLowerCase();
-        return jsonStr.includes(search.toLowerCase());
+        
+        // Explicitly check leadCode for better search accuracy
+        const leadCodeStr = (lead.leadCode || "").toLowerCase();
+        
+        return jsonStr.includes(searchLower) || leadCodeStr.includes(searchLower);
       })
       : enrichedLeads;
 
@@ -565,17 +629,35 @@ export const getAllLeadsWithAssignee = async ({
             };
           });
         }
-        return { ...(lead.toJSON() as any), assignees: assigneesData };
+        // Generate leadCode for search
+        const leadCode = (() => {
+          const initials = lead.campaignName
+            .split(" ")
+            .map((word: string) => word[0]?.toUpperCase() || "")
+            .join("");
+          return `${initials}${lead.id}`;
+        })();
+
+        return { 
+          ...(lead.toJSON() as any), 
+          assignees: assigneesData,
+          leadCode: leadCode, // Add leadCode to the enriched lead object
+        };
       })
     );
     // ─────────────────────────────────────────
-    // GLOBAL SEARCH across all fields
+    // GLOBAL SEARCH across all fields (including leadCode)
     // ─────────────────────────────────────────
     const filteredLeads =
       search && search.trim() !== ""
         ? enrichedLeads.filter((lead) => {
+          const searchLower = search.trim().toLowerCase();
           const jsonStr = JSON.stringify(lead).toLowerCase();
-          return jsonStr.includes(search.trim().toLowerCase());
+          
+          // Explicitly check leadCode for better search accuracy
+          const leadCodeStr = (lead.leadCode || "").toLowerCase();
+          
+          return jsonStr.includes(searchLower) || leadCodeStr.includes(searchLower);
         })
         : enrichedLeads;
     // ─────────────────────────────────────────
@@ -687,15 +769,34 @@ export const getUnassignedLeads = async ({
           });
         }
         const plainLead = lead.toJSON();
-        return { ...plainLead, assignees: assigneesData };
+        
+        // Generate leadCode for search
+        const leadCode = (() => {
+          const initials = lead.campaignName
+            .split(" ")
+            .map((word: string) => word[0]?.toUpperCase() || "")
+            .join("");
+          return `${initials}${lead.id}`;
+        })();
+
+        return { 
+          ...plainLead, 
+          assignees: assigneesData,
+          leadCode: leadCode, // Add leadCode to the enriched lead object
+        };
       })
     );
-    // STEP 7: GLOBAL SEARCH across all fields (applied always, after dynamic filters)
+    // STEP 7: GLOBAL SEARCH across all fields (including leadCode)
     const filteredLeads =
       searchTerm && searchTerm.trim() !== ""
         ? enrichedLeads.filter((lead) => {
+          const searchLower = searchTerm.trim().toLowerCase();
           const jsonStr = JSON.stringify(lead).toLowerCase();
-          return jsonStr.includes(searchTerm.trim().toLowerCase());
+          
+          // Explicitly check leadCode for better search accuracy
+          const leadCodeStr = (lead.leadCode || "").toLowerCase();
+          
+          return jsonStr.includes(searchLower) || leadCodeStr.includes(searchLower);
         })
         : enrichedLeads;
     // STEP 8: Pagination AFTER filtering
@@ -1222,6 +1323,366 @@ export const getLeadsByCampaignAndAssignee = async (
   } catch (error: any) {
     throw new Error(
       `Error fetching leads for campaign '${campaignName}' and assignee '${assigneeId}': ${error.message}`
+    );
+  }
+};
+
+export interface AssignmentHistoryItem {
+  assignedAt: string;
+  userId: number;
+  userName: string;
+  campaignName: string;
+  leadCount: number;
+}
+
+export interface GetAssignmentHistoryParams {
+  page?: number;
+  limit?: number;
+  userId?: number;
+  campaignName?: string;
+  filterType?: FilterType;
+  startDate?: string;
+  endDate?: string;
+}
+
+export const getAssignmentHistory = async ({
+  page = 1,
+  limit = 10,
+  userId,
+  campaignName,
+  filterType,
+  startDate,
+  endDate,
+}: GetAssignmentHistoryParams): Promise<{
+  data: AssignmentHistoryItem[];
+  totalItems: number;
+  currentPage: number;
+  totalPages: number;
+  pageSize: number;
+}> => {
+  try {
+    // Build base where condition for leads with assignments
+    const whereCondition: any = {
+      [Op.and]: [Sequelize.literal("JSON_LENGTH(assignees) > 0")],
+    };
+
+    // Campaign filter
+    if (campaignName && campaignName.trim() !== "") {
+      whereCondition[Op.and].push({
+        campaignName: { [Op.like]: `%${campaignName.trim()}%` },
+      });
+    }
+
+    // Fetch all leads with assignments (no pagination yet, we'll paginate after grouping)
+    const leads = await Lead.findAll({
+      where: whereCondition,
+      attributes: ["id", "campaignName", "assignees", "createdAt"],
+      order: [["createdAt", "DESC"]],
+    });
+
+    // Extract all assignments from leads
+    const allAssignments: Array<{
+      assignedAt: Date;
+      userId: number;
+      campaignName: string;
+      leadId: number;
+    }> = [];
+
+    for (const lead of leads) {
+      let assigneesRaw: AssigneeWithStatus[] = [];
+
+      if (typeof lead.assignees === "string") {
+        try {
+          assigneesRaw = JSON.parse(lead.assignees);
+        } catch {
+          assigneesRaw = [];
+        }
+      } else if (Array.isArray(lead.assignees)) {
+        assigneesRaw = lead.assignees;
+      }
+
+      for (const assignee of assigneesRaw) {
+        if (assignee.userId) {
+          const assignedDate = assignee.assignedAt
+            ? new Date(assignee.assignedAt)
+            : lead.createdAt;
+
+          allAssignments.push({
+            assignedAt: assignedDate,
+            userId: assignee.userId,
+            campaignName: lead.campaignName,
+            leadId: lead.id,
+          });
+        }
+      }
+    }
+
+    // Apply date filter to assignments
+    let filteredAssignments = allAssignments;
+    if (filterType) {
+      const dateFilter = buildDateFilter(filterType, startDate, endDate);
+      if (dateFilter.createdAt) {
+        const filterCondition = dateFilter.createdAt;
+        if (filterCondition[Op.between] && Array.isArray(filterCondition[Op.between])) {
+          const betweenValue = filterCondition[Op.between] as Date[];
+          if (betweenValue.length === 2) {
+            const [start, end] = betweenValue;
+            filteredAssignments = allAssignments.filter(
+              (a) => a.assignedAt >= start && a.assignedAt <= end
+            );
+          }
+        } else if (filterCondition[Op.gte]) {
+          const gteValue = filterCondition[Op.gte] as Date;
+          filteredAssignments = allAssignments.filter(
+            (a) => a.assignedAt >= gteValue
+          );
+        } else if (filterCondition[Op.lte]) {
+          const lteValue = filterCondition[Op.lte] as Date;
+          filteredAssignments = allAssignments.filter(
+            (a) => a.assignedAt <= lteValue
+          );
+        }
+      }
+    }
+
+    // Apply user filter
+    if (userId) {
+      filteredAssignments = filteredAssignments.filter(
+        (a) => a.userId === userId
+      );
+    }
+
+    // Apply campaign filter to assignments (additional safety check)
+    if (campaignName && campaignName.trim() !== "") {
+      const campaignFilter = campaignName.trim().toLowerCase();
+      filteredAssignments = filteredAssignments.filter(
+        (a) => a.campaignName && a.campaignName.toLowerCase().includes(campaignFilter)
+      );
+    }
+
+    // Group assignments by userId, campaignName, and assignedAt timestamp
+    // Group assignments that happen within the same minute (for bulk assignments)
+    const groupedMap = new Map<string, { count: number; assignedAt: Date; userId: number; campaignName: string }>();
+
+    for (const assignment of filteredAssignments) {
+      // Round assignedAt to the nearest minute to group bulk assignments together
+      const assignedDate = new Date(assignment.assignedAt);
+      assignedDate.setSeconds(0, 0); // Round to minute
+      
+      // Create a key using a separator that won't appear in campaign names
+      // Use ||| as separator since it's unlikely to appear in campaign names
+      const key = `${assignment.userId}|||${assignment.campaignName}|||${assignedDate.toISOString()}`;
+
+      if (!groupedMap.has(key)) {
+        groupedMap.set(key, { 
+          count: 0, 
+          assignedAt: assignedDate,
+          userId: assignment.userId,
+          campaignName: assignment.campaignName,
+        });
+      }
+      groupedMap.get(key)!.count += 1;
+    }
+
+    // Fetch user names for all unique user IDs
+    const uniqueUserIds = [
+      ...new Set(filteredAssignments.map((a) => a.userId)),
+    ];
+    const users = await User.findAll({
+      where: { id: uniqueUserIds },
+      attributes: ["id", "firstname", "lastname"],
+    });
+
+    const userMap = new Map(
+      users.map((u) => [
+        u.id,
+        `${u.firstname || ""} ${u.lastname || ""}`.trim() || "Unknown User",
+      ])
+    );
+
+    // Build history items from grouped map
+    const historyItems: AssignmentHistoryItem[] = [];
+
+    for (const [key, groupData] of groupedMap.entries()) {
+      // Parse the key: userId|||campaignName|||timestamp
+      // We already have userId and campaignName in groupData, so we can use them directly
+      historyItems.push({
+        assignedAt: groupData.assignedAt.toISOString(),
+        userId: groupData.userId,
+        userName: userMap.get(groupData.userId) || "Unknown User",
+        campaignName: groupData.campaignName,
+        leadCount: groupData.count,
+      });
+    }
+
+    // Sort by assignedAt (newest first)
+    historyItems.sort(
+      (a, b) =>
+        new Date(b.assignedAt).getTime() - new Date(a.assignedAt).getTime()
+    );
+
+    // Apply pagination
+    const totalItems = historyItems.length;
+    const { offset } = getPagination({ page, limit });
+    const paginatedItems = historyItems.slice(offset, offset + limit);
+
+    return {
+      data: paginatedItems,
+      totalItems,
+      currentPage: page,
+      totalPages: Math.ceil(totalItems / limit),
+      pageSize: limit,
+    };
+  } catch (error: any) {
+    throw new Error(
+      `Error fetching assignment history: ${error.message}`
+    );
+  }
+};
+
+interface GetAssignmentLeadsParams {
+  userId: number;
+  campaignName: string;
+  assignedAt: string; // ISO timestamp
+  page?: number;
+  limit?: number;
+  search?: string;
+}
+
+export const getAssignmentLeads = async ({
+  userId,
+  campaignName,
+  assignedAt,
+  page = 1,
+  limit = 10,
+  search,
+}: GetAssignmentLeadsParams): Promise<{
+  data: any[];
+  totalItems: number;
+  currentPage: number;
+  totalPages: number;
+  pageSize: number;
+}> => {
+  try {
+    // Parse the assignedAt timestamp and round to the minute (same as grouping logic)
+    const assignmentDate = new Date(assignedAt);
+    assignmentDate.setSeconds(0, 0); // Round to minute
+    
+    // Calculate the range for the same minute (start and end of that minute)
+    const minuteStart = new Date(assignmentDate);
+    const minuteEnd = new Date(assignmentDate);
+    minuteEnd.setSeconds(59, 999); // End of the same minute
+
+    // Fetch all leads for the campaign
+    const allLeads = await Lead.findAll({
+      where: {
+        campaignName: campaignName,
+        [Op.and]: [Sequelize.literal("JSON_LENGTH(assignees) > 0")],
+      },
+      order: [["createdAt", "DESC"]],
+    });
+
+    // Filter leads that have an assignment matching userId and assignedAt within the same minute
+    const matchingLeads: any[] = [];
+
+    for (const lead of allLeads) {
+      let assigneesRaw: AssigneeWithStatus[] = [];
+      
+      if (typeof lead.assignees === "string") {
+        try {
+          assigneesRaw = JSON.parse(lead.assignees);
+        } catch {
+          assigneesRaw = [];
+        }
+      } else if (Array.isArray(lead.assignees)) {
+        assigneesRaw = lead.assignees;
+      }
+
+      // Check if this lead has an assignment matching the criteria
+      for (const assignee of assigneesRaw) {
+        if (assignee.userId === userId) {
+          const assigneeAssignedAt = assignee.assignedAt
+            ? new Date(assignee.assignedAt)
+            : lead.createdAt;
+          
+          // Round to minute for comparison
+          const assigneeDate = new Date(assigneeAssignedAt);
+          assigneeDate.setSeconds(0, 0);
+          
+          // Check if assignedAt matches (within the same minute)
+          if (assigneeDate.getTime() === assignmentDate.getTime()) {
+            // This lead matches! Enrich it with assignee data
+            const userIds = assigneesRaw
+              .map((a) => a.userId)
+              .filter((id): id is number => typeof id === "number");
+
+            let assigneesData: any[] = [];
+            if (userIds.length > 0) {
+              const users = await User.findAll({
+                where: { id: userIds },
+                attributes: ["id", "firstname", "lastname", "email"],
+              });
+
+              assigneesData = users.map((user) => {
+                const assignment = assigneesRaw.find((a) => a.userId === user.id);
+                return {
+                  ...user.toJSON(),
+                  status: assignment?.status || "pending",
+                };
+              });
+            }
+
+            matchingLeads.push({
+              ...lead.toJSON(),
+              assignees: assigneesData,
+            });
+            
+            // Break inner loop since we found a match for this lead
+            break;
+          }
+        }
+      }
+    }
+
+    // Apply search filter if provided
+    let filteredLeads = matchingLeads;
+    if (search && search.trim() !== "") {
+      const searchLower = search.toLowerCase().trim();
+      filteredLeads = matchingLeads.filter((lead) => {
+        // Search in leadData JSON
+        const leadDataStr = JSON.stringify(lead.leadData || {}).toLowerCase();
+        // Search in campaign name
+        const campaignNameStr = (lead.campaignName || "").toLowerCase();
+        // Search in lead code
+        const initials = (lead.campaignName || "")
+          .split(" ")
+          .map((word: string) => word[0]?.toLowerCase() || "")
+          .join("");
+        const leadCodeStr = `${initials}${lead.id}`.toLowerCase();
+        
+        return (
+          leadDataStr.includes(searchLower) ||
+          campaignNameStr.includes(searchLower) ||
+          leadCodeStr.includes(searchLower)
+        );
+      });
+    }
+
+    // Apply pagination
+    const totalItems = filteredLeads.length;
+    const { offset } = getPagination({ page, limit });
+    const paginatedLeads = filteredLeads.slice(offset, offset + limit);
+
+    return {
+      data: paginatedLeads,
+      totalItems,
+      currentPage: page,
+      totalPages: Math.ceil(totalItems / limit),
+      pageSize: limit,
+    };
+  } catch (error: any) {
+    throw new Error(
+      `Error fetching assignment leads: ${error.message}`
     );
   }
 };

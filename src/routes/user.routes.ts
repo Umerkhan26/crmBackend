@@ -10,6 +10,7 @@ import {
   getVendorsAndClientsHandler,
   getUserSummaryController,
 } from "../controllers/user.controller";
+import { getDashboardStatsController } from "../controllers/dashboard.controller";
 import { checkPermission } from "../middleware/checkPermission";
 import { PERMISSIONS } from "../constants/permissions";
 import { verifyToken } from "../middleware/verifyToken.middleware";
@@ -66,5 +67,11 @@ router.get("/get-vendors-clients", getVendorsAndClientsHandler);
 
 router.get("/users/summary", getUserSummaryController);
 
+router.get(
+  "/dashboard/stats",
+  verifyToken,
+  checkPermission(PERMISSIONS.USER_GET),
+  getDashboardStatsController
+);
 
 export default router;

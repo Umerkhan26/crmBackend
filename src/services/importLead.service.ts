@@ -16,7 +16,8 @@ const excelSerialDateToDate = (serial: number): string => {
 
 export const importLeadsFromFile = async (
   fileBuffer: Buffer,
-  mappedData?: any[]
+  mappedData?: any[],
+  userId?: number // Add userId to track who imported the leads
 ) => {
 
 
@@ -48,6 +49,7 @@ export const importLeadsFromFile = async (
         campaignName: row.campaignName,
         leadData: row.leadData,
         assignees: Array.isArray(row.assignees) ? row.assignees : [],
+        createdBy: userId, // Set createdBy to track who imported the lead
       };
 
 

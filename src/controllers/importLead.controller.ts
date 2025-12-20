@@ -10,6 +10,8 @@ export const importLeads = async (
     const mappedData = req.body.mappedData
       ? JSON.parse(req.body.mappedData)
       : undefined;
+    const user = (req as any).user; // Get authenticated user
+    const userId = user?.id;
 
     if (!file && !mappedData) {
       return res
@@ -19,7 +21,8 @@ export const importLeads = async (
 
     const result = await importLeadsFromFile(
       file ? file.buffer : Buffer.from(""),
-      mappedData
+      mappedData,
+      userId // Pass userId to track who imported the leads
     );
 
     res.status(200).json({

@@ -7,12 +7,13 @@ import { getPagingData } from "../utils/paginate";
 export const createLead = async (req: Request, res: Response): Promise<any> => {
   try {
     const { campaignName, leadData } = req.body;
+    const userId = (req as any).user?.id; // Get userId from authenticated user
 
     if (!campaignName || !leadData || typeof leadData !== "object") {
       return res.status(400).json({ message: "Invalid lead data." });
     }
 
-    const lead = await LeadService.createLead({ campaignName, leadData });
+    const lead = await LeadService.createLead({ campaignName, leadData }, userId);
     return res.status(201).json({ message: "Lead created successfully", lead });
   } catch (error: any) {
     return res.status(500).json({ message: error.message });
@@ -24,6 +25,14 @@ export const getAllLeads = async (
   res: Response
 ): Promise<any> => {
   try {
+    const user = (req as any).user; // Get authenticated user
+    const userId = user?.id;
+    
+    // Check if user is admin (check role name)
+    const isAdmin = user?.role?.name?.toLowerCase() === "admin" || 
+                    user?.role?.name?.toLowerCase() === "adminn" ||
+                    user?.userrole?.toLowerCase() === "admin";
+
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
 
@@ -60,6 +69,8 @@ export const getAllLeads = async (
       startDate,
       endDate,
       conditions, // ⭐ pass dynamic filters
+      userId, // Pass userId to filter by creator
+      isAdmin, // Pass isAdmin flag
     });
 
     return res.status(200).json({
@@ -108,6 +119,13 @@ export const getLeadsByCampaign = async (
 ): Promise<any> => {
   try {
     const { campaignName } = req.params;
+    const user = (req as any).user; // Get authenticated user
+    const userId = user?.id;
+    
+    // Check if user is admin (check role name)
+    const isAdmin = user?.role?.name?.toLowerCase() === "admin" || 
+                    user?.role?.name?.toLowerCase() === "adminn" ||
+                    user?.userrole?.toLowerCase() === "admin";
 
     const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
     const limit = req.query.limit
@@ -138,7 +156,7 @@ export const getLeadsByCampaign = async (
       }
     }
 
-    // Service call
+    // Service call - pass userId and isAdmin to filter leads
     const leads = await LeadService.getLeadsByCampaign({
       campaignName,
       page,
@@ -148,6 +166,8 @@ export const getLeadsByCampaign = async (
       startDate,
       endDate,
       filterType,
+      userId, // Pass userId to filter by creator
+      isAdmin, // Pass isAdmin flag
     });
 
     if (!leads || !leads.rows || leads.rows.length === 0) {
@@ -593,5 +613,145 @@ export const getLeadsByCampaignAndAssignee = async (
     return res.status(200).json(leads);
   } catch (error: any) {
     return res.status(500).json({ message: error.message });
+  }
+};
+
+export const getAssignmentHistory = async (
+  req: Request,
+  res: Response
+): Promise<any> => {
+  try {
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+    const userId = req.query.userId
+      ? parseInt(req.query.userId as string, 10)
+      : undefined;
+    const campaignName = req.query.campaignName
+      ? (req.query.campaignName as string)
+      : undefined;
+    const filterType = req.query.filterType
+      ? (req.query.filterType as FilterType)
+      : undefined;
+    const startDate = req.query.startDate
+      ? (req.query.startDate as string)
+      : undefined;
+    const endDate = req.query.endDate
+      ? (req.query.endDate as string)
+      : undefined;
+
+    // Validate pagination
+    if (page < 1 || limit < 1) {
+      return res.status(400).json({
+        success: false,
+        message: "Page and limit must be positive integers",
+      });
+    }
+
+    // Validate userId if provided
+    if (userId !== undefined && isNaN(userId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid userId",
+      });
+    }
+
+    const result = await LeadService.getAssignmentHistory({
+      page,
+      limit,
+      userId,
+      campaignName,
+      filterType,
+      startDate,
+      endDate,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Assignment history fetched successfully",
+      ...result,
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      message: error.message || "An error occurred while fetching assignment history",
+    });
+  }
+};
+
+export const getAssignmentLeads = async (
+  req: Request,
+  res: Response
+): Promise<any> => {
+  try {
+    const userId = req.query.userId
+      ? parseInt(req.query.userId as string, 10)
+      : undefined;
+    const campaignName = req.query.campaignName
+      ? (req.query.campaignName as string)
+      : undefined;
+    const assignedAt = req.query.assignedAt
+      ? (req.query.assignedAt as string)
+      : undefined;
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+    const search = req.query.search ? (req.query.search as string) : undefined;
+
+    if (!userId || isNaN(userId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid userId is required",
+      });
+    }
+
+    if (!campaignName || campaignName.trim() === "") {
+      return res.status(400).json({
+        success: false,
+        message: "campaignName is required",
+      });
+    }
+
+    if (!assignedAt) {
+      return res.status(400).json({
+        success: false,
+        message: "assignedAt (ISO timestamp) is required",
+      });
+    }
+
+    // Validate assignedAt is a valid ISO date
+    const assignedAtDate = new Date(assignedAt);
+    if (isNaN(assignedAtDate.getTime())) {
+      return res.status(400).json({
+        success: false,
+        message: "assignedAt must be a valid ISO timestamp",
+      });
+    }
+
+    if (page < 1 || limit < 1) {
+      return res.status(400).json({
+        success: false,
+        message: "Page and limit must be positive integers",
+      });
+    }
+
+    const result = await LeadService.getAssignmentLeads({
+      userId,
+      campaignName,
+      assignedAt,
+      page,
+      limit,
+      search,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Assignment leads fetched successfully",
+      ...result,
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      message:
+        error.message || "An error occurred while fetching assignment leads",
+    });
   }
 };

@@ -22,6 +22,7 @@ export interface LeadAttributes {
   campaignName: string;
   leadData: any;
   assignees?: AssigneeWithStatus[];
+  createdBy?: number; // User ID who created the lead
 }
 
 export interface LeadCreationAttributes
@@ -43,7 +44,7 @@ export class Lead
   public get leadCode(): string {
     const initials = this.campaignName
       .split(" ")
-      .map((word) => word[0].toLowerCase())
+      .map((word) => word[0]?.toUpperCase() || "")
       .join("");
     return `${initials}${this.id}`;
   }
@@ -69,6 +70,14 @@ Lead.init(
       allowNull: true,
       defaultValue: [],
     },
+    createdBy: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      references: {
+        model: "users",
+        key: "id",
+      },
+    },
   },
   {
     sequelize: db,
@@ -80,7 +89,7 @@ Lead.init(
         const lead = this as Lead;
         const initials = lead.campaignName
           .split(" ")
-          .map((word) => word[0].toLowerCase())
+          .map((word) => word[0]?.toUpperCase() || "")
           .join("");
         return `${initials}${lead.id}`;
       },

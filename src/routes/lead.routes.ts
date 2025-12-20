@@ -120,4 +120,18 @@ router.post(
   importLeads
 );
 
+router.get(
+  "/assignment-history",
+  verifyToken,
+  checkPermission(PERMISSIONS.LEAD_GET_ALL),
+  LeadController.getAssignmentHistory
+);
+
+router.get(
+  "/assignment-leads",
+  verifyToken,
+  checkPermission(PERMISSIONS.LEAD_GET_ALL),
+  LeadController.getAssignmentLeads
+);
+
 export default router;

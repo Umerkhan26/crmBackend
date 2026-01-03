@@ -84,7 +84,18 @@ export const getAllLeads = async ({
     // Date filter
     if (filterType) {
       const dateFilter = buildDateFilter(filterType, startDate, endDate);
-      Object.assign(whereCondition, dateFilter);
+      // Only add date filter if it has actual conditions (check for createdAt property)
+      if (dateFilter && 'createdAt' in dateFilter) {
+        console.log("📅 Applying date filter (all leads):", {
+          filterType,
+          startDate,
+          endDate,
+          dateFilter,
+        });
+        Object.assign(whereCondition, dateFilter);
+      } else {
+        console.log("⚠️ Date filter returned empty object (all leads):", { filterType, startDate, endDate });
+      }
     }
 
     // Dynamic conditions (if any)
@@ -277,13 +288,34 @@ export const getLeadsByCampaign = async ({
     const dateFilter = filterType
       ? buildDateFilter(filterType, startDate, endDate)
       : {};
+    
+    // Check if dateFilter has actual conditions (check for createdAt property)
+    const hasDateFilter = filterType && dateFilter && 'createdAt' in dateFilter;
+    
+    if (hasDateFilter) {
+      console.log("📅 Applying date filter (by campaign):", {
+        filterType,
+        startDate,
+        endDate,
+        dateFilter,
+      });
+    }
 
     // Step 3: Build where condition (using old simple logic)
     const whereCondition: any = {
       campaignName,
       ...dynamicFilter,
-      ...dateFilter,
     };
+    
+    // Only merge dateFilter if it has actual conditions
+    if (hasDateFilter) {
+      Object.assign(whereCondition, dateFilter);
+      console.log("📅 Merged dateFilter into whereCondition:", {
+        whereCondition,
+        dateFilterKeys: Object.keys(dateFilter),
+        createdAtValue: whereCondition.createdAt,
+      });
+    }
 
     // TEMPORARILY REMOVED: Filter by creator for testing
     // if (!isAdmin && userId) {
@@ -577,7 +609,18 @@ export const getAllLeadsWithAssignee = async ({
     // ─────────────────────────────────────────
     if (filterType) {
       const dateFilter = buildDateFilter(filterType, startDate, endDate);
-      whereConditions[Op.and].push(dateFilter);
+      // Only add date filter if it has actual conditions (check for createdAt property)
+      if (dateFilter && 'createdAt' in dateFilter) {
+        console.log("📅 Applying date filter:", {
+          filterType,
+          startDate,
+          endDate,
+          dateFilter,
+        });
+        whereConditions[Op.and].push(dateFilter);
+      } else {
+        console.log("⚠️ Date filter returned empty object:", { filterType, startDate, endDate });
+      }
     }
     // ─────────────────────────────────────────
     // ⭐ Dynamic JSON field filtering (main part)
@@ -724,7 +767,18 @@ export const getUnassignedLeads = async ({
     // STEP 3: Date filter
     if (filterType) {
       const dateFilter = buildDateFilter(filterType, startDate, endDate);
-      whereCondition[Op.and].push(dateFilter);
+      // Only add date filter if it has actual conditions (check for createdAt property)
+      if (dateFilter && 'createdAt' in dateFilter) {
+        console.log("📅 Applying date filter (unassigned):", {
+          filterType,
+          startDate,
+          endDate,
+          dateFilter,
+        });
+        whereCondition[Op.and].push(dateFilter);
+      } else {
+        console.log("⚠️ Date filter returned empty object (unassigned):", { filterType, startDate, endDate });
+      }
     }
     // STEP 4: Dynamic JSON field filtering
     if (conditions.length > 0) {

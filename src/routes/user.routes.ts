@@ -70,7 +70,6 @@ router.get("/users/summary", getUserSummaryController);
 router.get(
   "/dashboard/stats",
   verifyToken,
-  checkPermission(PERMISSIONS.USER_GET),
   getDashboardStatsController
 );
 

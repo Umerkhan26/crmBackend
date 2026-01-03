@@ -86,4 +86,7 @@ export const PERMISSIONS = {
   SALE_CREATE: "SALE_CREATE",
 
   GET_INVOICE: "PRODUCT_INVOICE",
+
+  // Dashboard permissions
+  DASHBOARD_GET: "dashboard:get",
 };

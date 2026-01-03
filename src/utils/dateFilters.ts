@@ -23,115 +23,92 @@ export const buildDateFilter = (
 
   switch (filterType) {
     case "today":
-    case "daily":
-      const localTodayStart = new Date(
-        now.getFullYear(),
-        now.getMonth(),
-        now.getDate(),
-        0,
-        0,
-        0,
-        0
-      );
-      const localTodayEnd = new Date(
-        now.getFullYear(),
-        now.getMonth(),
-        now.getDate(),
-        23,
-        59,
-        59,
-        999
-      );
-
-      start = new Date(
-        localTodayStart.getTime() - now.getTimezoneOffset() * 60000
-      );
-      end = new Date(localTodayEnd.getTime() - now.getTimezoneOffset() * 60000);
-      break;
-
-    case "weekly": {
-      const startOfWeek = new Date(now);
-      const day = startOfWeek.getDay();
-      const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1);
-      const localWeekStart = new Date(startOfWeek.setDate(diff));
-      localWeekStart.setHours(0, 0, 0, 0);
-
-      const localWeekEnd = new Date(localWeekStart);
-      localWeekEnd.setDate(localWeekStart.getDate() + 6);
-      localWeekEnd.setHours(23, 59, 59, 999);
-
-      start = new Date(
-        localWeekStart.getTime() - localWeekStart.getTimezoneOffset() * 60000
-      );
-      end = new Date(
-        localWeekEnd.getTime() - localWeekEnd.getTimezoneOffset() * 60000
-      );
+    case "daily": {
+      // Get today's date boundaries in local timezone, then convert to UTC
+      const year = now.getFullYear();
+      const month = now.getMonth();
+      const day = now.getDate();
+      
+      // Create start and end of day in local timezone
+      const localStart = new Date(year, month, day, 0, 0, 0, 0);
+      const localEnd = new Date(year, month, day, 23, 59, 59, 999);
+      
+      // Convert to UTC: getTimezoneOffset() returns minutes difference from UTC
+      // For UTC+5 (Pakistan): offset = -300, so UTC = Local - (-300) = Local + 300 minutes
+      // For UTC-5 (US EST): offset = +300, so UTC = Local - 300 minutes
+      // Formula: UTC = Local - offset (in milliseconds)
+      const offsetMs = localStart.getTimezoneOffset() * 60000;
+      start = new Date(localStart.getTime() - offsetMs);
+      end = new Date(localEnd.getTime() - offsetMs);
       break;
     }
 
-    case "monthly":
-      const localMonthStart = new Date(
-        now.getFullYear(),
-        now.getMonth(),
-        1,
-        0,
-        0,
-        0,
-        0
-      );
-      const localMonthEnd = new Date(
-        now.getFullYear(),
-        now.getMonth() + 1,
-        0,
-        23,
-        59,
-        59,
-        999
-      );
-
-      start = new Date(
-        localMonthStart.getTime() - localMonthStart.getTimezoneOffset() * 60000
-      );
-      end = new Date(
-        localMonthEnd.getTime() - localMonthEnd.getTimezoneOffset() * 60000
-      );
+    case "weekly": {
+      // Get start of week (Monday) in local timezone
+      const year = now.getFullYear();
+      const month = now.getMonth();
+      const day = now.getDate();
+      const dayOfWeek = now.getDay();
+      
+      // Calculate Monday (day 1, where Sunday is 0)
+      const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+      const mondayDate = new Date(year, month, day + mondayOffset, 0, 0, 0, 0);
+      const sundayDate = new Date(year, month, day + mondayOffset + 6, 23, 59, 59, 999);
+      
+      // Convert to UTC
+      const offsetMs = mondayDate.getTimezoneOffset() * 60000;
+      start = new Date(mondayDate.getTime() - offsetMs);
+      end = new Date(sundayDate.getTime() - offsetMs);
       break;
+    }
 
-    case "yearly":
-      const localYearStart = new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0);
-      const localYearEnd = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999);
-
-      start = new Date(
-        localYearStart.getTime() - localYearStart.getTimezoneOffset() * 60000
-      );
-      end = new Date(
-        localYearEnd.getTime() - localYearEnd.getTimezoneOffset() * 60000
-      );
+    case "monthly": {
+      // Get first and last day of current month in local timezone
+      const year = now.getFullYear();
+      const month = now.getMonth();
+      
+      const monthStart = new Date(year, month, 1, 0, 0, 0, 0);
+      const monthEnd = new Date(year, month + 1, 0, 23, 59, 59, 999);
+      
+      // Convert to UTC
+      const offsetMs = monthStart.getTimezoneOffset() * 60000;
+      start = new Date(monthStart.getTime() - offsetMs);
+      end = new Date(monthEnd.getTime() - offsetMs);
       break;
+    }
+
+    case "yearly": {
+      const year = now.getFullYear();
+      const yearStart = new Date(year, 0, 1, 0, 0, 0, 0);
+      const yearEnd = new Date(year, 11, 31, 23, 59, 59, 999);
+      
+      // Convert to UTC
+      const offsetMs = yearStart.getTimezoneOffset() * 60000;
+      start = new Date(yearStart.getTime() - offsetMs);
+      end = new Date(yearEnd.getTime() - offsetMs);
+      break;
+    }
 
     // Handle between/from/to cases
     case "between":
     case "custom":
       if (startDate && endDate) {
+        // Parse dates as local dates, then convert to UTC
         const localCustomStart = new Date(`${startDate}T00:00:00`);
         const localCustomEnd = new Date(`${endDate}T23:59:59`);
-
-        start = new Date(
-          localCustomStart.getTime() -
-            localCustomStart.getTimezoneOffset() * 60000
-        );
-        end = new Date(
-          localCustomEnd.getTime() - localCustomEnd.getTimezoneOffset() * 60000
-        );
+        
+        const offsetMsStart = localCustomStart.getTimezoneOffset() * 60000;
+        const offsetMsEnd = localCustomEnd.getTimezoneOffset() * 60000;
+        start = new Date(localCustomStart.getTime() - offsetMsStart);
+        end = new Date(localCustomEnd.getTime() - offsetMsEnd);
       }
       break;
 
     case "from":
       if (startDate) {
         const localFromStart = new Date(`${startDate}T00:00:00`);
-        start = new Date(
-          localFromStart.getTime() - localFromStart.getTimezoneOffset() * 60000
-        );
+        const offsetMs = localFromStart.getTimezoneOffset() * 60000;
+        start = new Date(localFromStart.getTime() - offsetMs);
         // No end date means filter from startDate onward
         end = null;
       }
@@ -140,9 +117,8 @@ export const buildDateFilter = (
     case "to":
       if (endDate) {
         const localToEnd = new Date(`${endDate}T23:59:59`);
-        end = new Date(
-          localToEnd.getTime() - localToEnd.getTimezoneOffset() * 60000
-        );
+        const offsetMs = localToEnd.getTimezoneOffset() * 60000;
+        end = new Date(localToEnd.getTime() - offsetMs);
         // No start date means filter up to endDate
         start = null;
       }

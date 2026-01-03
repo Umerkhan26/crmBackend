@@ -404,7 +404,7 @@ export const getUnassignedLeads = async (
       : undefined;
 
     const filterType = req.query.filterType
-      ? (req.query.filterType as "between" | "from" | "to")
+      ? (req.query.filterType as FilterType)
       : undefined;
 
     const startDate = req.query.startDate

@@ -174,14 +174,13 @@ export const getDashboardStats = async ({ userId, isAdmin, userRole }: Dashboard
 
       const allowedCampaignNamesList = allowedCampaigns.map((c: any) => c.campaignName?.toLowerCase().trim()).filter(Boolean);
 
-      // My assigned leads (user is in assignees array AND in user's campaigns AND created by user)
-      // For datascrapper and non-admin users: only show leads they created
+      // My assigned leads (user is in assignees array AND in user's campaigns)
+      // Show all leads assigned to this user, regardless of who created them
       const myAssignedLeadsCondition = {
         [Op.and]: [
           Sequelize.literal(
             `JSON_CONTAINS(COALESCE(assignees, '[]'), JSON_OBJECT('userId', ${userId}), '$')`
           ),
-          { createdBy: userId }, // Filter by creator - only show leads created by this user
           ...(allowedCampaignNamesList.length > 0 ? [{
             campaignName: { [Op.in]: allowedCampaignNamesList },
           }] : []),

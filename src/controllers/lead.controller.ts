@@ -479,7 +479,7 @@ export const getLeadsByAssigneeId = async (
 ): Promise<any> => {
   try {
     const assigneeId = parseInt(req.params.assigneeId, 10);
-    const filterType = (req.query.filterType as FilterType) || "daily";
+    const filterType = req.query.filterType ? (req.query.filterType as FilterType) : undefined;
     const startDate = req.query.startDate as string | undefined;
     const endDate = req.query.endDate as string | undefined;
     const page = parseInt(req.query.page as string) || 1;

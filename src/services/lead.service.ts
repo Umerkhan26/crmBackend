@@ -1152,7 +1152,7 @@ const buildDynamicFilters = (conditions: any[]) => {
 
 export const getLeadsByAssigneeId = async (
   assigneeId: number,
-  filterType: FilterType = "daily",
+  filterType?: FilterType,
   startDate?: string,
   endDate?: string,
   page: number = 1,
@@ -1222,7 +1222,11 @@ export const getLeadsByAssigneeId = async (
         ? DateTime.fromISO(userAssignment.assignedAt, { zone: "Asia/Karachi" }) // FIXED monthly filter issue
         : DateTime.fromJSDate(lead.createdAt).setZone("Asia/Karachi");
 
-      // Apply date filters based on PST
+      // Apply date filters based on PST (skip if filterType is undefined/null)
+      if (!filterType) {
+        return true; // No date filtering - show all records
+      }
+
       switch (filterType) {
         case "daily": {
           const todayStart = nowPST.startOf("day");

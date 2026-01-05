@@ -19,6 +19,8 @@ import { buildDateFilter, FilterType } from "../utils/dateFilters";
 import { logLeadActivity } from "../utils/logLeadActivity";
 import Campaign from "../models/campaign.model";
 import { DateTime } from "luxon";
+import Note from "../models/note.model";
+import LeadActivity from "../models/leadActivity.model";
 
 interface PaginationParams {
   page?: number;
@@ -586,6 +588,125 @@ export const assignLeadToUsers = async (
     throw new Error(`Error assigning lead: ${error.message}`);
   }
 };
+
+export const bulkAssignLeadsToUser = async (
+  leadIds: number[],
+  userId: number,
+  assignedByUserId?: number
+): Promise<{ success: number; failed: number; results: any[] }> => {
+  try {
+    if (!leadIds || leadIds.length === 0) {
+      throw new Error("No lead IDs provided");
+    }
+
+    if (!userId) {
+      throw new Error("User ID is required");
+    }
+
+    // Fetch the assignee user once
+    const assignee = await User.findByPk(userId, {
+      attributes: ["id", "firstname", "lastname"],
+    });
+
+    if (!assignee) {
+      throw new Error("Assignee user not found");
+    }
+
+    const assigneeName = `${assignee.firstname || ""} ${assignee.lastname || ""}`.trim() || `User ID ${userId}`;
+
+    // Fetch the assigner user once (if provided)
+    let assignerName: string | undefined;
+    if (assignedByUserId) {
+      const assigner = await User.findByPk(assignedByUserId, {
+        attributes: ["firstname", "lastname"],
+      });
+      assignerName = assigner
+        ? `${assigner.firstname || ""} ${assigner.lastname || ""}`.trim()
+        : undefined;
+    }
+
+    const assignmentTimestamp = new Date().toISOString();
+    const results: any[] = [];
+    let successCount = 0;
+    let failCount = 0;
+
+    // Process each lead
+    for (const leadId of leadIds) {
+      try {
+        const lead = await Lead.findByPk(leadId);
+        if (!lead) {
+          results.push({ leadId, success: false, error: "Lead not found" });
+          failCount++;
+          continue;
+        }
+
+        // Normalize existing assignees
+        let currentAssignees: AssigneeWithStatus[] = [];
+        if (typeof lead.assignees === "string") {
+          try {
+            currentAssignees = JSON.parse(lead.assignees);
+          } catch {
+            currentAssignees = [];
+          }
+        } else if (Array.isArray(lead.assignees)) {
+          currentAssignees = lead.assignees as AssigneeWithStatus[];
+        }
+
+        // Check if user is already assigned
+        const existingIds = new Set(currentAssignees.map((a) => a.userId));
+        if (existingIds.has(userId)) {
+          results.push({ leadId, success: false, error: "User already assigned" });
+          failCount++;
+          continue;
+        }
+
+        // Add new assignee
+        const newAssignee: AssigneeWithStatus = {
+          userId: userId,
+          status: "pending",
+          assignedAt: assignmentTimestamp,
+        };
+
+        await lead.update({
+          assignees: [...currentAssignees, newAssignee],
+        });
+
+        results.push({ leadId, success: true });
+        successCount++;
+
+        // Send notification for each lead
+        if (assignedByUserId) {
+          await sendNotification(
+            userId,
+            `You have been assigned lead ${lead.leadCode || leadId}`
+          );
+        }
+      } catch (error: any) {
+        results.push({ leadId, success: false, error: error.message });
+        failCount++;
+      }
+    }
+
+    // Log a single activity for bulk assignment
+    if (assignedByUserId && successCount > 0) {
+      await logActivity(
+        assignedByUserId,
+        "assign",
+        `${successCount} lead${successCount !== 1 ? "s" : ""} assigned to ${assigneeName}`,
+        assignerName
+      );
+    }
+
+    return {
+      success: successCount,
+      failed: failCount,
+      results,
+    };
+  } catch (error: any) {
+    throw new Error(`Error bulk assigning leads: ${error.message}`);
+  }
+};
+
 export interface GetAllLeadsParams {
   page?: number;
   limit?: number;
@@ -1786,6 +1907,227 @@ export const getAssignmentLeads = async ({
   } catch (error: any) {
     throw new Error(
       `Error fetching assignment leads: ${error.message}`
+    );
+  }
+};
+
+/**
+ * Get leads with work done (notes, comments, activities, reminders)
+ * Admin only feature
+ */
+export const getLeadsWithWork = async ({
+  page = 1,
+  limit = 10,
+  search = "",
+  filterType,
+  startDate,
+  endDate,
+}: {
+  page?: number;
+  limit?: number;
+  search?: string;
+  filterType?: FilterType;
+  startDate?: string;
+  endDate?: string;
+}) => {
+  try {
+    const { offset } = getPagination({ page, limit });
+
+    // Build date filter for work done date (when note/activity was created)
+    let workDateFilter: any = null;
+    if (filterType && filterType.trim() !== "") {
+      const dateFilter = buildDateFilter(filterType, startDate, endDate);
+      if (dateFilter && 'createdAt' in dateFilter && dateFilter.createdAt) {
+        workDateFilter = dateFilter.createdAt;
+        console.log(`📅 Date filter applied: ${filterType}`, workDateFilter);
+      } else {
+        console.log(`⚠️ Date filter not built correctly for: ${filterType}`, dateFilter);
+      }
+    } else {
+      console.log(`ℹ️ No date filter - showing all leads with work`);
+    }
+
+    // Get lead IDs that have notes (with date filter if provided)
+    const notesWhere: any = { notebleType: "lead" };
+    if (workDateFilter) {
+      notesWhere.createdAt = workDateFilter;
+    }
+    
+    console.log(`🔍 Notes query where clause:`, JSON.stringify(notesWhere, null, 2));
+    const notes = await Note.findAll({
+      attributes: ['notebleId'],
+      where: notesWhere,
+      group: ['notebleId'],
+      raw: true,
+    });
+    console.log(`📝 Found ${notes.length} notes with date filter`);
+    const leadIdsFromNotes = notes.map((n: any) => n.notebleId);
+
+    // Get lead IDs that have activities (with date filter if provided)
+    const activitiesWhere: any = { entityType: "lead" };
+    if (workDateFilter) {
+      activitiesWhere.createdAt = workDateFilter;
+    }
+    
+    console.log(`🔍 Activities query where clause:`, JSON.stringify(activitiesWhere, null, 2));
+    const activities = await LeadActivity.findAll({
+      attributes: ['entityId'],
+      where: activitiesWhere,
+      group: ['entityId'],
+      raw: true,
+    });
+    console.log(`📝 Found ${activities.length} activities with date filter`);
+    const leadIdsFromActivities = activities.map((a: any) => a.entityId);
+
+    // Combine and get unique lead IDs
+    const leadIds = [...new Set([...leadIdsFromNotes, ...leadIdsFromActivities])];
+
+    if (leadIds.length === 0) {
+      return {
+        data: [],
+        totalItems: 0,
+        currentPage: page,
+        totalPages: 0,
+        pageSize: limit,
+      };
+    }
+
+    // Fetch full lead data with work summary
+    const allLeads = await Lead.findAll({
+      where: {
+        id: { [Op.in]: leadIds },
+      },
+      order: [["createdAt", "DESC"]],
+    });
+
+    // Enrich leads with work summary
+    const enrichedLeads = await Promise.all(
+      allLeads.map(async (lead) => {
+        // Get notes count (with date filter if provided)
+        const notesWhereForLead: any = { notebleId: lead.id, notebleType: "lead" };
+        if (workDateFilter) {
+          notesWhereForLead.createdAt = workDateFilter;
+        }
+        const notesCount = await Note.count({ where: notesWhereForLead });
+
+        // Get activities count (with date filter if provided)
+        const activitiesWhereForLead: any = { entityId: lead.id, entityType: "lead" };
+        if (workDateFilter) {
+          activitiesWhereForLead.createdAt = workDateFilter;
+        }
+        const activitiesCount = await LeadActivity.count({ where: activitiesWhereForLead });
+
+        // Get last work date (most recent note or activity) - only if within date filter
+        const lastNoteWhere: any = { notebleId: lead.id, notebleType: "lead" };
+        if (workDateFilter) {
+          lastNoteWhere.createdAt = workDateFilter;
+        }
+        const lastNote = await Note.findOne({
+          where: lastNoteWhere,
+          order: [["createdAt", "DESC"]],
+          attributes: ["createdAt"],
+        });
+
+        const lastActivityWhere: any = { entityId: lead.id, entityType: "lead" };
+        if (workDateFilter) {
+          lastActivityWhere.createdAt = workDateFilter;
+        }
+        const lastActivity = await LeadActivity.findOne({
+          where: lastActivityWhere,
+          order: [["createdAt", "DESC"]],
+          attributes: ["createdAt"],
+        });
+
+        const lastWorkDate = lastNote && lastActivity
+          ? (new Date(lastNote.createdAt) > new Date(lastActivity.createdAt) 
+              ? lastNote.createdAt 
+              : lastActivity.createdAt)
+          : (lastNote?.createdAt || lastActivity?.createdAt);
+
+        // Get assignees
+        let assigneesRaw: AssigneeWithStatus[] = [];
+        if (Array.isArray(lead.assignees)) {
+          assigneesRaw = lead.assignees;
+        } else if (typeof lead.assignees === "string") {
+          try {
+            assigneesRaw = JSON.parse(lead.assignees);
+          } catch {
+            assigneesRaw = [];
+          }
+        }
+
+        const userIds = assigneesRaw
+          .map((a) => a.userId)
+          .filter((id): id is number => typeof id === "number");
+
+        let assigneesData: EnrichedAssignee[] = [];
+        if (userIds.length > 0) {
+          const users = await User.findAll({
+            where: { id: userIds },
+            attributes: ["id", "firstname", "lastname", "email"],
+          });
+
+          assigneesData = users.map((user) => {
+            const assignment = assigneesRaw.find((a) => a.userId === user.id);
+            return {
+              ...user.toJSON(),
+              status: assignment?.status || "pending",
+            } as EnrichedAssignee;
+          });
+        }
+
+        // Generate leadCode
+        const initials = lead.campaignName
+          .split(" ")
+          .map((word) => word[0]?.toUpperCase() || "")
+          .join("");
+        const leadCode = `${initials}${lead.id}`;
+
+        return {
+          ...lead.toJSON(),
+          leadCode,
+          assignees: assigneesData,
+          workSummary: {
+            notesCount,
+            activitiesCount,
+            totalWorkCount: notesCount + activitiesCount,
+            lastWorkDate,
+          },
+        };
+      })
+    );
+
+    // Apply search filter if provided
+    let filteredLeads = enrichedLeads;
+    if (search && search.trim() !== "") {
+      const searchLower = search.toLowerCase().trim();
+      filteredLeads = enrichedLeads.filter((lead) => {
+        const leadDataStr = JSON.stringify(lead).toLowerCase();
+        const campaignNameStr = (lead.campaignName || "").toLowerCase();
+        const leadCodeStr = (lead.leadCode || "").toLowerCase();
+        
+        return (
+          leadDataStr.includes(searchLower) ||
+          campaignNameStr.includes(searchLower) ||
+          leadCodeStr.includes(searchLower)
+        );
+      });
+    }
+
+    // Apply pagination
+    const totalItems = filteredLeads.length;
+    const paginatedLeads = filteredLeads.slice(offset, offset + limit);
+
+    return {
+      data: paginatedLeads,
+      totalItems,
+      currentPage: page,
+      totalPages: Math.ceil(totalItems / limit),
+      pageSize: limit,
+    };
+  } catch (error: any) {
+    throw new Error(
+      `Error fetching leads with work: ${error.message}`
     );
   }
 };

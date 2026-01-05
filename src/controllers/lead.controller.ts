@@ -3,6 +3,8 @@ import * as LeadService from "../services/lead.service";
 import { LeadStatus } from "../models/lead.model";
 import { FilterType } from "../utils/dateFilters";
 import { getPagingData } from "../utils/paginate";
+import User from "../models/user.model";
+import Role from "../models/role.model";
 
 export const createLead = async (req: Request, res: Response): Promise<any> => {
   try {
@@ -25,13 +27,32 @@ export const getAllLeads = async (
   res: Response
 ): Promise<any> => {
   try {
-    const user = (req as any).user; // Get authenticated user
-    const userId = user?.id;
+    const userId = (req as any).user?.id;
     
-    // Check if user is admin (check role name)
-    const isAdmin = user?.role?.name?.toLowerCase() === "admin" || 
-                    user?.role?.name?.toLowerCase() === "adminn" ||
-                    user?.userrole?.toLowerCase() === "admin";
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "User not authenticated",
+      });
+    }
+
+    // Get user with role to check if admin (same approach as dashboard controller)
+    const user = await User.findByPk(userId, {
+      include: {
+        model: Role,
+      },
+    }) as any;
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    // Check if user is admin
+    const roleName = user.Role?.name?.toLowerCase() || "";
+    const isAdmin = roleName === "admin" || roleName === "adminn";
 
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
@@ -119,13 +140,32 @@ export const getLeadsByCampaign = async (
 ): Promise<any> => {
   try {
     const { campaignName } = req.params;
-    const user = (req as any).user; // Get authenticated user
-    const userId = user?.id;
+    const userId = (req as any).user?.id;
     
-    // Check if user is admin (check role name)
-    const isAdmin = user?.role?.name?.toLowerCase() === "admin" || 
-                    user?.role?.name?.toLowerCase() === "adminn" ||
-                    user?.userrole?.toLowerCase() === "admin";
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "User not authenticated",
+      });
+    }
+
+    // Get user with role to check if admin
+    const user = await User.findByPk(userId, {
+      include: {
+        model: Role,
+      },
+    }) as any;
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    // Check if user is admin
+    const roleName = user.Role?.name?.toLowerCase() || "";
+    const isAdmin = roleName === "admin" || roleName === "adminn";
 
     const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
     const limit = req.query.limit
@@ -281,18 +321,98 @@ export const assignUserToLead = async (
   }
 };
 
+export const bulkAssignLeadsToUser = async (
+  req: Request,
+  res: Response
+): Promise<any> => {
+  try {
+    const assignedByUserId = req.user?.id;
+    const { leadIds, userId } = req.body;
+
+    if (!leadIds || !Array.isArray(leadIds) || leadIds.length === 0) {
+      return res.status(400).json({ 
+        success: false,
+        message: "Invalid lead IDs. Must be a non-empty array." 
+      });
+    }
+
+    if (!userId) {
+      return res.status(400).json({ 
+        success: false,
+        message: "User ID is required." 
+      });
+    }
+
+    const userIdNum = parseInt(userId, 10);
+    if (isNaN(userIdNum)) {
+      return res.status(400).json({ 
+        success: false,
+        message: "Invalid user ID." 
+      });
+    }
+
+    const leadIdsNum = leadIds
+      .map((id: string | number) => parseInt(id as string, 10))
+      .filter((id: number) => !isNaN(id));
+
+    if (leadIdsNum.length === 0) {
+      return res.status(400).json({ 
+        success: false,
+        message: "No valid lead IDs provided." 
+      });
+    }
+
+    const result = await LeadService.bulkAssignLeadsToUser(
+      leadIdsNum,
+      userIdNum,
+      assignedByUserId
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: `${result.success} lead(s) assigned successfully. ${result.failed > 0 ? `${result.failed} failed.` : ""}`,
+      data: result,
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      message:
+        error.message || "An error occurred while bulk assigning leads.",
+    });
+  }
+};
+
 export const getAllLeadsWithAssignee = async (
   req: Request,
   res: Response
 ): Promise<any> => {
   try {
-    const user = (req as any).user; // Get authenticated user
-    const userId = user?.id;
+    const userId = (req as any).user?.id;
     
-    // Check if user is admin (check role name)
-    const isAdmin = user?.role?.name?.toLowerCase() === "admin" || 
-                    user?.role?.name?.toLowerCase() === "adminn" ||
-                    user?.userrole?.toLowerCase() === "admin";
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "User not authenticated",
+      });
+    }
+
+    // Get user with role to check if admin
+    const user = await User.findByPk(userId, {
+      include: {
+        model: Role,
+      },
+    }) as any;
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    // Check if user is admin
+    const roleName = user.Role?.name?.toLowerCase() || "";
+    const isAdmin = roleName === "admin" || roleName === "adminn";
 
     const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
     const limit = req.query.limit
@@ -409,13 +529,32 @@ export const getUnassignedLeads = async (
   res: Response
 ): Promise<any> => {
   try {
-    const user = (req as any).user; // Get authenticated user
-    const userId = user?.id;
+    const userId = (req as any).user?.id;
     
-    // Check if user is admin (check role name)
-    const isAdmin = user?.role?.name?.toLowerCase() === "admin" || 
-                    user?.role?.name?.toLowerCase() === "adminn" ||
-                    user?.userrole?.toLowerCase() === "admin";
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "User not authenticated",
+      });
+    }
+
+    // Get user with role to check if admin
+    const user = await User.findByPk(userId, {
+      include: {
+        model: Role,
+      },
+    }) as any;
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    // Check if user is admin
+    const roleName = user.Role?.name?.toLowerCase() || "";
+    const isAdmin = roleName === "admin" || roleName === "adminn";
 
     const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
     const limit = req.query.limit
@@ -780,6 +919,82 @@ export const getAssignmentLeads = async (
       success: false,
       message:
         error.message || "An error occurred while fetching assignment leads",
+    });
+  }
+};
+
+export const getLeadsWithWork = async (
+  req: Request,
+  res: Response
+): Promise<any> => {
+  try {
+    const userId = (req as any).user?.id;
+    
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "User not authenticated",
+      });
+    }
+
+    // Get user with role to check if admin (same approach as dashboard controller)
+    const user = await User.findByPk(userId, {
+      include: {
+        model: Role,
+      },
+    }) as any;
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    // Check if user is admin (admin only feature)
+    const roleName = user.Role?.name?.toLowerCase() || "";
+    const isAdmin = roleName === "admin" || roleName === "adminn";
+
+    if (!isAdmin) {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied. Admin only feature.",
+      });
+    }
+
+    const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
+    const limit = req.query.limit
+      ? parseInt(req.query.limit as string, 10)
+      : 10;
+    const search = req.query.search ? (req.query.search as string).trim() : "";
+    const filterType = req.query.filterType
+      ? (req.query.filterType as FilterType)
+      : undefined;
+    const startDate = req.query.startDate
+      ? (req.query.startDate as string)
+      : undefined;
+    const endDate = req.query.endDate
+      ? (req.query.endDate as string)
+      : undefined;
+
+    const leads = await LeadService.getLeadsWithWork({
+      page,
+      limit,
+      search,
+      filterType,
+      startDate,
+      endDate,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Leads with work fetched successfully",
+      ...leads,
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to fetch leads with work",
     });
   }
 };

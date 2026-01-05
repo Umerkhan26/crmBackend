@@ -61,6 +61,12 @@ router.post(
   LeadController.assignUserToLead
 );
 
+router.post(
+  "/bulk-assign",
+  verifyToken,
+  LeadController.bulkAssignLeadsToUser
+);
+
 router.get(
   "/getLeadsWithAssignee",
   verifyToken,
@@ -132,6 +138,12 @@ router.get(
   verifyToken,
   checkPermission(PERMISSIONS.LEAD_GET_ALL),
   LeadController.getAssignmentLeads
+);
+
+router.get(
+  "/leads/with-work",
+  verifyToken,
+  LeadController.getLeadsWithWork
 );
 
 export default router;

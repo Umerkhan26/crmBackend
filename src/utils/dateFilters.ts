@@ -3,6 +3,7 @@ import { Op } from "sequelize";
 export type FilterType =
   | "today"
   | "daily"
+  | "yesterday"
   | "weekly"
   | "monthly"
   | "yearly"
@@ -37,6 +38,23 @@ export const buildDateFilter = (
       // For UTC+5 (Pakistan): offset = -300, so UTC = Local - (-300) = Local + 300 minutes
       // For UTC-5 (US EST): offset = +300, so UTC = Local - 300 minutes
       // Formula: UTC = Local - offset (in milliseconds)
+      const offsetMs = localStart.getTimezoneOffset() * 60000;
+      start = new Date(localStart.getTime() - offsetMs);
+      end = new Date(localEnd.getTime() - offsetMs);
+      break;
+    }
+
+    case "yesterday": {
+      // Get yesterday's date boundaries in local timezone, then convert to UTC
+      const year = now.getFullYear();
+      const month = now.getMonth();
+      const day = now.getDate();
+      
+      // Create start and end of yesterday in local timezone
+      const localStart = new Date(year, month, day - 1, 0, 0, 0, 0);
+      const localEnd = new Date(year, month, day - 1, 23, 59, 59, 999);
+      
+      // Convert to UTC
       const offsetMs = localStart.getTimezoneOffset() * 60000;
       start = new Date(localStart.getTime() - offsetMs);
       end = new Date(localEnd.getTime() - offsetMs);

@@ -4,7 +4,10 @@ import ProductSale from "../models/product.model";
 import Campaign from "../models/campaign.model";
 import Role from "../models/role.model";
 import Permission from "../models/permission.model";
-import { Op, Sequelize } from "sequelize";
+import Note from "../models/note.model";
+import LeadActivity from "../models/leadActivity.model";
+import { Op, Sequelize, QueryTypes } from "sequelize";
+import db from "../../db";
 
 interface DashboardStatsParams {
   userId?: number;
@@ -30,6 +33,7 @@ export const getDashboardStats = async ({ userId, isAdmin, userRole }: Dashboard
         unassignedLeadsCount,
         totalProducts,
         totalCampaigns,
+        leadsWithWorkResult,
       ] = await Promise.all([
         // Total Users
         User.count(),
@@ -67,7 +71,25 @@ export const getDashboardStats = async ({ userId, isAdmin, userRole }: Dashboard
           distinct: true,
           col: "campaignName",
         }),
+
+        // Leads with Work Done - count distinct leads that have notes or activities
+        // Use a raw query to count leads with work
+        db.query(
+          `SELECT COUNT(DISTINCT l.id) as count
+           FROM leads l
+           WHERE EXISTS (
+             SELECT 1 FROM notes n 
+             WHERE n.notebleId = l.id AND n.notebleType = 'lead'
+           ) OR EXISTS (
+             SELECT 1 FROM lead_activities la 
+             WHERE la.entityId = l.id AND la.entityType = 'lead'
+           )`,
+          { type: QueryTypes.SELECT }
+        ) as Promise<any[]>,
       ]);
+
+      // Extract count from raw query result
+      const leadsWithWorkCount = (leadsWithWorkResult[0] as any)?.count || 0;
 
       return {
         users: {
@@ -79,6 +101,7 @@ export const getDashboardStats = async ({ userId, isAdmin, userRole }: Dashboard
           total: totalLeads,
           assigned: assignedLeadsCount,
           unassigned: unassignedLeadsCount,
+          withWork: leadsWithWorkCount, // Admin only: leads with work done
         },
         products: {
           total: totalProducts,

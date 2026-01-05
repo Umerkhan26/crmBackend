@@ -151,12 +151,14 @@ export const getDashboardStats = async ({ userId, isAdmin, userRole }: Dashboard
 
       const allowedCampaignNamesList = allowedCampaigns.map((c: any) => c.campaignName?.toLowerCase().trim()).filter(Boolean);
 
-      // My assigned leads (user is in assignees array AND in user's campaigns)
+      // My assigned leads (user is in assignees array AND in user's campaigns AND created by user)
+      // For datascrapper and non-admin users: only show leads they created
       const myAssignedLeadsCondition = {
         [Op.and]: [
           Sequelize.literal(
             `JSON_CONTAINS(COALESCE(assignees, '[]'), JSON_OBJECT('userId', ${userId}), '$')`
           ),
+          { createdBy: userId }, // Filter by creator - only show leads created by this user
           ...(allowedCampaignNamesList.length > 0 ? [{
             campaignName: { [Op.in]: allowedCampaignNamesList },
           }] : []),
@@ -168,9 +170,11 @@ export const getDashboardStats = async ({ userId, isAdmin, userRole }: Dashboard
           })
         : 0;
 
-      // My unassigned leads (in user's campaigns but not assigned to user)
+      // My unassigned leads (in user's campaigns but not assigned to user AND created by user)
+      // For datascrapper and non-admin users: only show leads they created
       const myUnassignedLeadsCondition = {
         [Op.and]: [
+          { createdBy: userId }, // Filter by creator - only show leads created by this user
           ...(allowedCampaignNamesList.length > 0 ? [{
             campaignName: { [Op.in]: allowedCampaignNamesList },
           }] : []),
@@ -188,11 +192,13 @@ export const getDashboardStats = async ({ userId, isAdmin, userRole }: Dashboard
           })
         : 0;
 
-      // Total leads in user's campaigns
+      // Total leads in user's campaigns (only leads created by user)
+      // For datascrapper and non-admin users: only show leads they created
       const myTotalLeadsCount = allowedCampaignNamesList.length > 0
         ? await Lead.count({
             where: {
               campaignName: { [Op.in]: allowedCampaignNamesList },
+              createdBy: userId, // Filter by creator - only show leads created by this user
             },
           })
         : 0;

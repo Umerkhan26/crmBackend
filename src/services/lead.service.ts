@@ -65,8 +65,6 @@ export const getAllLeads = async ({
   isAdmin?: boolean;
 }) => {
   try {
-    const { offset, limit: pageLimit } = getPagination({ page, limit });
-
     // Base where condition
     const whereCondition: any = { ...filters };
 
@@ -317,10 +315,11 @@ export const getLeadsByCampaign = async ({
       });
     }
 
-    // TEMPORARILY REMOVED: Filter by creator for testing
-    // if (!isAdmin && userId) {
-    //   whereCondition.createdBy = userId;
-    // }
+    // Filter by creator if user is not admin (datascrapper and other non-admin roles)
+    // Non-admin users should only see leads they created themselves
+    if (!isAdmin && userId) {
+      whereCondition.createdBy = userId;
+    }
 
     // Step 4: Fetch ALL leads for the campaign (NO pagination)
     console.log("🔍 getLeadsByCampaign - Campaign name:", campaignName);
@@ -391,20 +390,47 @@ export const getLeadsByCampaign = async ({
       })
     );
 
-    // Step 5: GLOBAL SEARCH across all fields (including leadCode)
+    // Step 6: GLOBAL SEARCH across all fields (including leadCode)
+    console.log("🔍 Search filter - Input:", {
+      searchTerm: search,
+      totalLeadsBeforeFilter: enrichedLeads.length,
+      hasSearch: !!search
+    });
+    
     const filteredLeads = search
       ? enrichedLeads.filter((lead) => {
-        const searchLower = search.toLowerCase();
+        const searchLower = search.toLowerCase().trim();
         const jsonStr = JSON.stringify(lead).toLowerCase();
         
         // Explicitly check leadCode for better search accuracy
         const leadCodeStr = (lead.leadCode || "").toLowerCase();
         
-        return jsonStr.includes(searchLower) || leadCodeStr.includes(searchLower);
+        const matchesJson = jsonStr.includes(searchLower);
+        const matchesLeadCode = leadCodeStr.includes(searchLower);
+        const matches = matchesJson || matchesLeadCode;
+        
+        // Debug first few leads
+        if (enrichedLeads.indexOf(lead) < 3) {
+          console.log("🔍 Lead search check:", {
+            leadId: lead.id,
+            leadCode: lead.leadCode,
+            searchTerm: searchLower,
+            matchesJson,
+            matchesLeadCode,
+            matches
+          });
+        }
+        
+        return matches;
       })
       : enrichedLeads;
+    
+    console.log("🔍 Search filter - Output:", {
+      totalLeadsAfterFilter: filteredLeads.length,
+      filteredCount: enrichedLeads.length - filteredLeads.length
+    });
 
-    // Step 6: Pagination AFTER filtering
+    // Step 7: Pagination AFTER filtering
     const total = filteredLeads.length;
     const start = (page - 1) * limit;
     const end = start + limit;
@@ -581,6 +607,8 @@ export const getAllLeadsWithAssignee = async ({
   startDate,
   endDate,
   conditions = [], // ← added
+  userId, // Add userId parameter to filter by creator
+  isAdmin = false, // Add isAdmin flag
 }: {
   page?: number;
   limit?: number;
@@ -590,6 +618,8 @@ export const getAllLeadsWithAssignee = async ({
   startDate?: string;
   endDate?: string;
   conditions?: any[]; // ← added
+  userId?: number;
+  isAdmin?: boolean;
 }) => {
   try {
     const baseCondition = Sequelize.literal("JSON_LENGTH(assignees) > 0");
@@ -628,6 +658,13 @@ export const getAllLeadsWithAssignee = async ({
     if (conditions.length > 0) {
       const dynamicFilter = buildDynamicFilters(conditions);
       whereConditions[Op.and].push(dynamicFilter);
+    }
+    // ─────────────────────────────────────────
+    // Filter by creator if user is not admin (datascrapper and other non-admin roles)
+    // Non-admin users should only see leads they created themselves
+    // ─────────────────────────────────────────
+    if (!isAdmin && userId) {
+      whereConditions[Op.and].push({ createdBy: userId });
     }
     // ─────────────────────────────────────────
     // Fetch ALL leads (NO pagination, search applied later)
@@ -750,7 +787,13 @@ export const getUnassignedLeads = async ({
   startDate,
   endDate,
   conditions = [],
-}: GetUnassignedLeadsParams & { conditions?: any[] }) => {
+  userId, // Add userId parameter to filter by creator
+  isAdmin = false, // Add isAdmin flag
+}: GetUnassignedLeadsParams & { 
+  conditions?: any[];
+  userId?: number;
+  isAdmin?: boolean;
+}) => {
   try {
     // STEP 1: Build base where condition for unassigned leads
     const whereCondition: any = {
@@ -784,6 +827,11 @@ export const getUnassignedLeads = async ({
     if (conditions.length > 0) {
       const dynamicFilter = buildDynamicFilters(conditions);
       whereCondition[Op.and].push(dynamicFilter);
+    }
+    // STEP 4.5: Filter by creator if user is not admin (datascrapper and other non-admin roles)
+    // Non-admin users should only see leads they created themselves
+    if (!isAdmin && userId) {
+      whereCondition[Op.and].push({ createdBy: userId });
     }
     // STEP 5: Fetch ALL leads with Sequelize (NO search or pagination here)
     const leads = await Lead.findAll({
@@ -868,6 +916,7 @@ export const getUnassignedLeads = async ({
     throw new Error(`Error fetching unassigned leads: ${error.message}`);
   }
 };
+
 
 const buildDynamicFilters = (conditions: any[]) => {
   if (!conditions || conditions.length === 0) return {};

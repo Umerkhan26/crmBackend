@@ -133,6 +133,14 @@ export const getLeadsByCampaign = async (
       : 10;
 
     const search = req.query.search ? String(req.query.search).trim() : "";
+    
+    console.log("🔍 Controller - Received search parameter:", {
+      searchTerm: search,
+      rawQuery: req.query.search,
+      campaignName,
+      page,
+      limit
+    });
 
     const startDate = req.query.startDate
       ? (req.query.startDate as string)
@@ -278,6 +286,14 @@ export const getAllLeadsWithAssignee = async (
   res: Response
 ): Promise<any> => {
   try {
+    const user = (req as any).user; // Get authenticated user
+    const userId = user?.id;
+    
+    // Check if user is admin (check role name)
+    const isAdmin = user?.role?.name?.toLowerCase() === "admin" || 
+                    user?.role?.name?.toLowerCase() === "adminn" ||
+                    user?.userrole?.toLowerCase() === "admin";
+
     const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
     const limit = req.query.limit
       ? parseInt(req.query.limit as string, 10)
@@ -313,6 +329,8 @@ export const getAllLeadsWithAssignee = async (
       startDate,
       endDate,
       conditions,
+      userId, // Pass userId to filter by creator
+      isAdmin, // Pass isAdmin flag
     });
     if (!leads || !leads.data || leads.data.length === 0) {
       return res.status(200).json({
@@ -391,6 +409,14 @@ export const getUnassignedLeads = async (
   res: Response
 ): Promise<any> => {
   try {
+    const user = (req as any).user; // Get authenticated user
+    const userId = user?.id;
+    
+    // Check if user is admin (check role name)
+    const isAdmin = user?.role?.name?.toLowerCase() === "admin" || 
+                    user?.role?.name?.toLowerCase() === "adminn" ||
+                    user?.userrole?.toLowerCase() === "admin";
+
     const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
     const limit = req.query.limit
       ? parseInt(req.query.limit as string, 10)
@@ -435,6 +461,8 @@ export const getUnassignedLeads = async (
       startDate,
       endDate,
       conditions, // pass dynamic filters to service
+      userId, // Pass userId to filter by creator
+      isAdmin, // Pass isAdmin flag
     });
 
     // If no leads

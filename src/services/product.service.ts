@@ -44,7 +44,13 @@ export const convertLeadToSale = async (
     });
 
     if (userId) {
-      await logActivity(userId, "convert", `Lead ${leadId} converted to sale`);
+      // Fetch user to get full name for activity log
+      const user = await User.findByPk(userId);
+      const fullName = user 
+        ? `${user.firstname || ""} ${user.lastname || ""}`.trim() 
+        : null;
+      
+      await logActivity(userId, "convert", `Lead ${leadId} converted to sale`, fullName || undefined);
       await sendNotification(
         userId,
         `Lead ${leadId} has been converted to a sale`

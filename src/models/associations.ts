@@ -54,13 +54,13 @@ Campaign.hasMany(ProductSale, {
   foreignKey: "campaignId",
   sourceKey: "id",
   as: "productSales",
-  onDelete: "CASCADE",
+  onDelete: "SET NULL",
 });
 ProductSale.belongsTo(Campaign, {
   foreignKey: "campaignId",
   targetKey: "id",
   as: "campaign",
-  onDelete: "CASCADE",
+  onDelete: "SET NULL",
 });
 
 User.hasMany(ProductSale, {

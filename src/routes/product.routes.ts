@@ -16,6 +16,7 @@ import {
   getAllProducts,
   getInvoice,
   getSalesByAssigneeIdController,
+  getSalesByLeadCreatorController,
 } from "../controllers/product.controller";
 
 const router = Router();
@@ -45,6 +46,12 @@ router.get(
   verifyToken,
   checkPermission(PERMISSIONS.SALE_GET_BY_ASSIGNEE),
   getSalesByAssigneeIdController
+);
+router.get(
+  "/getSalesByLeadCreator/:id",
+  verifyToken,
+  checkPermission(PERMISSIONS.SALE_GET_ALL), // Use SALE_GET_ALL permission since user has this
+  getSalesByLeadCreatorController
 );
 router.put(
   "/updateSalesById/:id",

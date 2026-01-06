@@ -13,7 +13,7 @@ export interface ProductSaleAttributes {
   conversionDate?: Date;
   createdBy?: number;
   status: "pending" | "converted" | "cancelled";
-  campaignId: number;
+  campaignId?: number;
   assigneeId?: number;
   products?: any[] | null;
 
@@ -32,6 +32,7 @@ export interface ProductSaleCreationAttributes
     | "assigneeId"
     | "price"
     | "products"
+    | "campaignId"
   > { }
 
 class ProductSale
@@ -45,7 +46,7 @@ class ProductSale
   public conversionDate?: Date;
   public createdBy?: number;
   public status!: "pending" | "converted" | "cancelled";
-  public campaignId!: number;
+  public campaignId?: number;
   public assigneeId?: number;
   public products?: any[];
 
@@ -103,12 +104,12 @@ ProductSale.init(
     },
     campaignId: {
       type: DataTypes.INTEGER,
-      allowNull: false,
+      allowNull: true,
       references: {
         model: Campaign,
         key: "id",
       },
-      onDelete: "CASCADE",
+      onDelete: "SET NULL",
       onUpdate: "CASCADE",
     },
     assigneeId: {

@@ -191,13 +191,12 @@ export const createProduct = async (
   res: Response
 ): Promise<any> => {
   try {
-    const { productType, price, notes, status, campaignId, assigneeId } =
-      req.body;
+    const { productType, price, notes, assigneeId } = req.body;
     const createdBy = req.user?.id;
 
-    if (!productType || !campaignId) {
+    if (!productType) {
       return res.status(400).json({
-        message: "Missing required fields: productType or campaignId.",
+        message: "Missing required field: productType.",
       });
     }
 
@@ -206,8 +205,6 @@ export const createProduct = async (
         productType,
         price,
         notes,
-        status,
-        campaignId,
         ...(assigneeId && { assigneeId }),
         createdBy,
       },
@@ -379,6 +376,44 @@ export const getInvoice = async (req: Request, res: Response): Promise<any> => {
     return res.status(500).json({
       success: false,
       message: error.message || "Something went wrong while fetching invoice",
+    });
+  }
+};
+
+export const getSalesByLeadCreatorController = async (
+  req: Request,
+  res: Response
+): Promise<any> => {
+  try {
+    const creatorId = parseInt(req.params.id, 10);
+    if (isNaN(creatorId))
+      return res.status(400).json({ message: "Invalid creator ID" });
+
+    const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
+    const limit = req.query.limit
+      ? parseInt(req.query.limit as string, 10)
+      : 10;
+    const search = (req.query.search as string) || "";
+
+    const salesData = await ProductSaleService.getSalesByLeadCreator(
+      creatorId,
+      page,
+      limit,
+      search
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Sales fetched successfully",
+      data: salesData.data,
+      totalItems: salesData.totalItems,
+      totalPages: salesData.totalPages,
+      currentPage: salesData.currentPage,
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to fetch sales",
     });
   }
 };

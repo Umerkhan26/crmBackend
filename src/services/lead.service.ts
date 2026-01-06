@@ -21,6 +21,8 @@ import Campaign from "../models/campaign.model";
 import { DateTime } from "luxon";
 import Note from "../models/note.model";
 import LeadActivity from "../models/leadActivity.model";
+import Role from "../models/role.model";
+import { Permission } from "../models/permission.model";
 
 interface PaginationParams {
   page?: number;
@@ -40,7 +42,13 @@ export const createLead = async (
     const lead = await Lead.create(leadDataWithCreator);
 
     if (userId) {
-      await logActivity(userId, "create", `Lead created with ID ${lead.id}`);
+      // Fetch user to get full name for activity log
+      const user = await User.findByPk(userId);
+      const fullName = user 
+        ? `${user.firstname || ""} ${user.lastname || ""}`.trim() 
+        : null;
+      
+      await logActivity(userId, "create", `Lead created with ID ${lead.id}`, fullName || undefined);
       await sendNotification(userId, `New lead created with ID ${lead.id}`);
     }
 
@@ -465,7 +473,13 @@ export const updateLead = async (
     await lead.update(updatedData);
 
     if (userId) {
-      await logActivity(userId, "update", `Lead updated with ID ${lead.id}`);
+      // Fetch user to get full name for activity log
+      const user = await User.findByPk(userId);
+      const fullName = user 
+        ? `${user.firstname || ""} ${user.lastname || ""}`.trim() 
+        : null;
+      
+      await logActivity(userId, "update", `Lead updated with ID ${lead.id}`, fullName || undefined);
       await sendNotification(userId, `Lead updated with ID ${lead.id}`);
     }
 
@@ -488,7 +502,13 @@ export const deleteLead = async (
     await lead.destroy();
 
     if (userId) {
-      await logActivity(userId, "delete", `Lead deleted with ID ${id}`);
+      // Fetch user to get full name for activity log
+      const user = await User.findByPk(userId);
+      const fullName = user 
+        ? `${user.firstname || ""} ${user.lastname || ""}`.trim() 
+        : null;
+      
+      await logActivity(userId, "delete", `Lead deleted with ID ${id}`, fullName || undefined);
       await sendNotification(userId, `Lead deleted with ID ${id}`);
     }
   } catch (error: any) {
@@ -2132,6 +2152,446 @@ export const getLeadsWithWork = async ({
   } catch (error: any) {
     throw new Error(
       `Error fetching leads with work: ${error.message}`
+    );
+  }
+};
+
+/**
+ * Get assignment leads that have work done (notes, activities)
+ * Filters leads from a specific assignment and returns only those with work
+ */
+export const getAssignmentLeadsWithWork = async ({
+  userId,
+  campaignName,
+  assignedAt,
+  page = 1,
+  limit = 10,
+  search = "",
+}: {
+  userId: number;
+  campaignName: string;
+  assignedAt: string;
+  page?: number;
+  limit?: number;
+  search?: string;
+}): Promise<{
+  data: any[];
+  totalItems: number;
+  currentPage: number;
+  totalPages: number;
+  pageSize: number;
+}> => {
+  try {
+    // First, get all leads from this assignment (reuse existing logic)
+    const assignmentDate = new Date(assignedAt);
+    assignmentDate.setSeconds(0, 0); // Round to minute
+
+    // Fetch all leads for the campaign
+    const allLeads = await Lead.findAll({
+      where: {
+        campaignName: campaignName,
+        [Op.and]: [Sequelize.literal("JSON_LENGTH(assignees) > 0")],
+      },
+      order: [["createdAt", "DESC"]],
+    });
+
+    // Filter leads that have an assignment matching userId and assignedAt within the same minute
+    const matchingLeads: any[] = [];
+
+    for (const lead of allLeads) {
+      let assigneesRaw: AssigneeWithStatus[] = [];
+      
+      if (typeof lead.assignees === "string") {
+        try {
+          assigneesRaw = JSON.parse(lead.assignees);
+        } catch {
+          assigneesRaw = [];
+        }
+      } else if (Array.isArray(lead.assignees)) {
+        assigneesRaw = lead.assignees;
+      }
+
+      // Check if this lead has an assignment matching the criteria
+      for (const assignee of assigneesRaw) {
+        if (assignee.userId === userId) {
+          const assigneeAssignedAt = assignee.assignedAt
+            ? new Date(assignee.assignedAt)
+            : lead.createdAt;
+          
+          // Round to minute for comparison
+          const assigneeDate = new Date(assigneeAssignedAt);
+          assigneeDate.setSeconds(0, 0);
+          
+          // Check if assignedAt matches (within the same minute)
+          if (assigneeDate.getTime() === assignmentDate.getTime()) {
+            // This lead matches the assignment! Now check if it has work
+            const notesCount = await Note.count({
+              where: { notebleId: lead.id, notebleType: "lead" },
+            });
+            
+            const activitiesCount = await LeadActivity.count({
+              where: { entityId: lead.id, entityType: "lead" },
+            });
+
+            // Only include leads that have work (notes OR activities)
+            if (notesCount > 0 || activitiesCount > 0) {
+              // Get work summary
+              const notes = await Note.findAll({
+                where: { notebleId: lead.id, notebleType: "lead" },
+                order: [["createdAt", "DESC"]],
+                limit: 1,
+              });
+
+              const activities = await LeadActivity.findAll({
+                where: { entityId: lead.id, entityType: "lead" },
+                order: [["createdAt", "DESC"]],
+                limit: 1,
+              });
+
+              const lastNote = notes[0];
+              const lastActivity = activities[0];
+
+              let lastWorkDate: Date | null = null;
+              let lastWorkedBy: string | null = null;
+
+              if (lastActivity && lastNote) {
+                const activityDate = new Date(lastActivity.createdAt);
+                const noteDate = new Date(lastNote.createdAt);
+                if (activityDate > noteDate) {
+                  lastWorkDate = activityDate;
+                  const activityUser = await User.findByPk(lastActivity.performedBy, {
+                    attributes: ["firstname", "lastname"],
+                  });
+                  lastWorkedBy = activityUser
+                    ? `${activityUser.firstname || ""} ${activityUser.lastname || ""}`.trim()
+                    : null;
+                } else {
+                  lastWorkDate = noteDate;
+                  const noteUser = await User.findByPk(lastNote.createdBy, {
+                    attributes: ["firstname", "lastname"],
+                  });
+                  lastWorkedBy = noteUser
+                    ? `${noteUser.firstname || ""} ${noteUser.lastname || ""}`.trim()
+                    : null;
+                }
+              } else if (lastActivity) {
+                lastWorkDate = new Date(lastActivity.createdAt);
+                const activityUser = await User.findByPk(lastActivity.performedBy, {
+                  attributes: ["firstname", "lastname"],
+                });
+                lastWorkedBy = activityUser
+                  ? `${activityUser.firstname || ""} ${activityUser.lastname || ""}`.trim()
+                  : null;
+              } else if (lastNote) {
+                lastWorkDate = new Date(lastNote.createdAt);
+                const noteUser = await User.findByPk(lastNote.createdBy, {
+                  attributes: ["firstname", "lastname"],
+                });
+                lastWorkedBy = noteUser
+                  ? `${noteUser.firstname || ""} ${noteUser.lastname || ""}`.trim()
+                  : null;
+              }
+
+              // Enrich with assignee data
+              const userIds = assigneesRaw
+                .map((a) => a.userId)
+                .filter((id): id is number => typeof id === "number");
+
+              let assigneesData: any[] = [];
+              if (userIds.length > 0) {
+                const users = await User.findAll({
+                  where: { id: userIds },
+                  attributes: ["id", "firstname", "lastname", "email"],
+                });
+
+                assigneesData = users.map((user) => {
+                  const assignment = assigneesRaw.find((a) => a.userId === user.id);
+                  return {
+                    ...user.toJSON(),
+                    status: assignment?.status || "pending",
+                  };
+                });
+              }
+
+              matchingLeads.push({
+                ...lead.toJSON(),
+                assignees: assigneesData,
+                notesCount,
+                activitiesCount,
+                totalWorkCount: notesCount + activitiesCount,
+                lastWorkDate: lastWorkDate ? lastWorkDate.toISOString() : null,
+                lastWorkedBy,
+              });
+            }
+            
+            // Break inner loop since we found a match for this lead
+            break;
+          }
+        }
+      }
+    }
+
+    // Apply search filter if provided
+    let filteredLeads = matchingLeads;
+    if (search && search.trim() !== "") {
+      const searchLower = search.toLowerCase().trim();
+      filteredLeads = matchingLeads.filter((lead) => {
+        // Search in leadData JSON
+        const leadDataStr = JSON.stringify(lead.leadData || {}).toLowerCase();
+        // Search in campaign name
+        const campaignNameStr = (lead.campaignName || "").toLowerCase();
+        // Search in lead code
+        const initials = (lead.campaignName || "")
+          .split(" ")
+          .map((word: string) => word[0]?.toLowerCase() || "")
+          .join("");
+        const leadCodeStr = `${initials}${lead.id}`.toLowerCase();
+        
+        return (
+          leadDataStr.includes(searchLower) ||
+          campaignNameStr.includes(searchLower) ||
+          leadCodeStr.includes(searchLower)
+        );
+      });
+    }
+
+    // Apply pagination
+    const totalItems = filteredLeads.length;
+    const { offset } = getPagination({ page, limit });
+    const paginatedLeads = filteredLeads.slice(offset, offset + limit);
+
+    return {
+      data: paginatedLeads,
+      totalItems,
+      currentPage: page,
+      totalPages: Math.ceil(totalItems / limit),
+      pageSize: limit,
+    };
+  } catch (error: any) {
+    throw new Error(
+      `Error fetching assignment leads with work: ${error.message}`
+    );
+  }
+};
+
+/**
+ * Get all campaigns for a user with leads with work counts
+ * Returns summary for each campaign the user has assignments in
+ */
+export const getUserCampaignsWithWorkSummary = async ({
+  userId,
+}: {
+  userId: number;
+}): Promise<{
+  campaigns: Array<{
+    campaignName: string;
+    totalLeads: number;
+    leadsWithWork: number;
+  }>;
+}> => {
+  try {
+    console.log(`🔍 getUserCampaignsWithWorkSummary called for userId: ${userId}`);
+    
+    // Get user with role and permissions
+    const user = await User.findByPk(userId);
+    
+    if (!user) {
+      console.log(`⚠️ User ${userId} not found`);
+      return { campaigns: [] };
+    }
+
+    console.log(`👤 User found: ${user.firstname} ${user.lastname}, roleId: ${(user as any).roleId}`);
+
+    // Get role separately if roleId exists
+    let userRole: any = null;
+    if ((user as any).roleId) {
+      userRole = await Role.findByPk((user as any).roleId, {
+        include: [{ model: Permission }],
+      });
+    }
+
+    if (!userRole) {
+      console.log(`⚠️ User ${userId} has no role or role not found`);
+      return { campaigns: [] };
+    }
+
+    console.log(`👤 User role: ${userRole.name}, Permissions count: ${(userRole as any).Permissions?.length || 0}`);
+
+    const isAdmin = userRole.name?.toLowerCase() === "admin";
+    console.log(`👤 isAdmin: ${isAdmin}`);
+
+    let accessibleCampaignIds: number[] = [];
+    let accessibleCampaignNames: string[] = [];
+
+    if (isAdmin) {
+      // Admin has access to all campaigns - get all campaigns
+      const allCampaigns = await Campaign.findAll({
+        attributes: ["id", "campaignName"],
+      });
+      accessibleCampaignIds = allCampaigns.map((c) => c.id);
+      accessibleCampaignNames = allCampaigns.map((c) => c.campaignName);
+      console.log(`👑 Admin - found ${accessibleCampaignIds.length} campaigns`);
+    } else {
+      // Get campaigns from permissions
+      const permissions = (userRole as any).Permissions || [];
+      console.log(`📋 User has ${permissions.length} total permissions`);
+
+      const campaignPermissions = permissions.filter(
+        (perm: any) =>
+          perm.name === "getCampaignById" &&
+          (perm.resourceId || perm.resourceType)
+      );
+
+      console.log(`🎯 Found ${campaignPermissions.length} campaign permissions:`, campaignPermissions.map((p: any) => ({
+        name: p.name,
+        resourceId: p.resourceId,
+        resourceType: p.resourceType
+      })));
+
+      // Extract campaign IDs and names from permissions
+      for (const perm of campaignPermissions) {
+        if (perm.resourceId) {
+          const campaignId = parseInt(perm.resourceId);
+          if (!isNaN(campaignId) && !accessibleCampaignIds.includes(campaignId)) {
+            accessibleCampaignIds.push(campaignId);
+            console.log(`  ✅ Added campaign ID: ${campaignId}`);
+          }
+        }
+        if (perm.resourceType && perm.resourceType.startsWith("campaign-")) {
+          let campaignName = perm.resourceType.replace("campaign-", "").trim();
+          // Try to find the actual campaign name from database to ensure exact match
+          if (campaignName) {
+            // First try to find by exact name match
+            const campaignByName = await Campaign.findOne({
+              where: Sequelize.where(
+                Sequelize.fn('LOWER', Sequelize.col('campaignName')),
+                Sequelize.fn('LOWER', campaignName)
+              ),
+              attributes: ["id", "campaignName"],
+            });
+            
+            if (campaignByName) {
+              const actualCampaignName = campaignByName.campaignName;
+              if (!accessibleCampaignNames.includes(actualCampaignName)) {
+                accessibleCampaignNames.push(actualCampaignName);
+                console.log(`  ✅ Added campaign name from resourceType (matched in DB): ${actualCampaignName} (from: ${campaignName})`);
+              }
+            } else {
+              // If not found, use the extracted name as-is
+              if (!accessibleCampaignNames.includes(campaignName)) {
+                accessibleCampaignNames.push(campaignName);
+                console.log(`  ✅ Added campaign name from resourceType (not found in DB): ${campaignName}`);
+              }
+            }
+          }
+        }
+      }
+
+      // Fetch campaigns by IDs to get their names
+      if (accessibleCampaignIds.length > 0) {
+        const campaignsById = await Campaign.findAll({
+          where: { id: { [Op.in]: accessibleCampaignIds } },
+          attributes: ["id", "campaignName"],
+        });
+        console.log(`📦 Fetched ${campaignsById.length} campaigns by ID`);
+        campaignsById.forEach((c) => {
+          if (!accessibleCampaignNames.includes(c.campaignName)) {
+            accessibleCampaignNames.push(c.campaignName);
+            console.log(`  ✅ Added campaign name from DB: ${c.campaignName}`);
+          }
+        });
+      }
+    }
+
+    console.log(`📦 Accessible campaigns: ${accessibleCampaignNames.length}`, accessibleCampaignNames);
+
+    if (accessibleCampaignNames.length === 0) {
+      return { campaigns: [] };
+    }
+
+    // For each accessible campaign, count leads assigned to user and leads with work
+    const campaignsSummary = await Promise.all(
+      accessibleCampaignNames.map(async (campaignName) => {
+        // Get all leads for this campaign that have this user as assignee
+        // Use case-insensitive matching for campaign name
+        const allLeads = await Lead.findAll({
+          where: {
+            [Op.and]: [
+              Sequelize.where(
+                Sequelize.fn('LOWER', Sequelize.col('campaignName')),
+                Sequelize.fn('LOWER', campaignName)
+              ),
+              Sequelize.literal("JSON_LENGTH(assignees) > 0")
+            ],
+          },
+        });
+
+        let totalLeads = 0;
+        const leadIds: number[] = [];
+
+        for (const lead of allLeads) {
+          let assigneesRaw: AssigneeWithStatus[] = [];
+          
+          if (typeof lead.assignees === "string") {
+            try {
+              assigneesRaw = JSON.parse(lead.assignees);
+            } catch {
+              assigneesRaw = [];
+            }
+          } else if (Array.isArray(lead.assignees)) {
+            assigneesRaw = lead.assignees;
+          }
+
+          // Check if this lead has this user as an assignee
+          const hasUser = assigneesRaw.some((assignee) => assignee.userId === userId);
+          
+          if (hasUser) {
+            totalLeads++;
+            leadIds.push(lead.id);
+          }
+        }
+
+        // Count leads with work
+        let leadsWithWorkCount = 0;
+        
+        for (const leadId of leadIds) {
+          const notesCount = await Note.count({
+            where: { notebleId: leadId, notebleType: "lead" },
+          });
+          
+          const activitiesCount = await LeadActivity.count({
+            where: { entityId: leadId, entityType: "lead" },
+          });
+
+          if (notesCount > 0 || activitiesCount > 0) {
+            leadsWithWorkCount++;
+          }
+        }
+
+        console.log(`✅ Campaign: ${campaignName}, Total: ${totalLeads}, With Work: ${leadsWithWorkCount}`);
+
+        return {
+          campaignName,
+          totalLeads,
+          leadsWithWork: leadsWithWorkCount,
+        };
+      })
+    );
+
+    console.log(`🎯 Returning ${campaignsSummary.length} campaigns`);
+    console.log(`📋 Final campaigns summary:`, campaignsSummary.map(c => ({
+      campaignName: c.campaignName,
+      totalLeads: c.totalLeads,
+      leadsWithWork: c.leadsWithWork
+    })));
+
+    return {
+      campaigns: campaignsSummary,
+    };
+  } catch (error: any) {
+    console.error(`❌ Error in getUserCampaignsWithWorkSummary:`, error);
+    throw new Error(
+      `Error fetching user campaigns with work summary: ${error.message}`
     );
   }
 };

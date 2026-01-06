@@ -141,6 +141,20 @@ router.get(
 );
 
 router.get(
+  "/assignment-leads-with-work",
+  verifyToken,
+  checkPermission(PERMISSIONS.LEAD_GET_ALL),
+  LeadController.getAssignmentLeadsWithWork
+);
+
+router.get(
+  "/user-campaigns-work-summary",
+  verifyToken,
+  checkPermission(PERMISSIONS.LEAD_GET_ALL),
+  LeadController.getUserCampaignsWithWorkSummary
+);
+
+router.get(
   "/leads/with-work",
   verifyToken,
   LeadController.getLeadsWithWork

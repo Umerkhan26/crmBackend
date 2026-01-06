@@ -923,6 +923,102 @@ export const getAssignmentLeads = async (
   }
 };
 
+export const getAssignmentLeadsWithWork = async (
+  req: Request,
+  res: Response
+): Promise<any> => {
+  try {
+    const userId = req.query.userId
+      ? parseInt(req.query.userId as string, 10)
+      : undefined;
+    const campaignName = req.query.campaignName
+      ? (req.query.campaignName as string)
+      : undefined;
+    const assignedAt = req.query.assignedAt
+      ? (req.query.assignedAt as string)
+      : undefined;
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+    const search = req.query.search ? (req.query.search as string) : undefined;
+
+    if (!userId || isNaN(userId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid userId is required",
+      });
+    }
+
+    if (!campaignName) {
+      return res.status(400).json({
+        success: false,
+        message: "campaignName is required",
+      });
+    }
+
+    if (!assignedAt) {
+      return res.status(400).json({
+        success: false,
+        message: "assignedAt is required",
+      });
+    }
+
+    const result = await LeadService.getAssignmentLeadsWithWork({
+      userId,
+      campaignName: decodeURIComponent(campaignName),
+      assignedAt: decodeURIComponent(assignedAt),
+      page,
+      limit,
+      search: search || "",
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Assignment leads with work fetched successfully",
+      ...result,
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      message:
+        error.message || "An error occurred while fetching assignment leads with work",
+    });
+  }
+};
+
+export const getUserCampaignsWithWorkSummary = async (
+  req: Request,
+  res: Response
+): Promise<any> => {
+  try {
+    const userId = req.query.userId
+      ? parseInt(req.query.userId as string, 10)
+      : undefined;
+
+    if (!userId || isNaN(userId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid userId is required",
+      });
+    }
+
+    const result = await LeadService.getUserCampaignsWithWorkSummary({
+      userId,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "User campaigns with work summary fetched successfully",
+      ...result,
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      message:
+        error.message || "An error occurred while fetching user campaigns with work summary",
+    });
+  }
+};
+
 export const getLeadsWithWork = async (
   req: Request,
   res: Response

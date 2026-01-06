@@ -434,6 +434,99 @@ export const getInvoiceByLeadId = async (leadId: number) => {
   }
 };
 
+export const getSalesByLeadCreator = async (
+  creatorId: number | string,
+  page: number = 1,
+  limit: number = 10,
+  search: string = ""
+) => {
+  try {
+    const numericId = Number(creatorId);
+    if (isNaN(numericId)) throw new Error("Invalid creator ID");
+    const { offset, limit: pageLimit } = getPagination({ page, limit });
+    
+    // Find all leads created by this user
+    const createdLeads = await Lead.findAll({
+      where: { createdBy: numericId },
+      attributes: ["id"],
+    });
+    const createdLeadIds = createdLeads.map((l: any) => l.id);
+    
+    if (createdLeadIds.length === 0) {
+      return {
+        data: [],
+        totalItems: 0,
+        totalPages: 0,
+        currentPage: page,
+      };
+    }
+    
+    const where: any = { 
+      leadId: { [Op.in]: createdLeadIds },
+      status: "converted",
+    };
+    
+    const include: any = [
+      {
+        model: Lead,
+        attributes: ["id", "campaignName", "leadData"],
+        where: { createdBy: numericId },
+        required: true,
+      },
+      {
+        model: User,
+        attributes: ["id", "firstname", "email"],
+      },
+    ];
+    
+    if (search.trim()) {
+      where[Op.or] = [
+        { productType: { [Op.like]: `%${search}%` } },
+        { price: { [Op.like]: `%${search}%` } },
+        { notes: { [Op.like]: `%${search}%` } },
+        { "$Lead.campaignName$": { [Op.like]: `%${search}%` } },
+        { "$User.firstname$": { [Op.like]: `%${search}%` } },
+        { "$User.email$": { [Op.like]: `%${search}%` } },
+        Sequelize.literal(
+          `JSON_UNQUOTE(JSON_EXTRACT(Lead.leadData, '$.first_name')) LIKE '%${search}%'`
+        ),
+        Sequelize.literal(
+          `JSON_UNQUOTE(JSON_EXTRACT(Lead.leadData, '$.last_name')) LIKE '%${search}%'`
+        ),
+        Sequelize.literal(
+          `JSON_UNQUOTE(JSON_EXTRACT(Lead.leadData, '$.agent_name')) LIKE '%${search}%'`
+        ),
+        Sequelize.literal(
+          `JSON_UNQUOTE(JSON_EXTRACT(Lead.leadData, '$.state')) LIKE '%${search}%'`
+        ),
+        Sequelize.literal(
+          `JSON_UNQUOTE(JSON_EXTRACT(Lead.leadData, '$.email')) LIKE '%${search}%'`
+        ),
+        Sequelize.where(
+          Sequelize.fn(
+            "DATE_FORMAT",
+            Sequelize.col("ProductSale.conversionDate"),
+            "%Y-%m-%d"
+          ),
+          { [Op.like]: `%${search}%` }
+        ),
+      ];
+    }
+    
+    const data = await ProductSale.findAndCountAll({
+      offset,
+      limit: pageLimit,
+      where,
+      include,
+      order: [["createdAt", "DESC"]],
+    });
+    
+    return getPagingData(data, page, pageLimit);
+  } catch (error: any) {
+    throw new Error(`Failed to fetch sales by lead creator: ${error.message}`);
+  }
+};
+
 export const getSalesByAssigneeId = async (
   assigneeId: number | string,
   page: number = 1,

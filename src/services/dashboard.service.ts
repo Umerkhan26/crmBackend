@@ -34,6 +34,7 @@ export const getDashboardStats = async ({ userId, isAdmin, userRole }: Dashboard
         totalProducts,
         totalCampaigns,
         leadsWithWorkResult,
+        totalSales,
       ] = await Promise.all([
         // Total Users
         User.count(),
@@ -86,6 +87,11 @@ export const getDashboardStats = async ({ userId, isAdmin, userRole }: Dashboard
            )`,
           { type: QueryTypes.SELECT }
         ) as Promise<any[]>,
+
+        // Total Sales - count all converted sales
+        ProductSale.count({
+          where: { status: "converted" },
+        }),
       ]);
 
       // Extract count from raw query result
@@ -105,6 +111,9 @@ export const getDashboardStats = async ({ userId, isAdmin, userRole }: Dashboard
         },
         products: {
           total: totalProducts,
+        },
+        sales: {
+          total: totalSales,
         },
         campaigns: {
           total: totalCampaigns,
@@ -243,6 +252,45 @@ export const getDashboardStats = async ({ userId, isAdmin, userRole }: Dashboard
       // My campaigns (campaigns user has access to)
       const myCampaignsCount = allowedCampaigns.length;
 
+      // Check if user has permission to create leads (for showing creator stats)
+      const hasLeadCreatePermission = permissions.some((p: any) => p.name === "lead:create");
+      
+      let myCreatedLeadsAssignedCount = 0;
+      let myCreatedLeadsConvertedToSalesCount = 0;
+
+      if (hasLeadCreatePermission) {
+        // Count leads created by user that are assigned to others
+        // (leads have assignees but creator is not in assignees, or assignees exist and don't include creator)
+        const myCreatedLeadsAssignedCondition = {
+          [Op.and]: [
+            { createdBy: userId },
+            Sequelize.literal("JSON_LENGTH(COALESCE(assignees, '[]')) > 0"),
+            Sequelize.literal(
+              `NOT JSON_CONTAINS(COALESCE(assignees, '[]'), JSON_OBJECT('userId', ${userId}), '$')`
+            ),
+          ],
+        };
+        myCreatedLeadsAssignedCount = await Lead.count({
+          where: myCreatedLeadsAssignedCondition,
+        });
+
+        // Count leads created by user that are converted to sales
+        // Find all leads created by user, then count ProductSales with matching leadId
+        const myCreatedLeads = await Lead.findAll({
+          where: { createdBy: userId },
+          attributes: ["id"],
+        });
+        const myCreatedLeadIds = myCreatedLeads.map((l: any) => l.id);
+        
+        if (myCreatedLeadIds.length > 0) {
+          myCreatedLeadsConvertedToSalesCount = await ProductSale.count({
+            where: {
+              leadId: { [Op.in]: myCreatedLeadIds },
+            },
+          });
+        }
+      }
+
       return {
         users: {
           total: 0, // Not shown for non-admin
@@ -253,6 +301,11 @@ export const getDashboardStats = async ({ userId, isAdmin, userRole }: Dashboard
           total: myTotalLeadsCount,
           assigned: myAssignedLeadsCount,
           unassigned: myUnassignedLeadsCount,
+          // Stats for leads created by user (only if user has lead:create permission)
+          createdByMe: {
+            assignedToOthers: myCreatedLeadsAssignedCount,
+            convertedToSales: myCreatedLeadsConvertedToSalesCount,
+          },
         },
         products: {
           total: myProductsCount,

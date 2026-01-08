@@ -40,13 +40,13 @@ cron.schedule("* * * * *", async () => {
 
         const user = await User.findByPk(reminder.createdBy);
         if (user?.email) {
-          const emailBody = reminderEmailTemplate(reminder.content, reminder.reminderDate?.toISOString());
+          const { subject, html } = reminderEmailTemplate(reminder.content, reminder.reminderDate?.toISOString());
 
           await sendEmail({
             smtp: SMTP_CONFIG,
             to: user.email,
-            subject: "CRM Reminder Notification",
-            body: emailBody,
+            subject,
+            body: html,
           });
 
         }

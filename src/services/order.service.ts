@@ -14,6 +14,7 @@ import User from "../models/user.model";
 import { buildSearchFilter } from "../utils/filterQuery";
 import { Op, where, json } from "sequelize";
 import { sendEmail } from "../utils/email";
+import { orderCreationTemplate } from "../Templetes/orderCreationTemplate";
 
 
 
@@ -92,31 +93,33 @@ export const createOrder = async (
       if (canSendEmail) {
         const smtpConfig = await getSmtpConfig(createdBy);
 
-        const { subject, body } = await getCompiledTemplate("order:create", {
-          agent: order.agent,
-          campaign: campaign.campaignName,
-          state: order.state,
-          priority: order.priority_level,
-          lead_requested: order.lead_requested,
-          user: `${user.firstname} ${user.lastname}`,
-        });
+        try {
+          const { subject, html } = orderCreationTemplate({
+            user: `${user.firstname} ${user.lastname}`,
+            agent: order.agent,
+            campaign: campaign.campaignName,
+            state: order.state,
+            priority: order.priority_level,
+            lead_requested: order.lead_requested,
+            orderId: order.id,
+          });
 
-
-
-
-        await sendEmail({
-          smtp: {
-            host: user.smtpoutgoingserver || process.env.DEFAULT_SMTP_HOST || "",
-            port:
-              (user.smtpport ? Number(user.smtpport) : Number(process.env.DEFAULT_SMTP_PORT)) ||
-              587,
-            user: user.smtpemail || process.env.DEFAULT_SMTP_EMAIL || "",
-            pass: user.smtppassword || process.env.DEFAULT_SMTP_PASSWORD || "",
-          },
-          to: user.email || "",
-          subject: subject || "No Subject",
-          body: body || "",
-        });
+          await sendEmail({
+            smtp: {
+              host: user.smtpoutgoingserver || process.env.DEFAULT_SMTP_HOST || "",
+              port:
+                (user.smtpport ? Number(user.smtpport) : Number(process.env.DEFAULT_SMTP_PORT)) ||
+                587,
+              user: user.smtpemail || process.env.DEFAULT_SMTP_EMAIL || "",
+              pass: user.smtppassword || process.env.DEFAULT_SMTP_PASSWORD || "",
+            },
+            to: user.email || "",
+            subject,
+            body: html,
+          });
+        } catch (emailError) {
+          console.error("Error sending order creation email:", emailError);
+        }
 
 
       }

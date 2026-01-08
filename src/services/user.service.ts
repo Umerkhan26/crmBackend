@@ -15,7 +15,7 @@ import Permission from "../models/permission.model";
 import ActivityLog from "../models/activityLog.model";
 import Campaign from "../models/campaign.model";
 import { Op, fn, col } from "sequelize";
-import { userCreateEmailTemplate } from "../Templetes/userCreateEmailTemplate";
+import { userRegistrationTemplate } from "../Templetes/userRegistrationTemplate";
 import { sendEmail } from "../utils/email";
 
 interface PaginationParams {
@@ -109,8 +109,7 @@ export const createUser = async (
           pass: process.env.DEFAULT_SMTP_PASSWORD!,
         };
 
-    const subject = "Welcome to Our Platform!";
-    const body = userCreateEmailTemplate({
+    const { subject, html } = userRegistrationTemplate({
       firstname: userWithRole?.firstname || "",
       lastname: userWithRole?.lastname || "",
       email: userWithRole?.email || "",
@@ -122,7 +121,7 @@ export const createUser = async (
         smtp: smtpConfig,
         to: userWithRole?.email!,
         subject,
-        body,
+        body: html,
       });
     } catch (err) {
     }

@@ -1,52 +1,25 @@
 export const reminderEmailTemplate = (reminderTitle?: string, reminderDate?: string) => {
-  return `
-  <!DOCTYPE html>
-  <html>
-  <head>
-    <meta charset="UTF-8" />
-    <title>Reminder Notification</title>
-  </head>
-  <body style="margin:0; padding:0; font-family: Arial, sans-serif; background:#f4f4f4;">
-    <table width="100%" cellpadding="0" cellspacing="0" border="0">
-      <tr>
-        <td align="center">
-          <table width="600" cellpadding="0" cellspacing="0" border="0" style="background:#fff; border-radius:8px; overflow:hidden;">
-            <tr>
-              <td style="background:#FF9800; text-align:center; color:#fff;">
-                <div style="padding:10px 15px; line-height:1;">
-                  <span style="font-size:22px; font-weight:bold; display:block;">Reminder Notification</span>
-                </div>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding:20px; text-align:left; color:#333;">
-                <p style="margin:0 0 12px 0; font-size:16px;">Hello,</p>
-                <p style="margin:0 0 12px 0; font-size:16px;">
-                  This is a friendly reminder for
-                  <strong>${reminderTitle || "your scheduled task"}</strong>.
-                </p>
-                ${
-                  reminderDate
-                    ? `<p style="margin:0 0 12px 0; font-size:16px;">
-                        Scheduled for: <strong>${new Date(reminderDate).toLocaleString()}</strong>
-                      </p>`
-                    : ""
-                }
-                <p style="margin:0; font-size:14px; color:#666;">
-                  Please check your dashboard for more details or take necessary action.
-                </p>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding:10px; background:#f4f4f4; text-align:center; font-size:12px; color:#777;">
-                &copy; ${new Date().getFullYear()} Your Company. All rights reserved.
-              </td>
-            </tr>
-          </table>
-        </td>
-      </tr>
-    </table>
-  </body>
-  </html>
+  const formattedDate = reminderDate 
+    ? new Date(reminderDate).toLocaleString('en-US', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      })
+    : null;
+
+  const subject = 'XCRM Reminder Notification';
+  const html = `
+    <div style="font-family: Arial, sans-serif; line-height: 1.2; text-align: center; background: linear-gradient(135deg, #fff5e6 0%, #ffe6cc 100%); padding: 12px; border-top: 3px solid #ff9800;">
+      <h2 style="margin: 0 0 4px 0; font-size: 18px; font-weight: 600; color: #ff9800;">Hello,</h2>
+      <p style="margin: 0 0 2px 0;">This is a friendly reminder for your scheduled task.</p>
+      <p style="margin: 0 0 2px 0;"><strong>Reminder:</strong> ${reminderTitle || "Scheduled Task"}</p>
+      ${formattedDate ? `<p style="margin: 0 0 2px 0;"><strong>Scheduled:</strong> ${formattedDate}</p>` : ''}
+      <p style="margin: 4px 0 2px 0;">Please check your dashboard for more details or take necessary action.</p>
+      <p style="margin: 4px 0 0 0; color: #ff9800;"><strong>Best regards,</strong><br/>XCRM Team</p>
+    </div>
   `;
+  return { subject, html };
 };

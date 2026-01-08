@@ -13,6 +13,7 @@ import { checkEmailPermission } from "./email.service";
 import EmailTemplate from "../models/emailTemplate.model";
 import { getSmtpConfig } from "../utils/getSmtpConfig";
 import { sendEmail } from "../utils/email";
+import { leadAssignmentTemplate } from "../Templetes/leadAssignmentTemplate";
 import { logEmailStatus } from "./emailLog.service";
 import { UserAttributes } from "../interfaces/user.interface";
 import { buildDateFilter, FilterType } from "../utils/dateFilters";
@@ -600,6 +601,32 @@ export const assignLeadToUsers = async (
           newUser.userId,
           `You have been assigned lead ${lead.leadCode}`
         );
+
+        // Send Email
+        try {
+          const assigneeUser = await User.findByPk(newUser.userId, {
+            attributes: ["email", "firstname", "lastname"],
+          });
+
+          if (assigneeUser?.email) {
+            const { subject, html } = leadAssignmentTemplate({
+              userName: `${assigneeUser.firstname || ""} ${assigneeUser.lastname || ""}`.trim() || "User",
+              leadCode: lead.leadCode,
+              assignedBy: assignerName,
+              campaignName: lead.campaignName,
+            });
+
+            const smtpConfig = await getSmtpConfig(assignedByUserId || newUser.userId);
+            await sendEmail({
+              smtp: smtpConfig,
+              to: assigneeUser.email,
+              subject,
+              body: html,
+            });
+          }
+        } catch (emailError) {
+          console.error("Error sending lead assignment email:", emailError);
+        }
       }
     }
 
@@ -625,7 +652,7 @@ export const bulkAssignLeadsToUser = async (
 
     // Fetch the assignee user once
     const assignee = await User.findByPk(userId, {
-      attributes: ["id", "firstname", "lastname"],
+      attributes: ["id", "firstname", "lastname", "email"],
     });
 
     if (!assignee) {
@@ -715,6 +742,28 @@ export const bulkAssignLeadsToUser = async (
         `${successCount} lead${successCount !== 1 ? "s" : ""} assigned to ${assigneeName}`,
         assignerName
       );
+
+      // Send bulk assignment email
+      try {
+        if (assignee?.email) {
+          const { subject, html } = leadAssignmentTemplate({
+            userName: assigneeName,
+            leadCode: "",
+            leadCount: successCount,
+            assignedBy: assignerName,
+          });
+
+          const smtpConfig = await getSmtpConfig(assignedByUserId);
+          await sendEmail({
+            smtp: smtpConfig,
+            to: assignee.email,
+            subject,
+            body: html,
+          });
+        }
+      } catch (emailError) {
+        console.error("Error sending bulk lead assignment email:", emailError);
+      }
     }
 
     return {

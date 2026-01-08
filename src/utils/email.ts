@@ -38,13 +38,17 @@ export const sendEmail = async ({
   });
 
   try {
+    // Check if body is already HTML (contains HTML tags)
+    const isHTML = /<[a-z][\s\S]*>/i.test(body);
+    
     await transporter.sendMail({
       from: `"CRM App" <${user}>`,
       to,
       subject,
-      text: body,
-      html: body.replace(/\n/g, "<br>"),
+      text: isHTML ? body.replace(/<[^>]*>/g, '') : body, // Strip HTML for text version
+      html: isHTML ? body : body.replace(/\n/g, "<br>"), // Use as-is if HTML, otherwise convert newlines
     });
   } catch (error) {
+    throw error;
   }
 };

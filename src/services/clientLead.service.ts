@@ -7,6 +7,7 @@ import { sendNotification } from "./notification.service";
 import LeadActivity from "../models/leadActivity.model";
 import User from "../models/user.model";
 import { sendEmail } from "../utils/email";
+import { leadAssignmentTemplate } from "../Templetes/leadAssignmentTemplate";
 
 
 export const createClientLead = async (
@@ -43,13 +44,20 @@ export const createClientLead = async (
     };
 
     try {
+      const { subject, html } = leadAssignmentTemplate({
+        userName: leadData.leadData.first_name || "User",
+        leadCode: `CL-${lead.id}`,
+        campaignName: leadData.leadData.campaignName,
+      });
+
       await sendEmail({
         smtp: smtpConfig,
         to: leadData.leadData.email,
-        subject: "New Lead Assigned",
-        body: newLeadEmailTemplate(lead.id),
+        subject,
+        body: html,
       });
     } catch (err: any) {
+      console.error("Error sending client lead assignment email:", err);
     }
   } else {
   }

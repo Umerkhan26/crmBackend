@@ -1,43 +1,12 @@
 export const newLeadEmailTemplate = (leadId?: number) => {
-  return `
-  <!DOCTYPE html>
-  <html>
-  <head>
-    <meta charset="UTF-8" />
-    <title>New Lead Assigned</title>
-  </head>
-  <body style="margin:0; padding:0; font-family: Arial, sans-serif; background:#f4f4f4;">
-    <table width="100%" cellpadding="0" cellspacing="0" border="0">
-      <tr>
-        <td align="center">
-          <table width="600" cellpadding="0" cellspacing="0" border="0" style="background:#fff; border-radius:8px; overflow:hidden;">
-            <tr>
-              <td style="background:#4CAF50; text-align:center; color:#fff;">
-                <div style="padding:10px 15px; line-height:1;">
-                  <span style="font-size:22px; font-weight:bold; display:block;">New Lead Assigned</span>
-                </div>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding:20px; text-align:left; color:#333;">
-                <p style="margin:0 0 12px 0; font-size:16px;">Hello,</p>
-                <p style="margin:0 0 12px 0; font-size:16px;">
-                  You have been assigned 
-                  <strong>${leadId ? `Lead ID: ${leadId}` : "a new lead"}</strong>.
-                </p>
-                <p style="margin:0; font-size:14px; color:#666;">Please check your dashboard for more details.</p>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding:10px; background:#f4f4f4; text-align:center; font-size:12px; color:#777;">
-                &copy; ${new Date().getFullYear()} Your Company. All rights reserved.
-              </td>
-            </tr>
-          </table>
-        </td>
-      </tr>
-    </table>
-  </body>
-  </html>
+  const subject = 'New Lead Assigned to You';
+  const html = `
+    <div style="font-family: Arial, sans-serif; line-height: 1.2; text-align: center; background: linear-gradient(135deg, #f8f9ff 0%, #f5f0ff 100%); padding: 12px; border-top: 3px solid #5664d2;">
+      <h2 style="margin: 0 0 4px 0; font-size: 18px; font-weight: 600; color: #5664d2;">Hello,</h2>
+      <p style="margin: 0 0 2px 0;">You have been assigned <strong>${leadId ? `Lead ID: ${leadId}` : "a new lead"}</strong>.</p>
+      <p style="margin: 4px 0 2px 0;">Please check your dashboard for more details.</p>
+      <p style="margin: 4px 0 0 0; color: #5664d2;"><strong>Best regards,</strong><br/>XCRM Team</p>
+    </div>
   `;
+  return { subject, html };
 };

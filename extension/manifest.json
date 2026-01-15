@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "Google Voice → CRM Call Tracker (Internal)",
+  "version": "0.1.0",
+  "description": "Opens Google Voice, detects call start/end, and posts call + transcript metadata to CRM backend.",
+  "permissions": ["tabs", "storage", "scripting", "tabCapture", "offscreen"],
+  "host_permissions": ["https://voice.google.com/*", "http://localhost/*", "https://*/*"],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "Voice CRM",
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://voice.google.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["http://localhost/*", "http://127.0.0.1/*", "https://*/*"],
+      "js": ["crm-bridge.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ]
+}
+

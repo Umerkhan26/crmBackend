@@ -9,6 +9,7 @@ import Campaign from "./campaign.model";
 import ClientLead from "./clientLead.model";
 import Lead from "./lead.model";
 import ProductSale from "./product.model";
+import Call from "./call.model";
 
 Role.belongsToMany(Permission, {
   through: RolePermission,
@@ -73,3 +74,13 @@ ProductSale.belongsTo(User, {
   as: "assignee",
   onDelete: "CASCADE",
 });
+
+// Call associations
+User.hasMany(Call, { foreignKey: "userId", onDelete: "CASCADE" });
+Call.belongsTo(User, { foreignKey: "userId", onDelete: "CASCADE" });
+
+Lead.hasMany(Call, { foreignKey: "leadId", onDelete: "SET NULL" });
+Call.belongsTo(Lead, { foreignKey: "leadId", onDelete: "SET NULL" });
+
+ClientLead.hasMany(Call, { foreignKey: "clientLeadId", onDelete: "SET NULL" });
+Call.belongsTo(ClientLead, { foreignKey: "clientLeadId", onDelete: "SET NULL" });

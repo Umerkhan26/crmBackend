@@ -22,4 +22,5 @@ import "./rolePermission.model";
 import "./permission.model";
 import "./emailTemplate.model";
 import "./emailPermission.model";
+import "./call.model";
 associateModels();

@@ -1,0 +1,49 @@
+Software Solution Architecture & Build Document
+Chrome Extension Based Google Voice to CRM Call Tracking System
+1. Purpose
+This document defines the complete technical architecture, build story, and task breakdown for an
+internal Chrome Extension that integrates Google Voice with the organization’s CRM to track calls,
+duration, and transcripts.
+2. Business Problem
+Google Voice does not expose public APIs for call tracking. CRM users lack visibility into call
+duration, transcripts, and outcomes, leading to manual logging and poor analytics.
+3. Solution Overview
+The system introduces a Chrome Extension that enables click-to-call from CRM, opens Google
+Voice with a prefilled number, detects call lifecycle events, captures audio with consent, transcribes
+calls, and stores results in CRM.
+4. Architecture Components
+• CRM Frontend (Call button, call status UI)
+• Chrome Extension (MV3 background worker, content scripts)
+• Google Voice Web UI (browser-based only)
+• Speech-to-Text Service (Whisper or cloud STT)
+• CRM Backend APIs
+5. Call Flow
+1. User clicks Call in CRM
+2. Extension opens Google Voice with number
+3. Call start detected via DOM observation
+4. Timer and audio capture begin
+5. Audio streamed to STT service
+6. Transcript returned and stored
+7. Call end detected and finalized
+6. Data Model
+Call records include user ID, contact ID, phone number, start/end time, duration, transcript, consent
+flag, and timestamps
+7. Permissions & Security
+Chrome permissions include tabs, scripting, storage, and tabCapture. Consent is mandatory before
+recording. All data must be transmitted securely over HTTPS.
+8. Compliance
+Explicit recording consent is required. Consent must be logged per call. Recording indicators must
+be visible. Two-party consent laws must be respected.
+9. Build Phases
+Phase 0: Proof of Concept
+Phase 1: MVP Call Logging
+Phase 2: Transcription Integration
+Phase 3: Hardening & Admin Controls
+10. Limitations
+• No official Google Voice APIs
+• Approximate call duration
+• Browser-only solution
+• UI changes may require maintenance
+11. Final Verdict
+This is a technically feasible, cost-effective internal solution suitable for CRM visibility and analytics,
+but not for carrier-grade compliance or billing use cases

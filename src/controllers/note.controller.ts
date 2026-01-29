@@ -91,6 +91,29 @@ export const getReminders = async (req: Request, res: Response): Promise<any> =>
   }
 };
 
+export const getUpcomingReminders = async (
+  req: Request,
+  res: Response
+): Promise<any> => {
+  try {
+    const userId = req.user?.id;
+
+    if (!userId) {
+      return res
+        .status(401)
+        .json({ success: false, message: "Unauthorized: user ID not found" });
+    }
+
+    const reminders = await NoteService.getUpcomingRemindersForUser(userId);
+
+    return res.status(200).json({ success: true, reminders });
+  } catch (error: any) {
+    return res
+      .status(500)
+      .json({ success: false, message: error.message || "Failed to fetch upcoming reminders" });
+  }
+};
+
 
 export const updateNote = async (req: Request, res: Response): Promise<any> => {
   try {

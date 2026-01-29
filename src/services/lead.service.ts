@@ -1,4 +1,5 @@
-import { literal, Op, Sequelize, where, fn, col } from "sequelize";
+import { literal, Op, Sequelize, where, fn, col, QueryTypes } from "sequelize";
+import db from "../../db";
 import Lead, {
   AssigneeWithStatus,
   LeadAttributes,
@@ -17,6 +18,7 @@ import { leadAssignmentTemplate } from "../Templetes/leadAssignmentTemplate";
 import { logEmailStatus } from "./emailLog.service";
 import { UserAttributes } from "../interfaces/user.interface";
 import { buildDateFilter, FilterType } from "../utils/dateFilters";
+import { normalizePhone } from "../utils/phoneNormalizer";
 import { logLeadActivity } from "../utils/logLeadActivity";
 import Campaign from "../models/campaign.model";
 import { DateTime } from "luxon";
@@ -33,11 +35,62 @@ interface LeadQueryParams extends PaginationParams {
   filters?: Record<string, any>;
   search?: string;
 }
+/**
+ * Check if a lead with the same phone number already exists
+ */
+const checkDuplicateLead = async (
+  phoneNumber: string | null | undefined,
+  campaignName?: string
+): Promise<LeadAttributes | null> => {
+  if (!phoneNumber) return null;
+
+  const normalizedPhone = normalizePhone(phoneNumber);
+  if (!normalizedPhone) return null;
+
+  try {
+    // Build query to check for duplicate phone number in leadData JSON
+    // Use Sequelize.where with fn for safe parameterized query
+    const whereCondition: any = {
+      [Op.and]: [
+        where(
+          fn("JSON_EXTRACT", col("leadData"), "$.number"),
+          normalizedPhone
+        )
+      ]
+    };
+
+    // Optionally check within the same campaign
+    if (campaignName) {
+      whereCondition.campaignName = campaignName;
+    }
+
+    const existingLead = await Lead.findOne({
+      where: whereCondition,
+    });
+
+    return existingLead ? existingLead.get() : null;
+  } catch (error: any) {
+    console.error("Error checking duplicate lead:", error);
+    // Don't throw error, just return null to allow creation to proceed
+    return null;
+  }
+};
+
 export const createLead = async (
   data: LeadCreationAttributes,
   userId?: number
 ): Promise<LeadAttributes & { leadCode: string }> => {
   try {
+    // Check for duplicate phone number before creating
+    const phoneNumber = data.leadData?.number || data.leadData?.phone_number || null;
+    const duplicateLead = await checkDuplicateLead(phoneNumber, data.campaignName);
+
+    if (duplicateLead) {
+      throw new Error(
+        `Duplicate lead found: A lead with phone number "${phoneNumber}" already exists in campaign "${data.campaignName}" (Lead ID: ${duplicateLead.id})`
+      );
+    }
+
     // Add createdBy to the lead data if userId is provided
     const leadDataWithCreator = userId ? { ...data, createdBy: userId } : data;
     const lead = await Lead.create(leadDataWithCreator);
@@ -280,6 +333,7 @@ export const getLeadsByCampaign = async ({
   filterType,
   userId, // Add userId parameter to filter by creator
   isAdmin = false, // Add isAdmin flag to determine if user should see all leads
+  createdBy, // Add createdBy parameter to filter by specific creator (for admin)
 }: GetLeadsByCampaignParams & {
   conditions?: any[];
   startDate?: string;
@@ -287,6 +341,7 @@ export const getLeadsByCampaign = async ({
   filterType?: FilterType;
   userId?: number;
   isAdmin?: boolean;
+  createdBy?: number; // Filter by specific creator (admin only)
 }): Promise<any> => {
   try {
     // Step 1: Build dynamic filter for JSON fields
@@ -326,10 +381,14 @@ export const getLeadsByCampaign = async ({
       });
     }
 
-    // Filter by creator if user is not admin (datascrapper and other non-admin roles)
-    // Non-admin users should only see leads they created themselves
+    // Filter by creator
+    // Non-admin users: only see leads they created themselves
+    // Admin users: can filter by specific creator if createdBy is provided
     if (!isAdmin && userId) {
       whereCondition.createdBy = userId;
+    } else if (isAdmin && createdBy) {
+      // Admin filtering by specific creator
+      whereCondition.createdBy = createdBy;
     }
 
     // Step 4: Fetch ALL leads for the campaign (NO pagination)
@@ -2642,5 +2701,111 @@ export const getUserCampaignsWithWorkSummary = async ({
     throw new Error(
       `Error fetching user campaigns with work summary: ${error.message}`
     );
+  }
+};
+
+/**
+ * Get lead creation statistics grouped by user and date
+ * @param userId - Optional user ID to filter by
+ * @param startDate - Optional start date filter (YYYY-MM-DD)
+ * @param endDate - Optional end date filter (YYYY-MM-DD)
+ * @param campaignName - Optional campaign name filter
+ */
+export const getLeadCreationStats = async (
+  userId?: number,
+  startDate?: string,
+  endDate?: string,
+  campaignName?: string
+): Promise<{
+  success: boolean;
+  data: Array<{
+    userId: number;
+    userName: string;
+    createdAt: string;
+    campaignName: string;
+    leadCount: number;
+  }>;
+  totalLeads: number;
+}> => {
+  try {
+    // Build WHERE conditions
+    let whereConditions = "l.createdBy IS NOT NULL";
+    const replacements: any = {};
+
+    if (userId) {
+      whereConditions += " AND l.createdBy = :userId";
+      replacements.userId = userId;
+    }
+
+    if (startDate && endDate && startDate === endDate) {
+      // Same date selected - use exact date match with proper date casting
+      // Use CAST to ensure proper date comparison
+      whereConditions += " AND DATE(l.createdAt) = CAST(:startDate AS DATE)";
+      replacements.startDate = startDate;
+    } else {
+      // Different dates or only one date - use range
+      if (startDate) {
+        whereConditions += " AND DATE(l.createdAt) >= CAST(:startDate AS DATE)";
+        replacements.startDate = startDate;
+      }
+      if (endDate) {
+        whereConditions += " AND DATE(l.createdAt) <= CAST(:endDate AS DATE)";
+        replacements.endDate = endDate;
+      }
+    }
+
+    if (campaignName) {
+      whereConditions += " AND l.campaignName = :campaignName";
+      replacements.campaignName = campaignName;
+    }
+
+    // Use raw SQL query for better performance with grouping
+    const query = `
+      SELECT 
+        l.createdBy as userId,
+        CONCAT(COALESCE(u.firstname, ''), ' ', COALESCE(u.lastname, '')) as userName,
+        DATE(l.createdAt) as createdAt,
+        l.campaignName as campaignName,
+        COUNT(l.id) as leadCount
+      FROM leads l
+      LEFT JOIN users u ON l.createdBy = u.id
+      WHERE ${whereConditions}
+      GROUP BY l.createdBy, DATE(l.createdAt), l.campaignName
+      ORDER BY createdAt DESC, userName ASC
+    `;
+
+    const results = await db.query(query, {
+      replacements,
+      type: QueryTypes.SELECT,
+    }) as Array<{
+      userId: number;
+      userName: string;
+      createdAt: string;
+      campaignName: string;
+      leadCount: string | number;
+    }>;
+
+    // Process results
+    const stats = results.map((row) => {
+      const userName = (row.userName || "").trim() || `User ID ${row.userId}`;
+      return {
+        userId: row.userId,
+        userName,
+        createdAt: row.createdAt,
+        campaignName: row.campaignName || "N/A",
+        leadCount: typeof row.leadCount === "string" ? parseInt(row.leadCount) : row.leadCount,
+      };
+    });
+
+    const totalLeads = stats.reduce((sum, stat) => sum + stat.leadCount, 0);
+
+    return {
+      success: true,
+      data: stats,
+      totalLeads,
+    };
+  } catch (error: any) {
+    console.error("Error fetching lead creation statistics:", error);
+    throw new Error(`Error fetching lead creation statistics: ${error.message}`);
   }
 };

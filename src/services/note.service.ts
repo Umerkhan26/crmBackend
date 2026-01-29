@@ -3,6 +3,7 @@
 import Note from "../models/note.model";
 import User from "../models/user.model";
 import { logLeadActivity } from "../utils/logLeadActivity";
+import { Op } from "sequelize";
 
 interface AddNoteParams {
   content: string;
@@ -142,6 +143,32 @@ export const getRemindersForEntity = async ({
       { model: User, as: "creator", attributes: ["id", "firstname", "email"] },
     ],
     order: [["createdAt", "DESC"]],
+  });
+};
+
+/**
+ * Get upcoming reminders for a user within the next N minutes.
+ * Used for in-app popup notifications.
+ */
+export const getUpcomingRemindersForUser = async (
+  userId: number,
+  windowMinutes: number = 10
+) => {
+  const now = new Date();
+  const windowEnd = new Date(now.getTime() + windowMinutes * 60 * 1000);
+
+  return Note.findAll({
+    where: {
+      type: "reminder",
+      createdBy: userId,
+      reminderDate: {
+        [Op.between]: [now, windowEnd],
+      },
+    },
+    include: [
+      { model: User, as: "creator", attributes: ["id", "firstname", "email"] },
+    ],
+    order: [["reminderDate", "ASC"]],
   });
 };
 

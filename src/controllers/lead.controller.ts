@@ -204,6 +204,11 @@ export const getLeadsByCampaign = async (
       }
     }
 
+    // Support createdBy filter for admin users (from URL params)
+    const createdBy = req.query.createdBy
+      ? parseInt(req.query.createdBy as string)
+      : undefined;
+
     // Service call - pass userId and isAdmin to filter leads
     const leads = await LeadService.getLeadsByCampaign({
       campaignName,
@@ -216,6 +221,7 @@ export const getLeadsByCampaign = async (
       filterType,
       userId, // Pass userId to filter by creator
       isAdmin, // Pass isAdmin flag
+      createdBy, // Add createdBy filter for admin users
     });
 
     if (!leads || !leads.rows || leads.rows.length === 0) {
@@ -1091,6 +1097,32 @@ export const getLeadsWithWork = async (
     return res.status(500).json({
       success: false,
       message: error.message || "Failed to fetch leads with work",
+    });
+  }
+};
+
+export const getLeadCreationStats = async (
+  req: Request,
+  res: Response
+): Promise<any> => {
+  try {
+    const userId = req.query.userId ? parseInt(req.query.userId as string) : undefined;
+    const startDate = req.query.startDate as string | undefined;
+    const endDate = req.query.endDate as string | undefined;
+    const campaignName = req.query.campaignName as string | undefined;
+
+    const stats = await LeadService.getLeadCreationStats(
+      userId,
+      startDate,
+      endDate,
+      campaignName
+    );
+
+    return res.status(200).json(stats);
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to fetch lead creation statistics",
     });
   }
 };

@@ -8,20 +8,39 @@ import Note from "../models/note.model";
 import LeadActivity from "../models/leadActivity.model";
 import { Op, Sequelize, QueryTypes } from "sequelize";
 import db from "../../db";
+import { buildDateFilter, FilterType } from "../utils/dateFilters";
 
 interface DashboardStatsParams {
   userId?: number;
   isAdmin?: boolean;
   userRole?: Role | null;
+  filterType?: FilterType;
+  startDate?: string;
+  endDate?: string;
 }
 
 /**
  * Get dashboard statistics
  * For admin: returns global stats
  * For non-admin: returns user-specific stats
+ * Date filters (if provided) are applied to time-based entities like leads,
+ * products and sales. User counts remain global (not date-filtered).
  */
-export const getDashboardStats = async ({ userId, isAdmin, userRole }: DashboardStatsParams = {}) => {
+export const getDashboardStats = async ({
+  userId,
+  isAdmin,
+  userRole,
+  filterType = "",
+  startDate,
+  endDate,
+}: DashboardStatsParams = {}) => {
   try {
+    const dateFilter =
+      filterType && filterType.trim() !== ""
+        ? buildDateFilter(filterType, startDate, endDate)
+        : {};
+    const dateWhereClause = dateFilter && Object.keys(dateFilter).length > 0 ? dateFilter : {};
+
     if (isAdmin) {
       // Admin sees global stats
       const [
@@ -36,61 +55,97 @@ export const getDashboardStats = async ({ userId, isAdmin, userRole }: Dashboard
         leadsWithWorkResult,
         totalSales,
       ] = await Promise.all([
-        // Total Users
+        // Total Users (not date-filtered)
         User.count(),
 
-        // Active Users
+        // Active Users (not date-filtered)
         User.count({
           where: { status: "active" },
         }),
 
-        // Blocked Users
+        // Blocked Users (not date-filtered)
         User.count({
           where: { status: "blocked" },
         }),
 
-        // Total Leads
-        Lead.count(),
+        // Total Leads (optionally date-filtered)
+        Lead.count({
+          where: dateWhereClause as any,
+        }),
 
         // Assigned Leads - count leads where assignees JSON array has at least one item
         Lead.count({
-          where: Sequelize.literal("JSON_LENGTH(COALESCE(assignees, '[]')) > 0"),
+          where: {
+            ...dateWhereClause,
+            [Op.and]: Sequelize.literal(
+              "JSON_LENGTH(COALESCE(assignees, '[]')) > 0"
+            ),
+          } as any,
         }),
 
         // Unassigned Leads - count leads where assignees is null, empty, or empty array
         Lead.count({
-          where: Sequelize.literal("(assignees IS NULL OR assignees = '[]' OR assignees = '' OR JSON_LENGTH(COALESCE(assignees, '[]')) = 0)"),
+          where: {
+            ...dateWhereClause,
+            [Op.and]: Sequelize.literal(
+              "(assignees IS NULL OR assignees = '[]' OR assignees = '' OR JSON_LENGTH(COALESCE(assignees, '[]')) = 0)"
+            ),
+          } as any,
         }),
 
-        // Total Products (pending status)
+        // Total Products (pending status, optionally date-filtered)
         ProductSale.count({
-          where: { status: "pending" },
+          where: {
+            status: "pending",
+            ...dateWhereClause,
+          } as any,
         }),
 
-        // Total Campaigns
+        // Total Campaigns (optionally date-filtered by creation date)
         Campaign.count({
           distinct: true,
           col: "campaignName",
+          where: dateWhereClause as any,
         }),
 
-        // Leads with Work Done - count distinct leads that have notes or activities
-        // Use a raw query to count leads with work
-        db.query(
-          `SELECT COUNT(DISTINCT l.id) as count
-           FROM leads l
-           WHERE EXISTS (
-             SELECT 1 FROM notes n 
-             WHERE n.notebleId = l.id AND n.notebleType = 'lead'
-           ) OR EXISTS (
-             SELECT 1 FROM lead_activities la 
-             WHERE la.entityId = l.id AND la.entityType = 'lead'
-           )`,
-          { type: QueryTypes.SELECT }
-        ) as Promise<any[]>,
+        // Leads with Work Done - count distinct leads that have notes or activities.
+        // We apply the same createdAt filter on leads if provided.
+        (() => {
+          const hasDateFilter = dateWhereClause && (dateWhereClause as any).createdAt;
+          const dateCondition = hasDateFilter && (dateWhereClause as any).createdAt[Op.between]
+            ? "l.createdAt BETWEEN :start AND :end AND "
+            : "";
+          return db.query(
+            `SELECT COUNT(DISTINCT l.id) as count
+             FROM leads l
+             WHERE ${dateCondition}(
+               EXISTS (
+                 SELECT 1 FROM notes n 
+                 WHERE n.notebleId = l.id AND n.notebleType = 'lead'
+               ) OR EXISTS (
+                 SELECT 1 FROM lead_activities la 
+                 WHERE la.entityId = l.id AND la.entityType = 'lead'
+               )
+             )`,
+            {
+              type: QueryTypes.SELECT,
+              replacements:
+                hasDateFilter && (dateWhereClause as any).createdAt[Op.between]
+                  ? {
+                      start: (dateWhereClause as any).createdAt[Op.between][0],
+                      end: (dateWhereClause as any).createdAt[Op.between][1],
+                    }
+                  : {},
+            }
+          ) as Promise<any[]>;
+        })(),
 
-        // Total Sales - count all converted sales
+        // Total Sales - count all converted sales (optionally date-filtered)
         ProductSale.count({
-          where: { status: "converted" },
+          where: {
+            status: "converted",
+            ...dateWhereClause,
+          } as any,
         }),
       ]);
 
@@ -193,11 +248,12 @@ export const getDashboardStats = async ({ userId, isAdmin, userRole }: Dashboard
           ...(allowedCampaignNamesList.length > 0 ? [{
             campaignName: { [Op.in]: allowedCampaignNamesList },
           }] : []),
+          ...(Object.keys(dateWhereClause).length > 0 ? [dateWhereClause] : []),
         ],
       };
       const myAssignedLeadsCount = allowedCampaignNamesList.length > 0
         ? await Lead.count({
-            where: myAssignedLeadsCondition,
+            where: myAssignedLeadsCondition as any,
           })
         : 0;
 
@@ -215,11 +271,12 @@ export const getDashboardStats = async ({ userId, isAdmin, userRole }: Dashboard
           Sequelize.literal(
             `(assignees IS NULL OR assignees = '[]' OR assignees = '' OR JSON_LENGTH(COALESCE(assignees, '[]')) = 0)`
           ),
+          ...(Object.keys(dateWhereClause).length > 0 ? [dateWhereClause] : []),
         ],
       };
       const myUnassignedLeadsCount = allowedCampaignNamesList.length > 0
         ? await Lead.count({
-            where: myUnassignedLeadsCondition,
+            where: myUnassignedLeadsCondition as any,
           })
         : 0;
 
@@ -230,7 +287,8 @@ export const getDashboardStats = async ({ userId, isAdmin, userRole }: Dashboard
             where: {
               campaignName: { [Op.in]: allowedCampaignNamesList },
               createdBy: userId, // Filter by creator - only show leads created by this user
-            },
+              ...dateWhereClause,
+            } as any,
           })
         : 0;
 
@@ -241,12 +299,16 @@ export const getDashboardStats = async ({ userId, isAdmin, userRole }: Dashboard
             { assigneeId: userId },
             { createdBy: userId },
           ],
-        },
+          ...dateWhereClause,
+        } as any,
       });
 
       // My products (products assigned to user)
       const myProductsCount = await ProductSale.count({
-        where: { assigneeId: userId },
+        where: {
+          assigneeId: userId,
+          ...dateWhereClause,
+        } as any,
       });
 
       // My campaigns (campaigns user has access to)
@@ -268,16 +330,20 @@ export const getDashboardStats = async ({ userId, isAdmin, userRole }: Dashboard
             Sequelize.literal(
               `NOT JSON_CONTAINS(COALESCE(assignees, '[]'), JSON_OBJECT('userId', ${userId}), '$')`
             ),
+            ...(Object.keys(dateWhereClause).length > 0 ? [dateWhereClause] : []),
           ],
         };
         myCreatedLeadsAssignedCount = await Lead.count({
-          where: myCreatedLeadsAssignedCondition,
+          where: myCreatedLeadsAssignedCondition as any,
         });
 
         // Count leads created by user that are converted to sales
         // Find all leads created by user, then count ProductSales with matching leadId
         const myCreatedLeads = await Lead.findAll({
-          where: { createdBy: userId },
+          where: {
+            createdBy: userId,
+            ...dateWhereClause,
+          } as any,
           attributes: ["id"],
         });
         const myCreatedLeadIds = myCreatedLeads.map((l: any) => l.id);
@@ -286,7 +352,8 @@ export const getDashboardStats = async ({ userId, isAdmin, userRole }: Dashboard
           myCreatedLeadsConvertedToSalesCount = await ProductSale.count({
             where: {
               leadId: { [Op.in]: myCreatedLeadIds },
-            },
+              ...dateWhereClause,
+            } as any,
           });
         }
       }

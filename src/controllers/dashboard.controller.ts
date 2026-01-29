@@ -19,6 +19,13 @@ export const getDashboardStatsController = async (
       });
     }
 
+    // Optional date filters from query
+    const { filterType = "", startDate, endDate } = req.query as {
+      filterType?: string;
+      startDate?: string;
+      endDate?: string;
+    };
+
     // Get user with role to check if admin
     const user = await User.findByPk(userId, {
       include: {
@@ -43,6 +50,9 @@ export const getDashboardStatsController = async (
       userId,
       isAdmin,
       userRole: user.Role,
+      filterType: (filterType || "").trim() as any,
+      startDate,
+      endDate,
     });
 
     return res.status(200).json({

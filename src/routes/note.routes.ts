@@ -4,6 +4,7 @@ import {
   addReminder,
   getNotes,
   getReminders,
+  getUpcomingReminders,
   updateNote,
   deleteNote,
   updateReminder,
@@ -55,6 +56,13 @@ router.get(
   verifyToken,
   checkPermission(PERMISSIONS.REMINDER_VIEW),
   getReminders
+);
+
+router.get(
+  "/upcomingReminders",
+  verifyToken,
+  checkPermission(PERMISSIONS.REMINDER_VIEW),
+  getUpcomingReminders
 );
 
 router.put(

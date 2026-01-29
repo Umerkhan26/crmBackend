@@ -160,4 +160,11 @@ router.get(
   LeadController.getLeadsWithWork
 );
 
+router.get(
+  "/lead-creation-stats",
+  verifyToken,
+  checkPermission(PERMISSIONS.LEAD_GET_ALL),
+  LeadController.getLeadCreationStats
+);
+
 export default router;

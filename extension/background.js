@@ -209,6 +209,35 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     })();
     return true; // Keep channel open for async response
   }
+
+  // Get tab audio stream ID for recording
+  if (msg?.type === "VOICE_CRM_GET_TAB_AUDIO") {
+    (async () => {
+      try {
+        const tabId = msg.tabId;
+        if (!tabId) {
+          // Try to find Google Voice tab
+          const tabs = await chrome.tabs.query({ url: "*://voice.google.com/*" });
+          if (tabs.length > 0) {
+            const voiceTab = tabs[0];
+            const streamId = await chrome.tabCapture.getMediaStreamId({ targetTabId: voiceTab.id });
+            console.log("[Voice CRM Background] Got tab audio stream ID for Google Voice tab:", streamId);
+            sendResponse({ ok: true, streamId, tabId: voiceTab.id });
+          } else {
+            sendResponse({ ok: false, error: "Google Voice tab not found" });
+          }
+        } else {
+          const streamId = await chrome.tabCapture.getMediaStreamId({ targetTabId: tabId });
+          console.log("[Voice CRM Background] Got tab audio stream ID:", streamId);
+          sendResponse({ ok: true, streamId, tabId });
+        }
+      } catch (e) {
+        console.error("[Voice CRM Background] Error getting tab audio:", e);
+        sendResponse({ ok: false, error: e?.message || String(e) });
+      }
+    })();
+    return true; // Keep channel open for async response
+  }
 });
 
 

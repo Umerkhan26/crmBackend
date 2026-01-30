@@ -60,6 +60,11 @@ export const PERMISSIONS = {
   REMINDER_UPDATE: "reminder:update",
   REMINDER_DELETE: "reminder:delete",
 
+  // Call permissions
+  CALL_CREATE: "call:create",
+  CALL_GET: "call:get",
+  CALL_DELETE: "call:delete",
+
   // PRODUCT_CONVERT_LEAD: "PRODUCT_CONVERT_LEAD",
   // PRODUCT_SALE_GET_ALL: "PRODUCT_SALE_GET_ALL",
   // PRODUCT_SALE_GET_BY_ID: "PRODUCT_SALE_GET_BY_ID",

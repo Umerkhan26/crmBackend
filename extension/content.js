@@ -1,5 +1,11 @@
 let activeCall = null;
 let observer = null;
+let durationStored = false; // Flag to ensure duration is only stored once
+let callEndedFlag = false; // Flag to prevent duplicate call end updates
+let callAttendedAt = null; // Timestamp when call was answered/attended (duration starts from here)
+let callAttendedFlag = false; // Flag to track if call has been marked as attended
+let lastCallId = null; // Track last call ID to prevent mixing calls
+let isProcessingCall = false; // Flag to prevent concurrent call processing
 
 function nowIso() {
   return new Date().toISOString();
@@ -76,16 +82,25 @@ function isInCallUI() {
   // Method 2: Check for call duration timer (format: 00:14, 01:23, etc.)
   // Also try to extract the actual duration value for more accurate timing
   let actualCallDuration = null;
+  let isCallAttended = false; // Call is attended when duration > 00:00
   const durationElements = Array.from(document.querySelectorAll('*')).filter(el => {
     const text = el.textContent?.trim() || '';
-    return /^\d{2}:\d{2}$/.test(text) && text !== '00:00';
+    return /^\d{2}:\d{2}$/.test(text);
   });
   
   if (durationElements.length > 0) {
     const durationText = durationElements[0].textContent.trim();
     const [minutes, seconds] = durationText.split(':').map(Number);
     actualCallDuration = minutes * 60 + seconds;
-    console.log("[Voice CRM] Found call duration in UI:", durationText, "(" + actualCallDuration + " seconds)");
+    
+    // Call is "attended" (answered) when duration > 00:00
+    isCallAttended = actualCallDuration > 0;
+    
+    if (isCallAttended) {
+      console.log("[Voice CRM] Call is ATTENDED - duration:", durationText, "(" + actualCallDuration + " seconds)");
+    } else {
+      console.log("[Voice CRM] Call is RINGING - duration:", durationText);
+    }
   }
   
   const hasCallDuration = durationElements.length > 0 || 
@@ -115,20 +130,29 @@ function isInCallUI() {
                       allText.toLowerCase().includes("mute");
   
   // Combine all methods - if ANY strong indicator is present
-  const isInCall = hasCallControls || hasCallDuration || hasEndButton || 
-                   urlHasCall || hasPhoneNumberWithControls || hasCallText;
+  // BUT: Require duration > 0 OR call controls to be more reliable
+  const isInCall = (hasCallDuration && actualCallDuration !== null && actualCallDuration > 0) || 
+                   (hasCallControls && hasEndButton) || 
+                   (hasCallDuration && hasEndButton) ||
+                   (hasCallControls && actualCallDuration !== null && actualCallDuration > 0);
   
   // Store actual duration if found (for more accurate call timing)
-  if (isInCall && actualCallDuration !== null) {
+  if (isInCall && actualCallDuration !== null && actualCallDuration > 0) {
     window.voiceCrmActualDuration = actualCallDuration;
+    window.voiceCrmIsCallAttended = isCallAttended; // Store attended status
+  } else {
+    // Clear stored duration if not in call
+    window.voiceCrmActualDuration = null;
+    window.voiceCrmIsCallAttended = false;
   }
   
   // Always log detection attempt for debugging
-  if (isInCall || Math.random() < 0.1) { // Log 10% of checks even when not in call
+  if (isInCall || Math.random() < 0.05) { // Log 5% of checks even when not in call
     console.log("[Voice CRM] Call detection check:", {
       hasCallControls,
       hasCallDuration: !!hasCallDuration,
       actualDuration: actualCallDuration,
+      isCallAttended,
       hasEndButton,
       urlHasCall,
       hasPhoneNumberWithControls,
@@ -138,7 +162,7 @@ function isInCallUI() {
     });
   }
   
-  return isInCall;
+  return { isInCall, isCallAttended, actualDuration: actualCallDuration };
 }
 
 async function dialNumber(phoneNumber) {
@@ -167,12 +191,24 @@ function startObservingCallLifecycle(callContext) {
   
   console.log("[Voice CRM] Starting call lifecycle observer", callContext);
 
-  // Periodic check as fallback (every 1 second)
+  // Periodic check as fallback (every 500ms for faster detection)
   const performPeriodicCheck = async () => {
-    const inCall = isInCallUI();
+    const callState = isInCallUI();
+    const inCall = callState.isInCall;
+    const isCallAttended = callState.isCallAttended;
+    const callStateDuration = callState.actualDuration;
+    
+    // Track when call is attended (answered) - duration starts from here
+    if (isCallAttended && !callAttendedFlag && activeCall?.id) {
+      callAttendedAt = nowIso();
+      callAttendedFlag = true;
+      console.log("[Voice CRM] ✅ Call ATTENDED at:", callAttendedAt, "- Duration tracking started");
+    }
     
     // If we're in a call but haven't created a record yet
-    if (inCall && !activeCall) {
+    // Prevent concurrent processing
+    if (inCall && !activeCall && !isProcessingCall) {
+      isProcessingCall = true; // Set flag to prevent concurrent processing
       // ALWAYS try to get fresh context from Chrome storage first
       let contextToUse = null;
       
@@ -321,6 +357,12 @@ function startObservingCallLifecycle(callContext) {
           console.log("[Voice CRM] ⚠️ VERIFY: Phone number:", callData.phoneNumber, "LeadId:", callData.leadId);
           const resp = await apiPost("/api/calls/start", callData);
           activeCall = { id: resp?.data?.id, startedAt };
+          lastCallId = resp?.data?.id; // Track this call ID
+          durationStored = false; // Reset flag for new call
+          callEndedFlag = false; // Reset flag for new call
+          callAttendedAt = null; // Reset attended timestamp
+          callAttendedFlag = false; // Reset attended flag
+          isProcessingCall = false; // Reset processing flag
           console.log("[Voice CRM] ✅ Call record created via periodic check:", activeCall);
           console.log("[Voice CRM] Call start timestamp:", startedAt, "(" + new Date(startedAt).toISOString() + ")");
           console.log("[Voice CRM] Call details:", {
@@ -337,27 +379,23 @@ function startObservingCallLifecycle(callContext) {
             () => {}
           );
 
-          if (contextToUse?.consent && activeCall?.id) {
-            chrome.runtime.sendMessage({
-              type: "VOICE_CRM_START_TRANSCRIPTION",
-              callId: activeCall.id,
-            }, (response) => {
-              if (chrome.runtime.lastError) {
-                console.error("[Voice CRM] Error starting transcription:", chrome.runtime.lastError);
-              } else {
-                console.log("[Voice CRM] Transcription started:", response);
-              }
-            });
-          }
+          // DON'T start recording yet - wait for call to be attended (answered)
+          // Recording will start when call is detected as attended (duration > 0)
+          console.log("[Voice CRM] ⏸️ Call detected but not attended yet - waiting for call to be answered before starting recording");
         } catch (e) {
           console.error("[Voice CRM] Periodic check failed to create call:", e);
+          isProcessingCall = false; // Reset on error
         }
+      } else if (inCall && !activeCall && isProcessingCall) {
+        // Already processing, skip
+        return;
       }
     }
     
-    // If call ended
-    if (!inCall && activeCall?.id) {
+    // If call ended - check flag to prevent duplicate updates
+    if (!inCall && activeCall?.id && !callEndedFlag) {
       console.log("[Voice CRM] Periodic check detected call end");
+      callEndedFlag = true; // Set flag immediately to prevent duplicate updates
       try {
         // Get fresh context to check consent
         let contextToUse = pendingCallContext || callContext;
@@ -409,51 +447,136 @@ function startObservingCallLifecycle(callContext) {
         }
 
         // Try to get actual call duration from Google Voice UI if available
+        // Duration should be from when call was ATTENDED (answered), not from when call started
         let actualDuration = null;
-        if (window.voiceCrmActualDuration) {
+        if (callStateDuration !== null && callStateDuration > 0) {
+          actualDuration = callStateDuration;
+          console.log("[Voice CRM] Using actual call duration from UI:", actualDuration, "seconds (from attended time)");
+        } else if (window.voiceCrmActualDuration) {
           actualDuration = window.voiceCrmActualDuration;
-          console.log("[Voice CRM] Using actual call duration from UI:", actualDuration, "seconds");
+          console.log("[Voice CRM] Using stored call duration from UI:", actualDuration, "seconds");
         }
         
         // Now end the call with accurate timestamp
         const endedAt = nowIso();
-        const startedAt = activeCall.startedAt ? new Date(activeCall.startedAt) : null;
-        const calculatedDuration = startedAt ? Math.floor((new Date(endedAt).getTime() - startedAt.getTime()) / 1000) : null;
         
-        // Use actual duration from UI if available, otherwise use calculated
+        // Calculate duration from when call was ATTENDED (answered), not from when call started
+        let calculatedDuration = null;
+        if (callAttendedAt) {
+          // Duration is from attended time to end time
+          const attendedTime = new Date(callAttendedAt);
+          const endTime = new Date(endedAt);
+          calculatedDuration = Math.floor((endTime.getTime() - attendedTime.getTime()) / 1000);
+          console.log("[Voice CRM] Calculated duration from ATTENDED time:", calculatedDuration, "seconds");
+        } else {
+          // Fallback: use call start time if attended time not available
+          const startedAt = activeCall.startedAt ? new Date(activeCall.startedAt) : null;
+          if (startedAt) {
+            calculatedDuration = Math.floor((new Date(endedAt).getTime() - startedAt.getTime()) / 1000);
+            console.log("[Voice CRM] Calculated duration from START time (fallback):", calculatedDuration, "seconds");
+          }
+        }
+        
+        // Use actual duration from UI if available, otherwise use calculated from attended time
         const finalDuration = actualDuration || calculatedDuration;
         
-        await apiPatch(`/api/calls/${activeCall.id}/end`, {
-          endedAt,
-          status: "completed",
-          ...(actualDuration && { durationSeconds: actualDuration }), // Override with actual if available
-        });
-        
-        // Log duration for debugging
-        console.log("[Voice CRM] Call record updated as completed.");
-        console.log("[Voice CRM] Duration details:", {
-          actualFromUI: actualDuration,
-          calculated: calculatedDuration,
-          final: finalDuration,
-          startedAt: startedAt?.toISOString(),
-          endedAt: new Date(endedAt).toISOString()
-        });
+        // Only store duration ONCE at the end - check flag
+        if (!durationStored) {
+          durationStored = true; // Set flag to prevent duplicate duration storage
+          
+          await apiPatch(`/api/calls/${activeCall.id}/end`, {
+            endedAt,
+            status: "completed",
+            ...(finalDuration !== null && finalDuration >= 0 && { durationSeconds: finalDuration }), // Store duration only once
+          });
+          
+          // Log duration for debugging
+          console.log("[Voice CRM] ✅ Call ENDED automatically - record updated as completed (duration stored once).");
+          console.log("[Voice CRM] Duration details:", {
+            actualFromUI: actualDuration,
+            calculatedFromAttended: calculatedDuration,
+            final: finalDuration,
+            callAttendedAt: callAttendedAt,
+            startedAt: activeCall.startedAt,
+            endedAt: new Date(endedAt).toISOString(),
+            storedOnce: true
+          });
+        } else {
+          console.log("[Voice CRM] ⚠️ Duration already stored, skipping duplicate update");
+        }
       } catch (e) {
         console.error("[Voice CRM] Periodic check failed to end call:", e);
       } finally {
         activeCall = null;
+        lastCallId = null; // Clear call ID tracking
+        callAttendedAt = null; // Clear attended timestamp
+        callAttendedFlag = false; // Reset attended flag
+        durationStored = false; // Reset duration stored flag
+        callEndedFlag = false; // Reset ended flag
       }
     }
   };
 
-  // Start periodic check (every 1 second for faster detection)
-  periodicCheckInterval = setInterval(performPeriodicCheck, 1000);
+  // Start periodic check (every 500ms for faster detection and more reliable call end detection)
+  periodicCheckInterval = setInterval(performPeriodicCheck, 500);
   
   // Also perform immediate check
   performPeriodicCheck();
 
   observer = new MutationObserver(async () => {
-    const inCall = isInCallUI();
+    const callState = isInCallUI();
+    const inCall = callState.isInCall;
+    const isCallAttended = callState.isCallAttended;
+    const callStateDuration = callState.actualDuration;
+    
+    // Track when call is attended (answered) - duration starts from here
+    if (isCallAttended && !callAttendedFlag && activeCall?.id) {
+      callAttendedAt = nowIso();
+      callAttendedFlag = true;
+      console.log("[Voice CRM] ✅ Call ATTENDED at:", callAttendedAt, "- Duration tracking started");
+      
+      // NOW start recording - only when call is attended (answered)
+      // Get context to check consent
+      let contextToUse = pendingCallContext || callContext;
+      if (!contextToUse) {
+        try {
+          const storageResponse = await new Promise((resolve) => {
+            chrome.runtime.sendMessage(
+              { type: "VOICE_CRM_GET_PENDING_CALL" },
+              (response) => {
+                if (chrome.runtime.lastError) {
+                  resolve({ ok: false });
+                } else {
+                  resolve(response);
+                }
+              }
+            );
+          });
+          if (storageResponse?.ok && storageResponse.data) {
+            contextToUse = storageResponse.data;
+          }
+        } catch (e) {
+          console.warn("[Voice CRM] Error getting context for recording:", e);
+        }
+      }
+      
+      // Start recording ONLY when call is attended (answered)
+      if (contextToUse?.consent && activeCall?.id) {
+        console.log("[Voice CRM] 🎙️ Starting recording NOW - call is attended (answered):", activeCall.id);
+        chrome.runtime.sendMessage({
+          type: "VOICE_CRM_START_TRANSCRIPTION",
+          callId: activeCall.id,
+        }, (response) => {
+          if (chrome.runtime.lastError) {
+            console.error("[Voice CRM] Error starting transcription:", chrome.runtime.lastError);
+          } else {
+            console.log("[Voice CRM] ✅ Recording started successfully (call attended):", response);
+          }
+        });
+      } else {
+        console.warn("[Voice CRM] ⚠️ No consent or call ID, skipping recording");
+      }
+    }
 
     // Transition: not in call -> in call
     if (!lastInCall && inCall) {
@@ -624,6 +747,10 @@ function startObservingCallLifecycle(callContext) {
           const resp = await apiPost("/api/calls/start", callData);
           
           activeCall = { id: resp?.data?.id, startedAt };
+          durationStored = false; // Reset flag for new call
+          callEndedFlag = false; // Reset flag for new call
+          callAttendedAt = null; // Reset attended timestamp
+          callAttendedFlag = false; // Reset attended flag
           console.log("[Voice CRM] ✅ Call record created:", activeCall);
           console.log("[Voice CRM] Call start timestamp:", startedAt, "(" + new Date(startedAt).toISOString() + ")");
           console.log("[Voice CRM] Call details:", {
@@ -640,22 +767,9 @@ function startObservingCallLifecycle(callContext) {
             () => {}
           );
 
-          // Start transcription capture only if user provided consent.
-          if (contextToUse?.consent && activeCall?.id) {
-            console.log("[Voice CRM] Starting audio capture for call:", activeCall.id);
-            chrome.runtime.sendMessage({
-              type: "VOICE_CRM_START_TRANSCRIPTION",
-              callId: activeCall.id,
-            }, (response) => {
-              if (chrome.runtime.lastError) {
-                console.error("[Voice CRM] Error starting transcription:", chrome.runtime.lastError);
-              } else {
-                console.log("[Voice CRM] Transcription started:", response);
-              }
-            });
-          } else {
-            console.warn("[Voice CRM] No consent or call ID, skipping transcription");
-          }
+          // DON'T start recording yet - wait for call to be attended (answered)
+          // Recording will start when call is detected as attended (duration > 0)
+          console.log("[Voice CRM] ⏸️ Call detected but not attended yet - waiting for call to be answered before starting recording");
         } catch (e) {
           console.error("[Voice CRM] Failed to POST /calls/start", e);
         }
@@ -665,7 +779,8 @@ function startObservingCallLifecycle(callContext) {
     // Transition: in call -> not in call
     if (lastInCall && !inCall) {
       lastInCall = false;
-      if (activeCall?.id) {
+      if (activeCall?.id && !callEndedFlag) {
+        callEndedFlag = true; // Set flag immediately to prevent duplicate updates
         try {
           console.log("[Voice CRM] Call ended detected! Ending call record:", activeCall.id);
           
@@ -720,39 +835,72 @@ function startObservingCallLifecycle(callContext) {
           await sleep(500);
 
           // Try to get actual call duration from Google Voice UI if available
+          // Duration should be from when call was ATTENDED (answered), not from when call started
           let actualDuration = null;
-          if (window.voiceCrmActualDuration) {
+          if (callStateDuration !== null && callStateDuration > 0) {
+            actualDuration = callStateDuration;
+            console.log("[Voice CRM] Using actual call duration from UI:", actualDuration, "seconds (from attended time)");
+          } else if (window.voiceCrmActualDuration) {
             actualDuration = window.voiceCrmActualDuration;
-            console.log("[Voice CRM] Using actual call duration from UI:", actualDuration, "seconds");
+            console.log("[Voice CRM] Using stored call duration from UI:", actualDuration, "seconds");
           }
           
           // Now end the call with accurate timestamp
           const endedAt = nowIso();
-          const startedAt = activeCall.startedAt ? new Date(activeCall.startedAt) : null;
-          const calculatedDuration = startedAt ? Math.floor((new Date(endedAt).getTime() - startedAt.getTime()) / 1000) : null;
           
-          // Use actual duration from UI if available, otherwise use calculated
+          // Calculate duration from when call was ATTENDED (answered), not from when call started
+          let calculatedDuration = null;
+          if (callAttendedAt) {
+            // Duration is from attended time to end time
+            const attendedTime = new Date(callAttendedAt);
+            const endTime = new Date(endedAt);
+            calculatedDuration = Math.floor((endTime.getTime() - attendedTime.getTime()) / 1000);
+            console.log("[Voice CRM] Calculated duration from ATTENDED time:", calculatedDuration, "seconds");
+          } else {
+            // Fallback: use call start time if attended time not available
+            const startedAt = activeCall.startedAt ? new Date(activeCall.startedAt) : null;
+            if (startedAt) {
+              calculatedDuration = Math.floor((new Date(endedAt).getTime() - startedAt.getTime()) / 1000);
+              console.log("[Voice CRM] Calculated duration from START time (fallback):", calculatedDuration, "seconds");
+            }
+          }
+          
+          // Use actual duration from UI if available, otherwise use calculated from attended time
           const finalDuration = actualDuration || calculatedDuration;
           
-          await apiPatch(`/api/calls/${activeCall.id}/end`, {
-            endedAt,
-            status: "completed",
-            ...(actualDuration && { durationSeconds: actualDuration }), // Override with actual if available
-          });
-          
-          // Log duration for debugging
-          console.log("[Voice CRM] Call record updated as completed.");
-          console.log("[Voice CRM] Duration details:", {
-            actualFromUI: actualDuration,
-            calculated: calculatedDuration,
-            final: finalDuration,
-            startedAt: startedAt?.toISOString(),
-            endedAt: new Date(endedAt).toISOString()
-          });
+          // Only store duration ONCE at the end - check flag
+          if (!durationStored) {
+            durationStored = true; // Set flag to prevent duplicate duration storage
+            
+            await apiPatch(`/api/calls/${activeCall.id}/end`, {
+              endedAt,
+              status: "completed",
+              ...(finalDuration !== null && finalDuration >= 0 && { durationSeconds: finalDuration }), // Store duration only once
+            });
+            
+            // Log duration for debugging
+            console.log("[Voice CRM] ✅ Call ENDED automatically - record updated as completed (duration stored once).");
+            console.log("[Voice CRM] Duration details:", {
+              actualFromUI: actualDuration,
+              calculatedFromAttended: calculatedDuration,
+              final: finalDuration,
+              callAttendedAt: callAttendedAt,
+              startedAt: activeCall.startedAt,
+              endedAt: new Date(endedAt).toISOString(),
+              storedOnce: true
+            });
+          } else {
+            console.log("[Voice CRM] ⚠️ Duration already stored, skipping duplicate update");
+          }
         } catch (e) {
           console.error("[Voice CRM] Failed to PATCH /calls/:id/end", e);
         } finally {
           activeCall = null;
+          lastCallId = null; // Clear call ID tracking
+          callAttendedAt = null; // Clear attended timestamp
+          callAttendedFlag = false; // Reset attended flag
+          durationStored = false; // Reset duration stored flag
+          callEndedFlag = false; // Reset ended flag
         }
       }
     }
@@ -948,8 +1096,8 @@ if (window.location.href.includes("voice.google.com")) {
   
   // Also check immediately if call is already in progress
   setTimeout(() => {
-    const inCall = isInCallUI();
-    if (inCall) {
+    const callState = isInCallUI();
+    if (callState.isInCall) {
       console.log("[Voice CRM] Call already in progress when page loaded!");
       checkLocalStorageForPendingCall();
     }
@@ -960,10 +1108,19 @@ if (window.location.href.includes("voice.google.com")) {
 window.voiceCrmManualDetect = async function() {
   console.log("[Voice CRM] ===== MANUAL DETECTION TRIGGERED =====");
   
-  const inCall = isInCallUI();
-  console.log("[Voice CRM] isInCallUI() returned:", inCall);
+  const callState = isInCallUI();
+  const inCall = callState.isInCall;
+  const isCallAttended = callState.isCallAttended;
+  console.log("[Voice CRM] isInCallUI() returned:", callState);
   console.log("[Voice CRM] activeCall:", activeCall);
   console.log("[Voice CRM] pendingCallContext:", pendingCallContext);
+  
+  // Track when call is attended (answered) - duration starts from here
+  if (isCallAttended && !callAttendedFlag && activeCall?.id) {
+    callAttendedAt = nowIso();
+    callAttendedFlag = true;
+    console.log("[Voice CRM] ✅ Call ATTENDED at:", callAttendedAt, "- Duration tracking started");
+  }
   
   // Get context from Chrome storage (async)
   let contextToUse = pendingCallContext;
@@ -1068,6 +1225,10 @@ window.voiceCrmManualDetect = async function() {
         console.log("[Voice CRM] Sending call data to backend:", callData);
         const resp = await apiPost("/api/calls/start", callData);
         activeCall = { id: resp?.data?.id, startedAt };
+        durationStored = false; // Reset flag for new call
+        callEndedFlag = false; // Reset flag for new call
+        callAttendedAt = null; // Reset attended timestamp
+        callAttendedFlag = false; // Reset attended flag
         console.log("[Voice CRM] ✅ Call record created manually:", activeCall);
         
         // Clear localStorage after successful creation
@@ -1075,19 +1236,10 @@ window.voiceCrmManualDetect = async function() {
           localStorage.removeItem("VOICE_CRM_PENDING_CALL");
         }
         
-        if (contextToUse?.consent && activeCall?.id) {
-          chrome.runtime.sendMessage({
-            type: "VOICE_CRM_START_TRANSCRIPTION",
-            callId: activeCall.id,
-          }, (response) => {
-            if (chrome.runtime.lastError) {
-              console.error("[Voice CRM] Transcription start error:", chrome.runtime.lastError);
-            } else {
-              console.log("[Voice CRM] Transcription started:", response);
-            }
-          });
-        }
-        return { success: true, callId: activeCall.id, message: "Call record created successfully!" };
+        // DON'T start recording yet - wait for call to be attended (answered)
+        // Recording will start when call is detected as attended (duration > 0)
+        console.log("[Voice CRM] ⏸️ Call detected but not attended yet - waiting for call to be answered before starting recording");
+        return { success: true, callId: activeCall.id, message: "Call record created successfully! Recording will start when call is answered." };
       } catch (e) {
         console.error("[Voice CRM] ❌ Manual detection failed:", e);
         return { success: false, error: e.message, details: e };
@@ -1122,4 +1274,6 @@ window.voiceCrmManualDetect = async function() {
 };
 
 console.log("[Voice CRM] Manual detection function available: window.voiceCrmManualDetect()");
+
+
 

@@ -56,6 +56,34 @@ async function doRequest(method, path, body) {
 }
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  // Ping handler to detect if extension is installed
+  if (msg?.type === "VOICE_CRM_PING") {
+    sendResponse({ ok: true, message: "Extension is active" });
+    return true;
+  }
+
+  // Auto-configure extension from frontend
+  if (msg?.type === "VOICE_CRM_SET_CONFIG") {
+    (async () => {
+      try {
+        const { backendBaseUrl, jwt } = msg.payload || {};
+        if (backendBaseUrl) {
+          await chrome.storage.local.set({ backendBaseUrl });
+          console.log("[Voice CRM Background] Backend URL configured:", backendBaseUrl);
+        }
+        if (jwt) {
+          await chrome.storage.local.set({ jwt });
+          console.log("[Voice CRM Background] JWT configured");
+        }
+        sendResponse({ ok: true, message: "Configuration updated successfully" });
+      } catch (e) {
+        console.error("[Voice CRM Background] Error setting config:", e);
+        sendResponse({ ok: false, error: e?.message || String(e) });
+      }
+    })();
+    return true; // Keep channel open for async response
+  }
+
   if (msg?.type === "VOICE_CRM_API") {
     (async () => {
       try {

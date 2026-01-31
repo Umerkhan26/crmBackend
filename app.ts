@@ -53,18 +53,21 @@ const loadRoutes = (app: Application) => {
 const startServer = async () => {
   try {
     await db.sync({ alter: true });
-    console.log("Database synced.");
+    console.log("✅ Database synced.");
 
+    // Sync permissions from constants/permissions.ts to database
+    // This ensures all permissions (including call:create, call:get, call:delete) are in DB
+    console.log("🔄 Syncing permissions from constants to database...");
     await syncPermissionsToDB();
-    console.log("Permissions synced to database.");
+    console.log("✅ Permissions synced to database (all permissions from constants/permissions.ts are now available).");
 
     await syncEmailPermissionsToDB();
-    console.log("Email permissions synced to database.");
+    console.log("✅ Email permissions synced to database.");
 
     loadRoutes(app);
-    console.log("App initialized.");
+    console.log("✅ App initialized.");
   } catch (err) {
-    console.error("App startup error:", err);
+    console.error("❌ App startup error:", err);
     process.exit(1);
   }
 };

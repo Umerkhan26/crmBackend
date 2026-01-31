@@ -88,6 +88,7 @@ const connectDB = async () => {
     
     await db.sync({ alter: true });
     console.log("Database synced.");
+    // Note: Permissions are synced in app.ts startServer() function
   } catch (error) {
     console.error("Database connection error:", (error as Error).message);
   }

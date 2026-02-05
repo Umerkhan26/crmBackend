@@ -238,6 +238,63 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true; // Keep channel open for async response
   }
 
+  // Open or reuse Google Voice tab
+  if (msg?.type === "VOICE_CRM_OPEN_TAB") {
+    (async () => {
+      try {
+        const url = msg.url || "https://voice.google.com/u/0/calls";
+        
+        // First, check if a Google Voice tab is already open
+        const existingTabs = await chrome.tabs.query({ 
+          url: "*://voice.google.com/*" 
+        });
+        
+        if (existingTabs.length > 0) {
+          // Reuse the first existing Google Voice tab
+          const existingTab = existingTabs[0];
+          console.log("[Voice CRM Background] Found existing Google Voice tab:", existingTab.id);
+          
+          // Update the tab URL to make the call
+          await chrome.tabs.update(existingTab.id, { 
+            url: url,
+            active: true // Activate the tab
+          });
+          
+          // Wait a moment for the tab to update
+          await new Promise(resolve => setTimeout(resolve, 300));
+          
+          console.log("[Voice CRM Background] ✅ Reused existing tab and navigated to:", url);
+          sendResponse({ 
+            ok: true, 
+            tabId: existingTab.id, 
+            reused: true 
+          });
+        } else {
+          // No existing tab, create a new one
+          console.log("[Voice CRM Background] No existing Google Voice tab found, creating new tab");
+          const newTab = await chrome.tabs.create({ 
+            url: url,
+            active: true 
+          });
+          
+          console.log("[Voice CRM Background] ✅ Created new Google Voice tab:", newTab.id);
+          sendResponse({ 
+            ok: true, 
+            tabId: newTab.id, 
+            reused: false 
+          });
+        }
+      } catch (e) {
+        console.error("[Voice CRM Background] Error opening/reusing tab:", e);
+        sendResponse({ 
+          ok: false, 
+          error: e?.message || String(e) 
+        });
+      }
+    })();
+    return true; // Keep channel open for async response
+  }
+
   // Get tab audio stream ID for recording
   if (msg?.type === "VOICE_CRM_GET_TAB_AUDIO") {
     (async () => {

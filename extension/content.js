@@ -83,23 +83,66 @@ function isInCallUI() {
   // Also try to extract the actual duration value for more accurate timing
   let actualCallDuration = null;
   let isCallAttended = false; // Call is attended when duration > 00:00
-  const durationElements = Array.from(document.querySelectorAll('*')).filter(el => {
+  
+  // More aggressive search for duration - check all text nodes
+  const allTextNodes = [];
+  const walker = document.createTreeWalker(
+    document.body,
+    NodeFilter.SHOW_TEXT,
+    null,
+    false
+  );
+  let node;
+  while (node = walker.nextNode()) {
+    const text = node.textContent?.trim() || '';
+    if (/^\d{2}:\d{2}$/.test(text)) {
+      allTextNodes.push({ text, element: node.parentElement });
+    }
+  }
+  
+  // Also check for duration in common selectors
+  const durationSelectors = [
+    '[class*="duration"]',
+    '[class*="timer"]',
+    '[class*="time"]',
+    '[class*="call-time"]',
+    'text[class*="time"]',
+    'span[class*="duration"]',
+    'div[class*="duration"]'
+  ];
+  
+  const durationElements = allTextNodes.map(n => n.element).concat(
+    durationSelectors.flatMap(selector => Array.from(document.querySelectorAll(selector)))
+  ).filter((el, index, self) => {
+    if (!el) return false;
     const text = el.textContent?.trim() || '';
-    return /^\d{2}:\d{2}$/.test(text);
+    const isDuration = /^\d{2}:\d{2}$/.test(text);
+    return isDuration && self.indexOf(el) === index; // Remove duplicates
   });
   
   if (durationElements.length > 0) {
-    const durationText = durationElements[0].textContent.trim();
-    const [minutes, seconds] = durationText.split(':').map(Number);
-    actualCallDuration = minutes * 60 + seconds;
+    // Find the most likely duration element (usually the one in the call UI)
+    const callUIElement = durationElements.find(el => {
+      const rect = el.getBoundingClientRect();
+      // Duration in call UI is usually visible and in the center/right area
+      return rect.width > 0 && rect.height > 0 && 
+             (rect.top > 100 && rect.top < window.innerHeight - 100);
+    }) || durationElements[0];
     
-    // Call is "attended" (answered) when duration > 00:00
-    isCallAttended = actualCallDuration > 0;
-    
-    if (isCallAttended) {
-      console.log("[Voice CRM] Call is ATTENDED - duration:", durationText, "(" + actualCallDuration + " seconds)");
-    } else {
-      console.log("[Voice CRM] Call is RINGING - duration:", durationText);
+    const durationText = callUIElement.textContent?.trim() || '';
+    const match = durationText.match(/^(\d{2}):(\d{2})$/);
+    if (match) {
+      const [_, minutes, seconds] = match;
+      actualCallDuration = parseInt(minutes) * 60 + parseInt(seconds);
+      
+      // Call is "attended" (answered) when duration > 00:00
+      isCallAttended = actualCallDuration > 0;
+      
+      if (isCallAttended) {
+        console.log("[Voice CRM] ✅ Call is ATTENDED - duration:", durationText, "(" + actualCallDuration + " seconds)");
+      } else {
+        console.log("[Voice CRM] ⏳ Call is RINGING - duration:", durationText);
+      }
     }
   }
   
@@ -131,10 +174,13 @@ function isInCallUI() {
   
   // Combine all methods - if ANY strong indicator is present
   // BUT: Require duration > 0 OR call controls to be more reliable
-  const isInCall = (hasCallDuration && actualCallDuration !== null && actualCallDuration > 0) || 
+  // More lenient: if we see call controls OR duration OR end button, consider it a call
+  const isInCall = (hasCallDuration && actualCallDuration !== null && actualCallDuration >= 0) || // Allow 00:00 (ringing)
                    (hasCallControls && hasEndButton) || 
                    (hasCallDuration && hasEndButton) ||
-                   (hasCallControls && actualCallDuration !== null && actualCallDuration > 0);
+                   (hasCallControls && actualCallDuration !== null && actualCallDuration >= 0) ||
+                   (hasCallControls && urlHasCall) || // Call controls + call URL
+                   (hasEndButton && urlHasCall); // End button + call URL
   
   // Store actual duration if found (for more accurate call timing)
   if (isInCall && actualCallDuration !== null && actualCallDuration > 0) {
@@ -146,9 +192,9 @@ function isInCallUI() {
     window.voiceCrmIsCallAttended = false;
   }
   
-  // Always log detection attempt for debugging
-  if (isInCall || Math.random() < 0.05) { // Log 5% of checks even when not in call
-    console.log("[Voice CRM] Call detection check:", {
+  // Always log detection attempt when in call, or periodically for debugging
+  if (isInCall || Math.random() < 0.1) { // Log 10% of checks even when not in call
+    console.log("[Voice CRM] 🔍 Call detection check:", {
       hasCallControls,
       hasCallDuration: !!hasCallDuration,
       actualDuration: actualCallDuration,
@@ -158,7 +204,22 @@ function isInCallUI() {
       hasPhoneNumberWithControls,
       hasCallText,
       isInCall,
-      url: window.location.href
+      url: window.location.href,
+      buttonLabelsCount: buttonLabels.length,
+      durationElementsCount: durationElements.length
+    });
+  }
+  
+  // If we detect call controls but not in call, log more details
+  if (hasCallControls && !isInCall) {
+    console.warn("[Voice CRM] ⚠️ Call controls detected but not recognized as in call:", {
+      buttonLabels: buttonLabels.filter(l => 
+        l.includes("transfer") || l.includes("hold") || l.includes("mute") || 
+        l.includes("record") || l.includes("keypad") || l.includes("add")
+      ),
+      hasEndButton,
+      hasCallDuration: !!hasCallDuration,
+      actualDuration
     });
   }
   
@@ -197,6 +258,13 @@ function startObservingCallLifecycle(callContext) {
     const inCall = callState.isInCall;
     const isCallAttended = callState.isCallAttended;
     const callStateDuration = callState.actualDuration;
+    
+    // Log state changes for debugging
+    if (inCall !== lastInCall) {
+      console.log(`[Voice CRM] 🔄 Call state changed: ${lastInCall ? 'IN CALL' : 'NOT IN CALL'} → ${inCall ? 'IN CALL' : 'NOT IN CALL'}`);
+      console.log(`[Voice CRM] Active call:`, activeCall);
+      console.log(`[Voice CRM] Pending context:`, pendingCallContext);
+    }
     
     // Track when call is attended (answered) - duration starts from here
     if (isCallAttended && !callAttendedFlag && activeCall?.id) {

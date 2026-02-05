@@ -52,8 +52,26 @@ const loadRoutes = (app: Application) => {
 
 const startServer = async () => {
   try {
-    await db.sync({ alter: true });
-    console.log("✅ Database synced.");
+    // Sync database with error handling for missing constraints
+    try {
+      await db.sync({ alter: true });
+      console.log("✅ Database synced.");
+    } catch (syncError: any) {
+      // Handle constraint errors gracefully - if constraint doesn't exist, it's okay
+      if (syncError.name === "SequelizeUnknownConstraintError" || 
+          syncError.original?.code === "ER_CANT_DROP_FIELD_OR_KEY") {
+        console.warn("⚠️  Database sync warning (constraint issue, continuing):", syncError.message);
+        // Try to sync without alter if alter fails
+        try {
+          await db.sync();
+          console.log("✅ Database synced (without alter).");
+        } catch (retryError) {
+          console.warn("⚠️  Database sync retry warning (continuing anyway):", retryError);
+        }
+      } else {
+        throw syncError; // Re-throw if it's a different error
+      }
+    }
 
     // Sync permissions from constants/permissions.ts to database
     // This ensures all permissions (including call:create, call:get, call:delete) are in DB

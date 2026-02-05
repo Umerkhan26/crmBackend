@@ -244,24 +244,68 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       try {
         const url = msg.url || "https://voice.google.com/u/0/calls";
         
-        // First, check if a Google Voice tab is already open
-        const existingTabs = await chrome.tabs.query({ 
-          url: "*://voice.google.com/*" 
+        // Get all tabs and filter for Google Voice tabs manually
+        // This is more reliable than URL pattern matching
+        const allTabs = await chrome.tabs.query({});
+        
+        // Filter for Google Voice tabs - check multiple conditions
+        const voiceTabs = allTabs.filter(tab => {
+          if (!tab) return false;
+          const tabUrl = (tab.url || tab.pendingUrl || "").toLowerCase();
+          const tabTitle = (tab.title || "").toLowerCase();
+          
+          // Check if URL contains voice.google.com
+          const isVoiceUrl = tabUrl.includes("voice.google.com");
+          
+          // Also check title as backup (Google Voice pages often have "Google Voice" in title)
+          const isVoiceTitle = tabTitle.includes("google voice") || tabTitle.includes("voice");
+          
+          return isVoiceUrl || (isVoiceTitle && tabUrl.includes("google.com"));
         });
         
-        if (existingTabs.length > 0) {
-          // Reuse the first existing Google Voice tab
-          const existingTab = existingTabs[0];
-          console.log("[Voice CRM Background] Found existing Google Voice tab:", existingTab.id);
+        console.log("[Voice CRM Background] 🔍 Tab detection:", {
+          totalTabs: allTabs.length,
+          voiceTabsFound: voiceTabs.length,
+          voiceTabDetails: voiceTabs.map(t => ({
+            id: t.id,
+            url: t.url || t.pendingUrl,
+            title: t.title,
+            active: t.active
+          })),
+          sampleTabUrls: allTabs.slice(0, 10).map(t => ({
+            url: t.url || t.pendingUrl || "no-url",
+            title: t.title || "no-title"
+          }))
+        });
+        
+        if (voiceTabs.length > 0) {
+          // Prefer an active Google Voice tab, otherwise use the first one
+          let existingTab = voiceTabs.find(t => t.active) || voiceTabs[0];
           
-          // Update the tab URL to make the call
+          console.log("[Voice CRM Background] ✅ Reusing existing Google Voice tab:", {
+            id: existingTab.id,
+            url: existingTab.url || existingTab.pendingUrl,
+            wasActive: existingTab.active
+          });
+          
+          // Update the tab URL to make the call and activate it
           await chrome.tabs.update(existingTab.id, { 
             url: url,
             active: true // Activate the tab
           });
           
           // Wait a moment for the tab to update
-          await new Promise(resolve => setTimeout(resolve, 300));
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+          // Bring the window to front
+          try {
+            const tabInfo = await chrome.tabs.get(existingTab.id);
+            if (tabInfo.windowId) {
+              await chrome.windows.update(tabInfo.windowId, { focused: true });
+            }
+          } catch (winError) {
+            console.warn("[Voice CRM Background] Could not focus window:", winError);
+          }
           
           console.log("[Voice CRM Background] ✅ Reused existing tab and navigated to:", url);
           sendResponse({ 
@@ -271,7 +315,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           });
         } else {
           // No existing tab, create a new one
-          console.log("[Voice CRM Background] No existing Google Voice tab found, creating new tab");
+          console.log("[Voice CRM Background] ⚠️ No existing Google Voice tab found, creating new tab");
+          console.log("[Voice CRM Background] All tab URLs checked:", allTabs.map(t => ({
+            url: t.url || t.pendingUrl || "no-url",
+            title: t.title || "no-title"
+          })));
           const newTab = await chrome.tabs.create({ 
             url: url,
             active: true 

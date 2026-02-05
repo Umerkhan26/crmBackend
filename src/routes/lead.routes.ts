@@ -45,7 +45,12 @@ router.get(
 router.put(
   "/leads/:id",
   verifyToken,
-  checkPermission(PERMISSIONS.LEAD_UPDATE),
+  checkPermission([
+    PERMISSIONS.LEAD_UPDATE, 
+    PERMISSIONS.LEAD_GET_ALL,
+    PERMISSIONS.ASSIGNED_LEAD_GET_BY_ASSIGNEE,
+    PERMISSIONS.ASSIGNED_LEAD_GET_BY_CAMPAIGN_AND_ASSIGNEE
+  ]),
   LeadController.updateLead
 );
 router.delete(

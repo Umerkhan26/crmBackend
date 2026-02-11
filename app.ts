@@ -3,9 +3,6 @@ import cors from "cors";
 import dotenv from "dotenv";
 import path from "path";
 import fs from "fs";
-import { syncPermissionsToDB } from "./src/utils/syncPermissions";
-import { syncEmailPermissionsToDB } from "./src/utils/syncEmailPermissions";
-import db from "./db";
 import "./src/models/associations";
 import "./src/models/index";
 import "./src/utils/reminderJob";
@@ -34,7 +31,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   next();
 });
 
-const loadRoutes = (app: Application) => {
+export const loadRoutes = (app: Application) => {
   const routesPath = path.join(__dirname, "src/routes");
   fs.readdirSync(routesPath).forEach((file) => {
     if (file.endsWith(".routes.js") || file.endsWith(".routes.ts")) {
@@ -49,47 +46,5 @@ const loadRoutes = (app: Application) => {
     }
   });
 };
-
-const startServer = async () => {
-  try {
-    // Sync database with error handling for missing constraints
-    try {
-      await db.sync({ alter: true });
-      console.log("✅ Database synced.");
-    } catch (syncError: any) {
-      // Handle constraint errors gracefully - if constraint doesn't exist, it's okay
-      if (syncError.name === "SequelizeUnknownConstraintError" || 
-          syncError.original?.code === "ER_CANT_DROP_FIELD_OR_KEY") {
-        console.warn("⚠️  Database sync warning (constraint issue, continuing):", syncError.message);
-        // Try to sync without alter if alter fails
-        try {
-          await db.sync();
-          console.log("✅ Database synced (without alter).");
-        } catch (retryError) {
-          console.warn("⚠️  Database sync retry warning (continuing anyway):", retryError);
-        }
-      } else {
-        throw syncError; // Re-throw if it's a different error
-      }
-    }
-
-    // Sync permissions from constants/permissions.ts to database
-    // This ensures all permissions (including call:create, call:get, call:delete) are in DB
-    console.log("🔄 Syncing permissions from constants to database...");
-    await syncPermissionsToDB();
-    console.log("✅ Permissions synced to database (all permissions from constants/permissions.ts are now available).");
-
-    await syncEmailPermissionsToDB();
-    console.log("✅ Email permissions synced to database.");
-
-    loadRoutes(app);
-    console.log("✅ App initialized.");
-  } catch (err) {
-    console.error("❌ App startup error:", err);
-    process.exit(1);
-  }
-};
-
-startServer();
 
 export default app;

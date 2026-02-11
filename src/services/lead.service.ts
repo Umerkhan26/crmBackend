@@ -1285,7 +1285,8 @@ export const getLeadsByAssigneeId = async (
   endDate?: string,
   page: number = 1,
   limit: number = 10,
-  campaignName?: string
+  campaignName?: string,
+  search?: string
 ) => {
   try {
     const { offset } = getPagination({ page, limit });
@@ -1392,9 +1393,30 @@ export const getLeadsByAssigneeId = async (
       }
     });
 
+    // STEP 2.5: Apply search filter (leadData, campaignName, leadCode)
+    let searchedLeads = filteredLeads;
+    if (search && search.trim() !== "") {
+      const searchLower = search.toLowerCase().trim();
+      searchedLeads = filteredLeads.filter((lead: any) => {
+        const leadDataStr = JSON.stringify(lead.leadData || {}).toLowerCase();
+        const campaignNameStr = (lead.campaignName || "").toLowerCase();
+        const initials = (lead.campaignName || "")
+          .split(" ")
+          .map((word: string) => word[0]?.toLowerCase() || "")
+          .join("");
+        const leadCodeStr = `${initials}${lead.id}`.toLowerCase();
+
+        return (
+          leadDataStr.includes(searchLower) ||
+          campaignNameStr.includes(searchLower) ||
+          leadCodeStr.includes(searchLower)
+        );
+      });
+    }
+
     // STEP 3: Apply pagination
-    const totalCount = filteredLeads.length;
-    const paginatedLeads = filteredLeads.slice(offset, offset + limit);
+    const totalCount = searchedLeads.length;
+    const paginatedLeads = searchedLeads.slice(offset, offset + limit);
 
     // STEP 4: Map paginated results
     const mappedLeads = paginatedLeads.map((lead) => {

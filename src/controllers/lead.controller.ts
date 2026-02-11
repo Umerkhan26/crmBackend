@@ -491,6 +491,7 @@ export const getLeadsByAssigneeId = async (
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
     const campaignName = req.query.campaignName as string | undefined;
+    const search = req.query.search ? (req.query.search as string) : undefined;
 
     if (isNaN(assigneeId)) {
       return res.status(400).json({ message: "Invalid assignee ID." });
@@ -503,7 +504,8 @@ export const getLeadsByAssigneeId = async (
       endDate,
       page,
       limit,
-      campaignName
+      campaignName,
+      search
     );
 
     const responseData = getPagingData(leadsResult, page, limit);

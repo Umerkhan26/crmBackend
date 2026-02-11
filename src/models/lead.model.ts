@@ -8,6 +8,7 @@ export type LeadStatus =
   | "interested"
   | "most_interested"
   | "sold"
+  | "not_answered"
   | "not_interested"
   | "do_not_call";
 
@@ -103,6 +104,7 @@ const ALLOWED_STATUSES: LeadStatus[] = [
   "interested",
   "most_interested",
   "sold",
+  "not_answered",
   "not_interested",
   "do_not_call",
 ];

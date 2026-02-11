@@ -1569,6 +1569,7 @@ export const getLeadStatusSummary = async (assigneeId?: number) => {
       "sold",
       "most_interested",
       "to_call",
+      "not_answered",
       "not_interested",
     ];
     const statusCounts: Record<string, number> = {};
@@ -1610,6 +1611,7 @@ const ALLOWED_STATUSES: LeadStatus[] = [
   "sold",
   "most_interested",
   "to_call",
+  "not_answered",
   "not_interested",
 ];
 
@@ -1619,6 +1621,7 @@ export type LeadStatus =
   | "interested"
   | "most_interested"
   | "sold"
+  | "not_answered"
   | "not_interested"
   | "do_not_call";
 

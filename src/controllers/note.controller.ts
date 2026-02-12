@@ -194,3 +194,57 @@ export const deleteReminder = async (req: Request, res: Response): Promise<any> 
     return res.status(500).json({ success: false, message: error.message });
   }
 };
+
+export const getAllNotes = async (req: Request, res: Response): Promise<any> => {
+  try {
+    const userId = (req as any).user?.id;
+    
+    if (!userId) {
+      return res.status(401).json({ 
+        success: false,
+        message: "Unauthorized: user ID not found" 
+      });
+    }
+
+    // Get user role to check if admin
+    const User = (await import("../models/user.model")).default;
+    const Role = (await import("../models/role.model")).default;
+    
+    const user = await User.findByPk(userId, {
+      include: {
+        model: Role,
+      },
+    }) as any;
+
+    if (!user) {
+      return res.status(404).json({ 
+        success: false,
+        message: "User not found" 
+      });
+    }
+
+    const roleName = user.Role?.name?.toLowerCase() || "";
+    const isAdmin = roleName === "admin" || roleName === "adminn";
+
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+
+    const result = await NoteService.getAllNotesWithPagination(
+      page,
+      limit,
+      userId,
+      isAdmin
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Notes fetched successfully",
+      ...result,
+    });
+  } catch (error: any) {
+    return res.status(500).json({ 
+      success: false, 
+      message: error.message || "Failed to fetch notes" 
+    });
+  }
+};

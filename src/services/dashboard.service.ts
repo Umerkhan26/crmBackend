@@ -153,6 +153,9 @@ export const getDashboardStats = async ({
       // Extract count from raw query result
       const leadsWithWorkCount = (leadsWithWorkResult[0] as any)?.count || 0;
 
+      // Get recent notes from all users (for admin dashboard)
+      const recentNotes = await NoteService.getRecentNotesForAdmin(10);
+
       return {
         users: {
           total: totalUsers,
@@ -174,6 +177,20 @@ export const getDashboardStats = async ({
         campaigns: {
           total: totalCampaigns,
         },
+        recentNotes: recentNotes.map((note: any) => ({
+          id: note.id,
+          content: note.content,
+          notebleId: note.notebleId,
+          notebleType: note.notebleType,
+          createdAt: note.createdAt,
+          creator: note.creator ? {
+            id: note.creator.id,
+            firstname: note.creator.firstname,
+            lastname: note.creator.lastname,
+            email: note.creator.email,
+          } : null,
+          lead: note.lead || null,
+        })),
       };
     } else {
       // Non-admin users: get user-specific stats

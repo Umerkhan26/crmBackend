@@ -1,5 +1,7 @@
 import { Request, Response } from "express";
 import * as MasterSearchService from "../services/masterSearch.service";
+import User from "../models/user.model";
+import Role from "../models/role.model";
 
 export const masterSearch = async (
   req: Request,
@@ -8,6 +10,7 @@ export const masterSearch = async (
   try {
     const query = (req.query.q as string) || "";
     const limit = parseInt(req.query.limit as string) || 5;
+    const userId = (req as any).user?.id;
 
     if (!query || query.trim().length === 0) {
       return res.status(200).json({
@@ -37,7 +40,73 @@ export const masterSearch = async (
       });
     }
 
-    const searchResults = await MasterSearchService.masterSearch(query, limit);
+    // Get user info to check if admin
+    let isAdmin = false;
+    let userPermissions: any[] = [];
+    let allowedCampaignNames: string[] = [];
+
+    if (userId) {
+      const user = await User.findByPk(userId, {
+        include: {
+          model: Role,
+          include: [{ model: require("../models/permission.model").default }],
+        },
+      }) as any;
+
+      if (user) {
+        const roleName = user.Role?.name?.toLowerCase() || "";
+        isAdmin = roleName === "admin" || roleName === "adminn";
+        
+        if (!isAdmin) {
+          // Get user's campaign permissions
+          userPermissions = user.Role?.Permissions || [];
+          const allowedCampaignIds: number[] = [];
+
+          // Extract campaign permissions
+          userPermissions.forEach((perm: any) => {
+            if (perm.name === "getCampaignById" && perm.resourceId && !isNaN(Number(perm.resourceId))) {
+              allowedCampaignIds.push(parseInt(perm.resourceId));
+            }
+            if (perm.resourceType?.startsWith("campaign-")) {
+              const name = perm.resourceType.split("campaign-")[1]?.toLowerCase();
+              if (name) allowedCampaignNames.push(name);
+            }
+            if (perm.resourceType && !perm.resourceType.startsWith("campaign-")) {
+              allowedCampaignNames.push(perm.resourceType.toLowerCase());
+            }
+          });
+
+          // Get campaign names from IDs
+          if (allowedCampaignIds.length > 0) {
+            const Campaign = require("../models/campaign.model").default;
+            const campaigns = await Campaign.findAll({
+              where: { id: { [require("sequelize").Op.in]: allowedCampaignIds } },
+              attributes: ["campaignName"],
+            });
+            campaigns.forEach((c: any) => {
+              const name = c.campaignName?.toLowerCase().trim();
+              if (name && !allowedCampaignNames.includes(name)) {
+                allowedCampaignNames.push(name);
+              }
+            });
+          }
+
+          // Check for general campaign permission
+          const hasGeneralPermission = userPermissions.some((p: any) => p.name === "campaign:get");
+          if (hasGeneralPermission && allowedCampaignNames.length === 0) {
+            // User has general permission but no specific campaigns - they can see all
+            allowedCampaignNames = []; // Empty array means all campaigns
+          }
+        }
+      }
+    }
+
+    const searchResults = await MasterSearchService.masterSearch(
+      query, 
+      limit, 
+      isAdmin ? undefined : userId,
+      isAdmin ? undefined : allowedCampaignNames
+    );
 
     // Extract results and totals separately
     const { totals, ...results } = searchResults;

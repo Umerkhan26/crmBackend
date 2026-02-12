@@ -9,6 +9,7 @@ import LeadActivity from "../models/leadActivity.model";
 import { Op, Sequelize, QueryTypes } from "sequelize";
 import db from "../../db";
 import { buildDateFilter, FilterType } from "../utils/dateFilters";
+import * as NoteService from "./note.service";
 
 interface DashboardStatsParams {
   userId?: number;
@@ -314,6 +315,9 @@ export const getDashboardStats = async ({
       // My campaigns (campaigns user has access to)
       const myCampaignsCount = allowedCampaigns.length;
 
+      // Get recent notes created by the user (for dashboard display)
+      const recentNotes = await NoteService.getRecentNotesForUser(userId, 10);
+
       // Check if user has permission to create leads (for showing creator stats)
       const hasLeadCreatePermission = permissions.some((p: any) => p.name === "lead:create");
       
@@ -383,6 +387,20 @@ export const getDashboardStats = async ({
         campaigns: {
           total: myCampaignsCount,
         },
+        recentNotes: recentNotes.map((note: any) => ({
+          id: note.id,
+          content: note.content,
+          notebleId: note.notebleId,
+          notebleType: note.notebleType,
+          createdAt: note.createdAt,
+          creator: note.creator ? {
+            id: note.creator.id,
+            firstname: note.creator.firstname,
+            lastname: note.creator.lastname,
+            email: note.creator.email,
+          } : null,
+          lead: note.lead || null,
+        })),
       };
     }
   } catch (error: any) {

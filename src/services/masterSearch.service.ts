@@ -31,7 +31,9 @@ interface MasterSearchResult {
 
 export const masterSearch = async (
   query: string,
-  limit: number = 5
+  limit: number = 5,
+  userId?: number,
+  allowedCampaignNames?: string[]
 ): Promise<MasterSearchResult> => {
   if (!query || query.trim().length === 0) {
     return {
@@ -84,6 +86,30 @@ export const masterSearch = async (
     leadWhere[Op.or].push({ campaignName: { [Op.like]: `${query.trim()}%` } });
   }
 
+  // For non-admin users, filter leads by assignment and campaign permissions
+  if (userId && allowedCampaignNames !== undefined) {
+    if (allowedCampaignNames.length === 0) {
+      // User has no campaign permissions - return empty results
+      leadWhere[Op.and] = [Sequelize.literal("1 = 0")]; // Always false condition
+    } else {
+      // User has specific campaign permissions
+      // Build condition: (assigned to user) AND (campaign in allowed campaigns)
+      const assignmentCondition = Sequelize.literal(
+        `JSON_CONTAINS(COALESCE(assignees, '[]'), JSON_OBJECT('userId', ${userId}), '$')`
+      );
+      
+      // Add campaign filter
+      const campaignFilter = { campaignName: { [Op.in]: allowedCampaignNames } };
+      
+      // Combine: (search conditions) AND (assigned to user) AND (campaign in allowed)
+      if (!leadWhere[Op.and]) {
+        leadWhere[Op.and] = [];
+      }
+      leadWhere[Op.and].push(assignmentCondition);
+      leadWhere[Op.and].push(campaignFilter);
+    }
+  }
+
   const userWhere: any = {
     [Op.or]: [
       { firstname: { [Op.like]: searchTerm } },
@@ -100,6 +126,17 @@ export const masterSearch = async (
   };
   if (numericId !== undefined) {
     campaignWhere[Op.or].push({ id: numericId });
+  }
+
+  // For non-admin users, filter campaigns by permissions
+  if (userId && allowedCampaignNames !== undefined) {
+    if (allowedCampaignNames.length > 0) {
+      // User has specific campaign permissions - filter by those campaigns
+      campaignWhere.campaignName = { [Op.in]: allowedCampaignNames };
+    } else {
+      // User has no campaign permissions - return empty results
+      campaignWhere[Op.and] = [Sequelize.literal("1 = 0")]; // Always false condition
+    }
   }
 
   const orderWhere: any = {
@@ -141,6 +178,9 @@ export const masterSearch = async (
     ],
   };
 
+  // For non-admin users, hide certain entities (users, roles, etc.)
+  const shouldHideEntities = userId && allowedCampaignNames !== undefined;
+
   // Search all entities in parallel
   const [
     leads,
@@ -171,8 +211,8 @@ export const masterSearch = async (
       attributes: ["id", "campaignName", "leadData"],
     }),
 
-    // Search Users
-    User.findAll({
+    // Search Users (only for admin)
+    shouldHideEntities ? Promise.resolve([]) : User.findAll({
       where: userWhere,
       limit,
       order: [["id", "DESC"]],
@@ -187,8 +227,8 @@ export const masterSearch = async (
       attributes: ["id", "campaignName", "fields"],
     }),
 
-    // Search Orders
-    Order.findAll({
+    // Search Orders (only for admin)
+    shouldHideEntities ? Promise.resolve([]) : Order.findAll({
       where: orderWhere,
       limit,
       order: [["created_at", "DESC"]],
@@ -202,32 +242,32 @@ export const masterSearch = async (
       ],
     }),
 
-    // Search Products (ProductSales)
-    ProductSale.findAll({
+    // Search Products (ProductSales) - only for admin
+    shouldHideEntities ? Promise.resolve([]) : ProductSale.findAll({
       where: productWhere,
       limit,
       order: [["id", "DESC"]],
       attributes: ["id", "productType", "price", "status"],
     }),
 
-    // Search Roles
-    Role.findAll({
+    // Search Roles (only for admin)
+    shouldHideEntities ? Promise.resolve([]) : Role.findAll({
       where: roleWhere,
       limit,
       order: [["id", "DESC"]],
       attributes: ["id", "name"],
     }),
 
-    // Search Client Leads - search in leadData JSON
-    ClientLead.findAll({
+    // Search Client Leads - search in leadData JSON (only for admin)
+    shouldHideEntities ? Promise.resolve([]) : ClientLead.findAll({
       where: clientLeadWhere,
       limit: limit * 2, // Fetch more to filter by leadData
       order: [["id", "DESC"]],
       attributes: ["id", "leadData"],
     }),
 
-    // Search Activity Logs
-    ActivityLog.findAll({
+    // Search Activity Logs (only for admin)
+    shouldHideEntities ? Promise.resolve([]) : ActivityLog.findAll({
       where: activityLogWhere,
       limit,
       order: [["created_at", "DESC"]],
@@ -334,12 +374,12 @@ export const masterSearch = async (
     activityLogsCount,
   ]: [number, number, number, number, number, number] =
     await Promise.all([
-      User.count({ where: userWhere }),
+      shouldHideEntities ? Promise.resolve(0) : User.count({ where: userWhere }),
       Campaign.count({ where: campaignWhere }),
-      Order.count({ where: orderWhere }),
-      ProductSale.count({ where: productWhere }),
-      Role.count({ where: roleWhere }),
-      ActivityLog.count({ where: activityLogWhere }),
+      shouldHideEntities ? Promise.resolve(0) : Order.count({ where: orderWhere }),
+      shouldHideEntities ? Promise.resolve(0) : ProductSale.count({ where: productWhere }),
+      shouldHideEntities ? Promise.resolve(0) : Role.count({ where: roleWhere }),
+      shouldHideEntities ? Promise.resolve(0) : ActivityLog.count({ where: activityLogWhere }),
     ]);
 
   return {

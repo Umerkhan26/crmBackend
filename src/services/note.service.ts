@@ -172,6 +172,59 @@ export const getUpcomingRemindersForUser = async (
   });
 };
 
+/**
+ * Get recent notes for a user (comments only, not reminders).
+ * Used for dashboard display.
+ * @param userId - The user ID to get notes for
+ * @param limit - Maximum number of notes to return (default: 10)
+ * @returns Array of recent notes created by the user with lead information
+ */
+export const getRecentNotesForUser = async (
+  userId: number,
+  limit: number = 10
+) => {
+  const Lead = (await import("../models/lead.model")).default;
+  
+  const notes = await Note.findAll({
+    where: {
+      type: "comment",
+      createdBy: userId,
+      notebleType: "lead", // Only show notes on leads
+    },
+    include: [
+      { 
+        model: User, 
+        as: "creator", 
+        attributes: ["id", "firstname", "lastname", "email"] 
+      },
+    ],
+    order: [["createdAt", "DESC"]],
+    limit,
+  });
+
+  // Fetch lead information for each note
+  const notesWithLeads = await Promise.all(
+    notes.map(async (note: any) => {
+      let lead = null;
+      if (note.notebleType === "lead" && note.notebleId) {
+        lead = await Lead.findByPk(note.notebleId, {
+          attributes: ["id", "campaignName"],
+        });
+      }
+      return {
+        ...note.toJSON(),
+        lead: lead ? {
+          id: lead.id,
+          campaignName: lead.campaignName,
+          leadCode: lead.leadCode || `${lead.campaignName?.split(" ").map((w: string) => w[0]?.toUpperCase() || "").join("")}${lead.id}`,
+        } : null,
+      };
+    })
+  );
+
+  return notesWithLeads;
+};
+
 export const updateNote = async (
   id: number,
   data: Partial<Note>,

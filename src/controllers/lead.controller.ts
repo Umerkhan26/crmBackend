@@ -15,7 +15,10 @@ export const createLead = async (req: Request, res: Response): Promise<any> => {
       return res.status(400).json({ message: "Invalid lead data." });
     }
 
-    const lead = await LeadService.createLead({ campaignName, leadData }, userId);
+    const lead = await LeadService.createLead(
+      { campaignName, leadData },
+      userId,
+    );
     return res.status(201).json({ message: "Lead created successfully", lead });
   } catch (error: any) {
     return res.status(500).json({ message: error.message });
@@ -24,11 +27,11 @@ export const createLead = async (req: Request, res: Response): Promise<any> => {
 
 export const getAllLeads = async (
   req: Request,
-  res: Response
+  res: Response,
 ): Promise<any> => {
   try {
     const userId = (req as any).user?.id;
-    
+
     if (!userId) {
       return res.status(401).json({
         success: false,
@@ -37,11 +40,11 @@ export const getAllLeads = async (
     }
 
     // Get user with role to check if admin (same approach as dashboard controller)
-    const user = await User.findByPk(userId, {
+    const user = (await User.findByPk(userId, {
       include: {
         model: Role,
       },
-    }) as any;
+    })) as any;
 
     if (!user) {
       return res.status(404).json({
@@ -109,7 +112,7 @@ export const getAllLeads = async (
 
 export const getLeadById = async (
   req: Request,
-  res: Response
+  res: Response,
 ): Promise<any> => {
   try {
     const { id } = req.params;
@@ -136,12 +139,12 @@ export const getLeadById = async (
 };
 export const getLeadsByCampaign = async (
   req: Request,
-  res: Response
+  res: Response,
 ): Promise<any> => {
   try {
     const { campaignName } = req.params;
     const userId = (req as any).user?.id;
-    
+
     if (!userId) {
       return res.status(401).json({
         success: false,
@@ -150,11 +153,11 @@ export const getLeadsByCampaign = async (
     }
 
     // Get user with role to check if admin
-    const user = await User.findByPk(userId, {
+    const user = (await User.findByPk(userId, {
       include: {
         model: Role,
       },
-    }) as any;
+    })) as any;
 
     if (!user) {
       return res.status(404).json({
@@ -173,13 +176,13 @@ export const getLeadsByCampaign = async (
       : 10;
 
     const search = req.query.search ? String(req.query.search).trim() : "";
-    
+
     console.log("🔍 Controller - Received search parameter:", {
       searchTerm: search,
       rawQuery: req.query.search,
       campaignName,
       page,
-      limit
+      limit,
     });
 
     const startDate = req.query.startDate
@@ -282,7 +285,7 @@ export const deleteLead = async (req: Request, res: Response): Promise<any> => {
 };
 export const assignUserToLead = async (
   req: Request,
-  res: Response
+  res: Response,
 ): Promise<any> => {
   try {
     const leadId = parseInt(req.params.leadId, 10);
@@ -308,13 +311,13 @@ export const assignUserToLead = async (
     const updatedLead = await LeadService.assignLeadToUsers(
       leadId,
       userIds,
-      assignedByUserId
+      assignedByUserId,
     );
 
     return res.status(200).json({
       success: true,
       message: `User(s) ${userIds.join(
-        ", "
+        ", ",
       )} have been assigned to lead ID ${leadId}.`,
       lead: updatedLead,
     });
@@ -329,31 +332,31 @@ export const assignUserToLead = async (
 
 export const bulkAssignLeadsToUser = async (
   req: Request,
-  res: Response
+  res: Response,
 ): Promise<any> => {
   try {
     const assignedByUserId = req.user?.id;
     const { leadIds, userId } = req.body;
 
     if (!leadIds || !Array.isArray(leadIds) || leadIds.length === 0) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         success: false,
-        message: "Invalid lead IDs. Must be a non-empty array." 
+        message: "Invalid lead IDs. Must be a non-empty array.",
       });
     }
 
     if (!userId) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         success: false,
-        message: "User ID is required." 
+        message: "User ID is required.",
       });
     }
 
     const userIdNum = parseInt(userId, 10);
     if (isNaN(userIdNum)) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         success: false,
-        message: "Invalid user ID." 
+        message: "Invalid user ID.",
       });
     }
 
@@ -362,16 +365,16 @@ export const bulkAssignLeadsToUser = async (
       .filter((id: number) => !isNaN(id));
 
     if (leadIdsNum.length === 0) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         success: false,
-        message: "No valid lead IDs provided." 
+        message: "No valid lead IDs provided.",
       });
     }
 
     const result = await LeadService.bulkAssignLeadsToUser(
       leadIdsNum,
       userIdNum,
-      assignedByUserId
+      assignedByUserId,
     );
 
     return res.status(200).json({
@@ -382,19 +385,18 @@ export const bulkAssignLeadsToUser = async (
   } catch (error: any) {
     return res.status(500).json({
       success: false,
-      message:
-        error.message || "An error occurred while bulk assigning leads.",
+      message: error.message || "An error occurred while bulk assigning leads.",
     });
   }
 };
 
 export const getAllLeadsWithAssignee = async (
   req: Request,
-  res: Response
+  res: Response,
 ): Promise<any> => {
   try {
     const userId = (req as any).user?.id;
-    
+
     if (!userId) {
       return res.status(401).json({
         success: false,
@@ -403,11 +405,11 @@ export const getAllLeadsWithAssignee = async (
     }
 
     // Get user with role to check if admin
-    const user = await User.findByPk(userId, {
+    const user = (await User.findByPk(userId, {
       include: {
         model: Role,
       },
-    }) as any;
+    })) as any;
 
     if (!user) {
       return res.status(404).json({
@@ -481,17 +483,23 @@ export const getAllLeadsWithAssignee = async (
 };
 export const getLeadsByAssigneeId = async (
   req: Request,
-  res: Response
+  res: Response,
 ): Promise<any> => {
   try {
     const assigneeId = parseInt(req.params.assigneeId, 10);
-    const filterType = req.query.filterType ? (req.query.filterType as FilterType) : undefined;
+    const filterType = req.query.filterType
+      ? (req.query.filterType as FilterType)
+      : undefined;
     const startDate = req.query.startDate as string | undefined;
     const endDate = req.query.endDate as string | undefined;
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
     const campaignName = req.query.campaignName as string | undefined;
     const search = req.query.search ? (req.query.search as string) : undefined;
+
+    const conditions = req.query.conditions
+      ? JSON.parse(req.query.conditions as string)
+      : [];
 
     if (isNaN(assigneeId)) {
       return res.status(400).json({ message: "Invalid assignee ID." });
@@ -505,7 +513,8 @@ export const getLeadsByAssigneeId = async (
       page,
       limit,
       campaignName,
-      search
+      search,
+      conditions,
     );
 
     const responseData = getPagingData(leadsResult, page, limit);
@@ -534,11 +543,11 @@ export const getAssignmentStats = async (req: Request, res: Response) => {
 
 export const getUnassignedLeads = async (
   req: Request,
-  res: Response
+  res: Response,
 ): Promise<any> => {
   try {
     const userId = (req as any).user?.id;
-    
+
     if (!userId) {
       return res.status(401).json({
         success: false,
@@ -547,11 +556,11 @@ export const getUnassignedLeads = async (
     }
 
     // Get user with role to check if admin
-    const user = await User.findByPk(userId, {
+    const user = (await User.findByPk(userId, {
       include: {
         model: Role,
       },
-    }) as any;
+    })) as any;
 
     if (!user) {
       return res.status(404).json({
@@ -641,7 +650,7 @@ export const getUnassignedLeads = async (
 
 export const sendEmailToLead = async (
   req: Request,
-  res: Response
+  res: Response,
 ): Promise<any> => {
   try {
     const leadId = parseInt(req.params.leadId, 10);
@@ -667,7 +676,7 @@ export const sendEmailToLead = async (
     const result = await LeadService.sendEmailToLeadUsingTemplate(
       leadId,
       templateKey,
-      senderUserId
+      senderUserId,
     );
 
     return res.status(200).json({
@@ -686,7 +695,7 @@ export const sendEmailToLead = async (
 
 export const getLeadStatusSummary = async (
   req: Request,
-  res: Response
+  res: Response,
 ): Promise<any> => {
   try {
     const assigneeId = req.query.assigneeId
@@ -719,7 +728,7 @@ const ALLOWED_STATUSES: LeadStatus[] = [
 ];
 export const updateLeadStatus = async (
   req: Request,
-  res: Response
+  res: Response,
 ): Promise<any> => {
   try {
     const leadId = Number(req.params.leadId);
@@ -737,7 +746,7 @@ export const updateLeadStatus = async (
       return res.status(400).json({
         success: false,
         message: `Invalid status. Allowed statuses: ${ALLOWED_STATUSES.join(
-          ", "
+          ", ",
         )}`,
       });
     }
@@ -745,7 +754,7 @@ export const updateLeadStatus = async (
     const updatedLead = await LeadService.updateLeadStatusForUser(
       leadId,
       userId,
-      status
+      status,
     );
 
     return res.status(200).json({
@@ -763,7 +772,7 @@ export const updateLeadStatus = async (
 
 export const getLeadsByCampaignAndAssignee = async (
   req: Request,
-  res: Response
+  res: Response,
 ): Promise<any> => {
   try {
     const { campaignName } = req.params;
@@ -777,7 +786,7 @@ export const getLeadsByCampaignAndAssignee = async (
 
     const leads = await LeadService.getLeadsByCampaignAndAssignee(
       campaignName,
-      assigneeId
+      assigneeId,
     );
 
     if (leads.length === 0) {
@@ -794,7 +803,7 @@ export const getLeadsByCampaignAndAssignee = async (
 
 export const getAssignmentHistory = async (
   req: Request,
-  res: Response
+  res: Response,
 ): Promise<any> => {
   try {
     const page = parseInt(req.query.page as string) || 1;
@@ -849,14 +858,15 @@ export const getAssignmentHistory = async (
   } catch (error: any) {
     return res.status(500).json({
       success: false,
-      message: error.message || "An error occurred while fetching assignment history",
+      message:
+        error.message || "An error occurred while fetching assignment history",
     });
   }
 };
 
 export const getAssignmentLeads = async (
   req: Request,
-  res: Response
+  res: Response,
 ): Promise<any> => {
   try {
     const userId = req.query.userId
@@ -934,7 +944,7 @@ export const getAssignmentLeads = async (
 
 export const getAssignmentLeadsWithWork = async (
   req: Request,
-  res: Response
+  res: Response,
 ): Promise<any> => {
   try {
     const userId = req.query.userId
@@ -989,14 +999,15 @@ export const getAssignmentLeadsWithWork = async (
     return res.status(500).json({
       success: false,
       message:
-        error.message || "An error occurred while fetching assignment leads with work",
+        error.message ||
+        "An error occurred while fetching assignment leads with work",
     });
   }
 };
 
 export const getUserCampaignsWithWorkSummary = async (
   req: Request,
-  res: Response
+  res: Response,
 ): Promise<any> => {
   try {
     const userId = req.query.userId
@@ -1023,18 +1034,19 @@ export const getUserCampaignsWithWorkSummary = async (
     return res.status(500).json({
       success: false,
       message:
-        error.message || "An error occurred while fetching user campaigns with work summary",
+        error.message ||
+        "An error occurred while fetching user campaigns with work summary",
     });
   }
 };
 
 export const getLeadsWithWork = async (
   req: Request,
-  res: Response
+  res: Response,
 ): Promise<any> => {
   try {
     const userId = (req as any).user?.id;
-    
+
     if (!userId) {
       return res.status(401).json({
         success: false,
@@ -1043,11 +1055,11 @@ export const getLeadsWithWork = async (
     }
 
     // Get user with role to check if admin (same approach as dashboard controller)
-    const user = await User.findByPk(userId, {
+    const user = (await User.findByPk(userId, {
       include: {
         model: Role,
       },
-    }) as any;
+    })) as any;
 
     if (!user) {
       return res.status(404).json({
@@ -1106,10 +1118,12 @@ export const getLeadsWithWork = async (
 
 export const getLeadCreationStats = async (
   req: Request,
-  res: Response
+  res: Response,
 ): Promise<any> => {
   try {
-    const userId = req.query.userId ? parseInt(req.query.userId as string) : undefined;
+    const userId = req.query.userId
+      ? parseInt(req.query.userId as string)
+      : undefined;
     const startDate = req.query.startDate as string | undefined;
     const endDate = req.query.endDate as string | undefined;
     const campaignName = req.query.campaignName as string | undefined;
@@ -1118,7 +1132,7 @@ export const getLeadCreationStats = async (
       userId,
       startDate,
       endDate,
-      campaignName
+      campaignName,
     );
 
     return res.status(200).json(stats);

@@ -40,7 +40,7 @@ interface LeadQueryParams extends PaginationParams {
  */
 const checkDuplicateLead = async (
   phoneNumber: string | null | undefined,
-  campaignName?: string
+  campaignName?: string,
 ): Promise<LeadAttributes | null> => {
   if (!phoneNumber) return null;
 
@@ -52,11 +52,8 @@ const checkDuplicateLead = async (
     // Use Sequelize.where with fn for safe parameterized query
     const whereCondition: any = {
       [Op.and]: [
-        where(
-          fn("JSON_EXTRACT", col("leadData"), "$.number"),
-          normalizedPhone
-        )
-      ]
+        where(fn("JSON_EXTRACT", col("leadData"), "$.number"), normalizedPhone),
+      ],
     };
 
     // Optionally check within the same campaign
@@ -78,16 +75,20 @@ const checkDuplicateLead = async (
 
 export const createLead = async (
   data: LeadCreationAttributes,
-  userId?: number
+  userId?: number,
 ): Promise<LeadAttributes & { leadCode: string }> => {
   try {
     // Check for duplicate phone number before creating
-    const phoneNumber = data.leadData?.number || data.leadData?.phone_number || null;
-    const duplicateLead = await checkDuplicateLead(phoneNumber, data.campaignName);
+    const phoneNumber =
+      data.leadData?.number || data.leadData?.phone_number || null;
+    const duplicateLead = await checkDuplicateLead(
+      phoneNumber,
+      data.campaignName,
+    );
 
     if (duplicateLead) {
       throw new Error(
-        `Duplicate lead found: A lead with phone number "${phoneNumber}" already exists in campaign "${data.campaignName}" (Lead ID: ${duplicateLead.id})`
+        `Duplicate lead found: A lead with phone number "${phoneNumber}" already exists in campaign "${data.campaignName}" (Lead ID: ${duplicateLead.id})`,
       );
     }
 
@@ -98,11 +99,16 @@ export const createLead = async (
     if (userId) {
       // Fetch user to get full name for activity log
       const user = await User.findByPk(userId);
-      const fullName = user 
-        ? `${user.firstname || ""} ${user.lastname || ""}`.trim() 
+      const fullName = user
+        ? `${user.firstname || ""} ${user.lastname || ""}`.trim()
         : null;
-      
-      await logActivity(userId, "create", `Lead created with ID ${lead.id}`, fullName || undefined);
+
+      await logActivity(
+        userId,
+        "create",
+        `Lead created with ID ${lead.id}`,
+        fullName || undefined,
+      );
       await sendNotification(userId, `New lead created with ID ${lead.id}`);
     }
 
@@ -147,7 +153,7 @@ export const getAllLeads = async ({
     if (filterType) {
       const dateFilter = buildDateFilter(filterType, startDate, endDate);
       // Only add date filter if it has actual conditions (check for createdAt property)
-      if (dateFilter && 'createdAt' in dateFilter) {
+      if (dateFilter && "createdAt" in dateFilter) {
         console.log("📅 Applying date filter (all leads):", {
           filterType,
           startDate,
@@ -156,7 +162,11 @@ export const getAllLeads = async ({
         });
         Object.assign(whereCondition, dateFilter);
       } else {
-        console.log("⚠️ Date filter returned empty object (all leads):", { filterType, startDate, endDate });
+        console.log("⚠️ Date filter returned empty object (all leads):", {
+          filterType,
+          startDate,
+          endDate,
+        });
       }
     }
 
@@ -216,25 +226,27 @@ export const getAllLeads = async ({
           return `${initials}${lead.id}`;
         })();
 
-        return { 
-          ...lead.toJSON(), 
+        return {
+          ...lead.toJSON(),
           assignees: assigneesData,
           leadCode: leadCode, // Add leadCode to the enriched lead object
         };
-      })
+      }),
     );
 
     // STEP 3: GLOBAL search (search anywhere in JSON + campaign + assignees + leadCode)
     const filteredLeads = search
       ? enrichedLeads.filter((lead) => {
-        const searchLower = search.toLowerCase();
-        const jsonStr = JSON.stringify(lead).toLowerCase();
-        
-        // Explicitly check leadCode for better search accuracy
-        const leadCodeStr = (lead.leadCode || "").toLowerCase();
-        
-        return jsonStr.includes(searchLower) || leadCodeStr.includes(searchLower);
-      })
+          const searchLower = search.toLowerCase();
+          const jsonStr = JSON.stringify(lead).toLowerCase();
+
+          // Explicitly check leadCode for better search accuracy
+          const leadCodeStr = (lead.leadCode || "").toLowerCase();
+
+          return (
+            jsonStr.includes(searchLower) || leadCodeStr.includes(searchLower)
+          );
+        })
       : enrichedLeads;
 
     // STEP 4: PAGINATION
@@ -352,10 +364,10 @@ export const getLeadsByCampaign = async ({
     const dateFilter = filterType
       ? buildDateFilter(filterType, startDate, endDate)
       : {};
-    
+
     // Check if dateFilter has actual conditions (check for createdAt property)
-    const hasDateFilter = filterType && dateFilter && 'createdAt' in dateFilter;
-    
+    const hasDateFilter = filterType && dateFilter && "createdAt" in dateFilter;
+
     if (hasDateFilter) {
       console.log("📅 Applying date filter (by campaign):", {
         filterType,
@@ -370,7 +382,7 @@ export const getLeadsByCampaign = async ({
       campaignName,
       ...dynamicFilter,
     };
-    
+
     // Only merge dateFilter if it has actual conditions
     if (hasDateFilter) {
       Object.assign(whereCondition, dateFilter);
@@ -393,14 +405,19 @@ export const getLeadsByCampaign = async ({
 
     // Step 4: Fetch ALL leads for the campaign (NO pagination)
     console.log("🔍 getLeadsByCampaign - Campaign name:", campaignName);
-    console.log("🔍 getLeadsByCampaign - Where condition:", JSON.stringify(whereCondition, null, 2));
-    
+    console.log(
+      "🔍 getLeadsByCampaign - Where condition:",
+      JSON.stringify(whereCondition, null, 2),
+    );
+
     const allLeads = await Lead.findAll({
       where: whereCondition,
       order: [["createdAt", "DESC"]],
     });
-    
-    console.log(`📊 Found ${allLeads.length} leads for campaign "${campaignName}"`);
+
+    console.log(
+      `📊 Found ${allLeads.length} leads for campaign "${campaignName}"`,
+    );
 
     // Step 5: Enrich leads based on assignees
     const enrichedLeads = await Promise.all(
@@ -457,47 +474,47 @@ export const getLeadsByCampaign = async ({
           assignees: assigneesData,
           leadCode: leadCode, // Add leadCode to the enriched lead object
         };
-      })
+      }),
     );
 
     // Step 6: GLOBAL SEARCH across all fields (including leadCode)
     console.log("🔍 Search filter - Input:", {
       searchTerm: search,
       totalLeadsBeforeFilter: enrichedLeads.length,
-      hasSearch: !!search
+      hasSearch: !!search,
     });
-    
+
     const filteredLeads = search
       ? enrichedLeads.filter((lead) => {
-        const searchLower = search.toLowerCase().trim();
-        const jsonStr = JSON.stringify(lead).toLowerCase();
-        
-        // Explicitly check leadCode for better search accuracy
-        const leadCodeStr = (lead.leadCode || "").toLowerCase();
-        
-        const matchesJson = jsonStr.includes(searchLower);
-        const matchesLeadCode = leadCodeStr.includes(searchLower);
-        const matches = matchesJson || matchesLeadCode;
-        
-        // Debug first few leads
-        if (enrichedLeads.indexOf(lead) < 3) {
-          console.log("🔍 Lead search check:", {
-            leadId: lead.id,
-            leadCode: lead.leadCode,
-            searchTerm: searchLower,
-            matchesJson,
-            matchesLeadCode,
-            matches
-          });
-        }
-        
-        return matches;
-      })
+          const searchLower = search.toLowerCase().trim();
+          const jsonStr = JSON.stringify(lead).toLowerCase();
+
+          // Explicitly check leadCode for better search accuracy
+          const leadCodeStr = (lead.leadCode || "").toLowerCase();
+
+          const matchesJson = jsonStr.includes(searchLower);
+          const matchesLeadCode = leadCodeStr.includes(searchLower);
+          const matches = matchesJson || matchesLeadCode;
+
+          // Debug first few leads
+          if (enrichedLeads.indexOf(lead) < 3) {
+            console.log("🔍 Lead search check:", {
+              leadId: lead.id,
+              leadCode: lead.leadCode,
+              searchTerm: searchLower,
+              matchesJson,
+              matchesLeadCode,
+              matches,
+            });
+          }
+
+          return matches;
+        })
       : enrichedLeads;
-    
+
     console.log("🔍 Search filter - Output:", {
       totalLeadsAfterFilter: filteredLeads.length,
-      filteredCount: enrichedLeads.length - filteredLeads.length
+      filteredCount: enrichedLeads.length - filteredLeads.length,
     });
 
     // Step 7: Pagination AFTER filtering
@@ -514,7 +531,7 @@ export const getLeadsByCampaign = async ({
     };
   } catch (error: any) {
     throw new Error(
-      `Error fetching leads for campaign ${campaignName}: ${error.message}`
+      `Error fetching leads for campaign ${campaignName}: ${error.message}`,
     );
   }
 };
@@ -522,7 +539,7 @@ export const getLeadsByCampaign = async ({
 export const updateLead = async (
   id: number,
   updatedData: Partial<LeadCreationAttributes>,
-  userId?: number
+  userId?: number,
 ): Promise<LeadAttributes> => {
   try {
     const lead = await Lead.findByPk(id);
@@ -535,11 +552,16 @@ export const updateLead = async (
     if (userId) {
       // Fetch user to get full name for activity log
       const user = await User.findByPk(userId);
-      const fullName = user 
-        ? `${user.firstname || ""} ${user.lastname || ""}`.trim() 
+      const fullName = user
+        ? `${user.firstname || ""} ${user.lastname || ""}`.trim()
         : null;
-      
-      await logActivity(userId, "update", `Lead updated with ID ${lead.id}`, fullName || undefined);
+
+      await logActivity(
+        userId,
+        "update",
+        `Lead updated with ID ${lead.id}`,
+        fullName || undefined,
+      );
       await sendNotification(userId, `Lead updated with ID ${lead.id}`);
     }
 
@@ -551,7 +573,7 @@ export const updateLead = async (
 
 export const deleteLead = async (
   id: number,
-  userId?: number
+  userId?: number,
 ): Promise<void> => {
   try {
     const lead = await Lead.findByPk(id);
@@ -564,11 +586,16 @@ export const deleteLead = async (
     if (userId) {
       // Fetch user to get full name for activity log
       const user = await User.findByPk(userId);
-      const fullName = user 
-        ? `${user.firstname || ""} ${user.lastname || ""}`.trim() 
+      const fullName = user
+        ? `${user.firstname || ""} ${user.lastname || ""}`.trim()
         : null;
-      
-      await logActivity(userId, "delete", `Lead deleted with ID ${id}`, fullName || undefined);
+
+      await logActivity(
+        userId,
+        "delete",
+        `Lead deleted with ID ${id}`,
+        fullName || undefined,
+      );
       await sendNotification(userId, `Lead deleted with ID ${id}`);
     }
   } catch (error: any) {
@@ -578,7 +605,7 @@ export const deleteLead = async (
 export const assignLeadToUsers = async (
   leadId: number,
   userIdsToAssign: number[],
-  assignedByUserId?: number
+  assignedByUserId?: number,
 ): Promise<LeadAttributes> => {
   try {
     // 🔹 Fetch Lead
@@ -652,13 +679,13 @@ export const assignLeadToUsers = async (
           assignedByUserId,
           "assign",
           `Assigned lead ${lead.leadCode} to ${assigneeName}`,
-          assignerName
+          assignerName,
         );
 
         // Notification
         await sendNotification(
           newUser.userId,
-          `You have been assigned lead ${lead.leadCode}`
+          `You have been assigned lead ${lead.leadCode}`,
         );
 
         // Send Email
@@ -669,13 +696,17 @@ export const assignLeadToUsers = async (
 
           if (assigneeUser?.email) {
             const { subject, html } = leadAssignmentTemplate({
-              userName: `${assigneeUser.firstname || ""} ${assigneeUser.lastname || ""}`.trim() || "User",
+              userName:
+                `${assigneeUser.firstname || ""} ${assigneeUser.lastname || ""}`.trim() ||
+                "User",
               leadCode: lead.leadCode,
               assignedBy: assignerName,
               campaignName: lead.campaignName,
             });
 
-            const smtpConfig = await getSmtpConfig(assignedByUserId || newUser.userId);
+            const smtpConfig = await getSmtpConfig(
+              assignedByUserId || newUser.userId,
+            );
             await sendEmail({
               smtp: smtpConfig,
               to: assigneeUser.email,
@@ -698,7 +729,7 @@ export const assignLeadToUsers = async (
 export const bulkAssignLeadsToUser = async (
   leadIds: number[],
   userId: number,
-  assignedByUserId?: number
+  assignedByUserId?: number,
 ): Promise<{ success: number; failed: number; results: any[] }> => {
   try {
     if (!leadIds || leadIds.length === 0) {
@@ -718,7 +749,9 @@ export const bulkAssignLeadsToUser = async (
       throw new Error("Assignee user not found");
     }
 
-    const assigneeName = `${assignee.firstname || ""} ${assignee.lastname || ""}`.trim() || `User ID ${userId}`;
+    const assigneeName =
+      `${assignee.firstname || ""} ${assignee.lastname || ""}`.trim() ||
+      `User ID ${userId}`;
 
     // Fetch the assigner user once (if provided)
     let assignerName: string | undefined;
@@ -761,7 +794,11 @@ export const bulkAssignLeadsToUser = async (
         // Check if user is already assigned
         const existingIds = new Set(currentAssignees.map((a) => a.userId));
         if (existingIds.has(userId)) {
-          results.push({ leadId, success: false, error: "User already assigned" });
+          results.push({
+            leadId,
+            success: false,
+            error: "User already assigned",
+          });
           failCount++;
           continue;
         }
@@ -784,7 +821,7 @@ export const bulkAssignLeadsToUser = async (
         if (assignedByUserId) {
           await sendNotification(
             userId,
-            `You have been assigned lead ${lead.leadCode || leadId}`
+            `You have been assigned lead ${lead.leadCode || leadId}`,
           );
         }
       } catch (error: any) {
@@ -799,7 +836,7 @@ export const bulkAssignLeadsToUser = async (
         assignedByUserId,
         "assign",
         `${successCount} lead${successCount !== 1 ? "s" : ""} assigned to ${assigneeName}`,
-        assignerName
+        assignerName,
       );
 
       // Send bulk assignment email
@@ -889,7 +926,7 @@ export const getAllLeadsWithAssignee = async ({
     if (filterType) {
       const dateFilter = buildDateFilter(filterType, startDate, endDate);
       // Only add date filter if it has actual conditions (check for createdAt property)
-      if (dateFilter && 'createdAt' in dateFilter) {
+      if (dateFilter && "createdAt" in dateFilter) {
         console.log("📅 Applying date filter:", {
           filterType,
           startDate,
@@ -898,7 +935,11 @@ export const getAllLeadsWithAssignee = async ({
         });
         whereConditions[Op.and].push(dateFilter);
       } else {
-        console.log("⚠️ Date filter returned empty object:", { filterType, startDate, endDate });
+        console.log("⚠️ Date filter returned empty object:", {
+          filterType,
+          startDate,
+          endDate,
+        });
       }
     }
     // ─────────────────────────────────────────
@@ -950,7 +991,7 @@ export const getAllLeadsWithAssignee = async ({
           });
           assigneesData = users.map((user) => {
             const assignment = assigneesRaw.find(
-              (a) => a.userId === user.id || a === user.id
+              (a) => a.userId === user.id || a === user.id,
             );
             return {
               ...user.toJSON(),
@@ -967,12 +1008,12 @@ export const getAllLeadsWithAssignee = async ({
           return `${initials}${lead.id}`;
         })();
 
-        return { 
-          ...(lead.toJSON() as any), 
+        return {
+          ...(lead.toJSON() as any),
           assignees: assigneesData,
           leadCode: leadCode, // Add leadCode to the enriched lead object
         };
-      })
+      }),
     );
     // ─────────────────────────────────────────
     // GLOBAL SEARCH across all fields (including leadCode)
@@ -980,14 +1021,16 @@ export const getAllLeadsWithAssignee = async ({
     const filteredLeads =
       search && search.trim() !== ""
         ? enrichedLeads.filter((lead) => {
-          const searchLower = search.trim().toLowerCase();
-          const jsonStr = JSON.stringify(lead).toLowerCase();
-          
-          // Explicitly check leadCode for better search accuracy
-          const leadCodeStr = (lead.leadCode || "").toLowerCase();
-          
-          return jsonStr.includes(searchLower) || leadCodeStr.includes(searchLower);
-        })
+            const searchLower = search.trim().toLowerCase();
+            const jsonStr = JSON.stringify(lead).toLowerCase();
+
+            // Explicitly check leadCode for better search accuracy
+            const leadCodeStr = (lead.leadCode || "").toLowerCase();
+
+            return (
+              jsonStr.includes(searchLower) || leadCodeStr.includes(searchLower)
+            );
+          })
         : enrichedLeads;
     // ─────────────────────────────────────────
     // Pagination AFTER filtering
@@ -1038,7 +1081,7 @@ export const getUnassignedLeads = async ({
   conditions = [],
   userId, // Add userId parameter to filter by creator
   isAdmin = false, // Add isAdmin flag
-}: GetUnassignedLeadsParams & { 
+}: GetUnassignedLeadsParams & {
   conditions?: any[];
   userId?: number;
   isAdmin?: boolean;
@@ -1060,7 +1103,7 @@ export const getUnassignedLeads = async ({
     if (filterType) {
       const dateFilter = buildDateFilter(filterType, startDate, endDate);
       // Only add date filter if it has actual conditions (check for createdAt property)
-      if (dateFilter && 'createdAt' in dateFilter) {
+      if (dateFilter && "createdAt" in dateFilter) {
         console.log("📅 Applying date filter (unassigned):", {
           filterType,
           startDate,
@@ -1069,7 +1112,11 @@ export const getUnassignedLeads = async ({
         });
         whereCondition[Op.and].push(dateFilter);
       } else {
-        console.log("⚠️ Date filter returned empty object (unassigned):", { filterType, startDate, endDate });
+        console.log("⚠️ Date filter returned empty object (unassigned):", {
+          filterType,
+          startDate,
+          endDate,
+        });
       }
     }
     // STEP 4: Dynamic JSON field filtering
@@ -1120,7 +1167,7 @@ export const getUnassignedLeads = async ({
           });
         }
         const plainLead = lead.toJSON();
-        
+
         // Generate leadCode for search
         const leadCode = (() => {
           const initials = lead.campaignName
@@ -1130,25 +1177,27 @@ export const getUnassignedLeads = async ({
           return `${initials}${lead.id}`;
         })();
 
-        return { 
-          ...plainLead, 
+        return {
+          ...plainLead,
           assignees: assigneesData,
           leadCode: leadCode, // Add leadCode to the enriched lead object
         };
-      })
+      }),
     );
     // STEP 7: GLOBAL SEARCH across all fields (including leadCode)
     const filteredLeads =
       searchTerm && searchTerm.trim() !== ""
         ? enrichedLeads.filter((lead) => {
-          const searchLower = searchTerm.trim().toLowerCase();
-          const jsonStr = JSON.stringify(lead).toLowerCase();
-          
-          // Explicitly check leadCode for better search accuracy
-          const leadCodeStr = (lead.leadCode || "").toLowerCase();
-          
-          return jsonStr.includes(searchLower) || leadCodeStr.includes(searchLower);
-        })
+            const searchLower = searchTerm.trim().toLowerCase();
+            const jsonStr = JSON.stringify(lead).toLowerCase();
+
+            // Explicitly check leadCode for better search accuracy
+            const leadCodeStr = (lead.leadCode || "").toLowerCase();
+
+            return (
+              jsonStr.includes(searchLower) || leadCodeStr.includes(searchLower)
+            );
+          })
         : enrichedLeads;
     // STEP 8: Pagination AFTER filtering
     const total = filteredLeads.length;
@@ -1165,7 +1214,6 @@ export const getUnassignedLeads = async ({
     throw new Error(`Error fetching unassigned leads: ${error.message}`);
   }
 };
-
 
 const buildDynamicFilters = (conditions: any[]) => {
   if (!conditions || conditions.length === 0) return {};
@@ -1186,7 +1234,7 @@ const buildDynamicFilters = (conditions: any[]) => {
     }
 
     const jsonField = Sequelize.literal(
-      `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.${field}'))`
+      `JSON_UNQUOTE(JSON_EXTRACT(leadData, '$.${field}'))`,
     );
 
     let condition: any;
@@ -1286,7 +1334,8 @@ export const getLeadsByAssigneeId = async (
   page: number = 1,
   limit: number = 10,
   campaignName?: string,
-  search?: string
+  search?: string,
+  conditions: any[] = [],
 ) => {
   try {
     const { offset } = getPagination({ page, limit });
@@ -1294,7 +1343,7 @@ export const getLeadsByAssigneeId = async (
     // Build the base query with JSON search for assignee
     const baseWhereClause: any = {
       [Op.and]: Sequelize.literal(
-        `JSON_CONTAINS(assignees, '{"userId": ${assigneeId}}', '$')`
+        `JSON_CONTAINS(assignees, '{"userId": ${assigneeId}}', '$')`,
       ),
     };
 
@@ -1343,7 +1392,7 @@ export const getLeadsByAssigneeId = async (
       }
 
       const userAssignment = assignees.find(
-        (a) => Number(a.userId) === assigneeId
+        (a) => Number(a.userId) === assigneeId,
       );
       if (!userAssignment) return false;
 
@@ -1414,6 +1463,58 @@ export const getLeadsByAssigneeId = async (
       });
     }
 
+    // STEP 2.6: Apply conditions filter (from LeadFilterModal)
+    if (conditions && conditions.length > 0) {
+      const evaluateCondition = (
+        value: any,
+        condition: string,
+        target: string,
+      ) => {
+        const val = String(value ?? "").toLowerCase();
+        const tgt = String(target ?? "").toLowerCase();
+
+        switch (condition) {
+          case "equals":
+            return val === tgt;
+          case "notEquals":
+            return val !== tgt;
+          case "contains":
+            return val.includes(tgt);
+          case "notContains":
+            return !val.includes(tgt);
+          case "isBlank":
+            return val.trim() === "";
+          case "isNotBlank":
+            return val.trim() !== "";
+          default:
+            return true;
+        }
+      };
+
+      searchedLeads = searchedLeads.filter((lead: any) => {
+        let leadData: any = lead.leadData;
+        if (typeof leadData === "string") {
+          try {
+            leadData = JSON.parse(leadData);
+          } catch {
+            leadData = {};
+          }
+        }
+
+        return conditions.reduce((acc, condition, index) => {
+          const fieldVal = leadData?.[condition.field];
+          const match = evaluateCondition(
+            fieldVal,
+            condition.condition,
+            condition.value,
+          );
+
+          if (index === 0) return match;
+          return condition.joinType === "OR" ? acc || match : acc && match;
+        }, true as boolean);
+      });
+    }
+
     // STEP 3: Apply pagination
     const totalCount = searchedLeads.length;
     const paginatedLeads = searchedLeads.slice(offset, offset + limit);
@@ -1441,7 +1542,7 @@ export const getLeadsByAssigneeId = async (
       }
 
       const userAssignment = assignees.find(
-        (a) => Number(a.userId) === assigneeId
+        (a) => Number(a.userId) === assigneeId,
       );
 
       return {
@@ -1451,8 +1552,8 @@ export const getLeadsByAssigneeId = async (
         assignedAt: userAssignment?.assignedAt,
         assignmentDate: userAssignment?.assignedAt
           ? DateTime.fromISO(userAssignment.assignedAt)
-            .setZone("Asia/Karachi")
-            .toISO()
+              .setZone("Asia/Karachi")
+              .toISO()
           : DateTime.fromJSDate(lead.createdAt).setZone("Asia/Karachi").toISO(),
       };
     });
@@ -1463,7 +1564,7 @@ export const getLeadsByAssigneeId = async (
     };
   } catch (error: any) {
     throw new Error(
-      `Error fetching leads for assignee ID ${assigneeId}: ${error.message}`
+      `Error fetching leads for assignee ID ${assigneeId}: ${error.message}`,
     );
   }
 };
@@ -1471,7 +1572,7 @@ export const getLeadsByAssigneeId = async (
 export const sendEmailToLeadUsingTemplate = async (
   leadId: number,
   templateKey: string,
-  senderUserId: number
+  senderUserId: number,
 ) => {
   try {
     const lead = await Lead.findByPk(leadId);
@@ -1628,11 +1729,11 @@ export type LeadStatus =
 export const updateLeadStatusForUser = async (
   leadId: number,
   userId: number,
-  newStatus: LeadStatus
+  newStatus: LeadStatus,
 ) => {
   if (!ALLOWED_STATUSES.includes(newStatus)) {
     throw new Error(
-      `Invalid status. Allowed statuses: ${ALLOWED_STATUSES.join(", ")}`
+      `Invalid status. Allowed statuses: ${ALLOWED_STATUSES.join(", ")}`,
     );
   }
 
@@ -1674,14 +1775,14 @@ export const updateLeadStatusForUser = async (
       performedBy: userId,
       details: `Status changed from "${previousStatus}" to "${newStatus}"`,
     });
-  } catch (err) { }
+  } catch (err) {}
 
   return { ...(lead.toJSON() as any) };
 };
 
 export const getLeadsByCampaignAndAssignee = async (
   campaignName: string,
-  assigneeId: number
+  assigneeId: number,
 ): Promise<LeadAttributes[]> => {
   try {
     const leads = await Lead.findAll({
@@ -1692,9 +1793,9 @@ export const getLeadsByCampaignAndAssignee = async (
             fn(
               "JSON_CONTAINS",
               col("assignees"),
-              literal(`JSON_OBJECT('userId', ${assigneeId})`)
+              literal(`JSON_OBJECT('userId', ${assigneeId})`),
             ),
-            true
+            true,
           ),
         ],
       },
@@ -1703,7 +1804,7 @@ export const getLeadsByCampaignAndAssignee = async (
     return leads.map((lead) => ({ ...(lead.toJSON() as any) }));
   } catch (error: any) {
     throw new Error(
-      `Error fetching leads for campaign '${campaignName}' and assignee '${assigneeId}': ${error.message}`
+      `Error fetching leads for campaign '${campaignName}' and assignee '${assigneeId}': ${error.message}`,
     );
   }
 };
@@ -1804,23 +1905,26 @@ export const getAssignmentHistory = async ({
       const dateFilter = buildDateFilter(filterType, startDate, endDate);
       if (dateFilter.createdAt) {
         const filterCondition = dateFilter.createdAt;
-        if (filterCondition[Op.between] && Array.isArray(filterCondition[Op.between])) {
+        if (
+          filterCondition[Op.between] &&
+          Array.isArray(filterCondition[Op.between])
+        ) {
           const betweenValue = filterCondition[Op.between] as Date[];
           if (betweenValue.length === 2) {
             const [start, end] = betweenValue;
             filteredAssignments = allAssignments.filter(
-              (a) => a.assignedAt >= start && a.assignedAt <= end
+              (a) => a.assignedAt >= start && a.assignedAt <= end,
             );
           }
         } else if (filterCondition[Op.gte]) {
           const gteValue = filterCondition[Op.gte] as Date;
           filteredAssignments = allAssignments.filter(
-            (a) => a.assignedAt >= gteValue
+            (a) => a.assignedAt >= gteValue,
           );
         } else if (filterCondition[Op.lte]) {
           const lteValue = filterCondition[Op.lte] as Date;
           filteredAssignments = allAssignments.filter(
-            (a) => a.assignedAt <= lteValue
+            (a) => a.assignedAt <= lteValue,
           );
         }
       }
@@ -1829,7 +1933,7 @@ export const getAssignmentHistory = async ({
     // Apply user filter
     if (userId) {
       filteredAssignments = filteredAssignments.filter(
-        (a) => a.userId === userId
+        (a) => a.userId === userId,
       );
     }
 
@@ -1837,26 +1941,31 @@ export const getAssignmentHistory = async ({
     if (campaignName && campaignName.trim() !== "") {
       const campaignFilter = campaignName.trim().toLowerCase();
       filteredAssignments = filteredAssignments.filter(
-        (a) => a.campaignName && a.campaignName.toLowerCase().includes(campaignFilter)
+        (a) =>
+          a.campaignName &&
+          a.campaignName.toLowerCase().includes(campaignFilter),
       );
     }
 
     // Group assignments by userId, campaignName, and assignedAt timestamp
     // Group assignments that happen within the same minute (for bulk assignments)
-    const groupedMap = new Map<string, { count: number; assignedAt: Date; userId: number; campaignName: string }>();
+    const groupedMap = new Map<
+      string,
+      { count: number; assignedAt: Date; userId: number; campaignName: string }
+    >();
 
     for (const assignment of filteredAssignments) {
       // Round assignedAt to the nearest minute to group bulk assignments together
       const assignedDate = new Date(assignment.assignedAt);
       assignedDate.setSeconds(0, 0); // Round to minute
-      
+
       // Create a key using a separator that won't appear in campaign names
       // Use ||| as separator since it's unlikely to appear in campaign names
       const key = `${assignment.userId}|||${assignment.campaignName}|||${assignedDate.toISOString()}`;
 
       if (!groupedMap.has(key)) {
-        groupedMap.set(key, { 
-          count: 0, 
+        groupedMap.set(key, {
+          count: 0,
           assignedAt: assignedDate,
           userId: assignment.userId,
           campaignName: assignment.campaignName,
@@ -1878,7 +1987,7 @@ export const getAssignmentHistory = async ({
       users.map((u) => [
         u.id,
         `${u.firstname || ""} ${u.lastname || ""}`.trim() || "Unknown User",
-      ])
+      ]),
     );
 
     // Build history items from grouped map
@@ -1899,7 +2008,7 @@ export const getAssignmentHistory = async ({
     // Sort by assignedAt (newest first)
     historyItems.sort(
       (a, b) =>
-        new Date(b.assignedAt).getTime() - new Date(a.assignedAt).getTime()
+        new Date(b.assignedAt).getTime() - new Date(a.assignedAt).getTime(),
     );
 
     // Apply pagination
@@ -1915,9 +2024,7 @@ export const getAssignmentHistory = async ({
       pageSize: limit,
     };
   } catch (error: any) {
-    throw new Error(
-      `Error fetching assignment history: ${error.message}`
-    );
+    throw new Error(`Error fetching assignment history: ${error.message}`);
   }
 };
 
@@ -1948,7 +2055,7 @@ export const getAssignmentLeads = async ({
     // Parse the assignedAt timestamp and round to the minute (same as grouping logic)
     const assignmentDate = new Date(assignedAt);
     assignmentDate.setSeconds(0, 0); // Round to minute
-    
+
     // Calculate the range for the same minute (start and end of that minute)
     const minuteStart = new Date(assignmentDate);
     const minuteEnd = new Date(assignmentDate);
@@ -1968,7 +2075,7 @@ export const getAssignmentLeads = async ({
 
     for (const lead of allLeads) {
       let assigneesRaw: AssigneeWithStatus[] = [];
-      
+
       if (typeof lead.assignees === "string") {
         try {
           assigneesRaw = JSON.parse(lead.assignees);
@@ -1985,11 +2092,11 @@ export const getAssignmentLeads = async ({
           const assigneeAssignedAt = assignee.assignedAt
             ? new Date(assignee.assignedAt)
             : lead.createdAt;
-          
+
           // Round to minute for comparison
           const assigneeDate = new Date(assigneeAssignedAt);
           assigneeDate.setSeconds(0, 0);
-          
+
           // Check if assignedAt matches (within the same minute)
           if (assigneeDate.getTime() === assignmentDate.getTime()) {
             // This lead matches! Enrich it with assignee data
@@ -2005,7 +2112,9 @@ export const getAssignmentLeads = async ({
               });
 
               assigneesData = users.map((user) => {
-                const assignment = assigneesRaw.find((a) => a.userId === user.id);
+                const assignment = assigneesRaw.find(
+                  (a) => a.userId === user.id,
+                );
                 return {
                   ...user.toJSON(),
                   status: assignment?.status || "pending",
@@ -2017,7 +2126,7 @@ export const getAssignmentLeads = async ({
               ...lead.toJSON(),
               assignees: assigneesData,
             });
-            
+
             // Break inner loop since we found a match for this lead
             break;
           }
@@ -2040,7 +2149,7 @@ export const getAssignmentLeads = async ({
           .map((word: string) => word[0]?.toLowerCase() || "")
           .join("");
         const leadCodeStr = `${initials}${lead.id}`.toLowerCase();
-        
+
         return (
           leadDataStr.includes(searchLower) ||
           campaignNameStr.includes(searchLower) ||
@@ -2062,9 +2171,7 @@ export const getAssignmentLeads = async ({
       pageSize: limit,
     };
   } catch (error: any) {
-    throw new Error(
-      `Error fetching assignment leads: ${error.message}`
-    );
+    throw new Error(`Error fetching assignment leads: ${error.message}`);
   }
 };
 
@@ -2094,11 +2201,14 @@ export const getLeadsWithWork = async ({
     let workDateFilter: any = null;
     if (filterType && filterType.trim() !== "") {
       const dateFilter = buildDateFilter(filterType, startDate, endDate);
-      if (dateFilter && 'createdAt' in dateFilter && dateFilter.createdAt) {
+      if (dateFilter && "createdAt" in dateFilter && dateFilter.createdAt) {
         workDateFilter = dateFilter.createdAt;
         console.log(`📅 Date filter applied: ${filterType}`, workDateFilter);
       } else {
-        console.log(`⚠️ Date filter not built correctly for: ${filterType}`, dateFilter);
+        console.log(
+          `⚠️ Date filter not built correctly for: ${filterType}`,
+          dateFilter,
+        );
       }
     } else {
       console.log(`ℹ️ No date filter - showing all leads with work`);
@@ -2109,12 +2219,15 @@ export const getLeadsWithWork = async ({
     if (workDateFilter) {
       notesWhere.createdAt = workDateFilter;
     }
-    
-    console.log(`🔍 Notes query where clause:`, JSON.stringify(notesWhere, null, 2));
+
+    console.log(
+      `🔍 Notes query where clause:`,
+      JSON.stringify(notesWhere, null, 2),
+    );
     const notes = await Note.findAll({
-      attributes: ['notebleId'],
+      attributes: ["notebleId"],
       where: notesWhere,
-      group: ['notebleId'],
+      group: ["notebleId"],
       raw: true,
     });
     console.log(`📝 Found ${notes.length} notes with date filter`);
@@ -2125,19 +2238,24 @@ export const getLeadsWithWork = async ({
     if (workDateFilter) {
       activitiesWhere.createdAt = workDateFilter;
     }
-    
-    console.log(`🔍 Activities query where clause:`, JSON.stringify(activitiesWhere, null, 2));
+
+    console.log(
+      `🔍 Activities query where clause:`,
+      JSON.stringify(activitiesWhere, null, 2),
+    );
     const activities = await LeadActivity.findAll({
-      attributes: ['entityId'],
+      attributes: ["entityId"],
       where: activitiesWhere,
-      group: ['entityId'],
+      group: ["entityId"],
       raw: true,
     });
     console.log(`📝 Found ${activities.length} activities with date filter`);
     const leadIdsFromActivities = activities.map((a: any) => a.entityId);
 
     // Combine and get unique lead IDs
-    const leadIds = [...new Set([...leadIdsFromNotes, ...leadIdsFromActivities])];
+    const leadIds = [
+      ...new Set([...leadIdsFromNotes, ...leadIdsFromActivities]),
+    ];
 
     if (leadIds.length === 0) {
       return {
@@ -2161,18 +2279,26 @@ export const getLeadsWithWork = async ({
     const enrichedLeads = await Promise.all(
       allLeads.map(async (lead) => {
         // Get notes count (with date filter if provided)
-        const notesWhereForLead: any = { notebleId: lead.id, notebleType: "lead" };
+        const notesWhereForLead: any = {
+          notebleId: lead.id,
+          notebleType: "lead",
+        };
         if (workDateFilter) {
           notesWhereForLead.createdAt = workDateFilter;
         }
         const notesCount = await Note.count({ where: notesWhereForLead });
 
         // Get activities count (with date filter if provided)
-        const activitiesWhereForLead: any = { entityId: lead.id, entityType: "lead" };
+        const activitiesWhereForLead: any = {
+          entityId: lead.id,
+          entityType: "lead",
+        };
         if (workDateFilter) {
           activitiesWhereForLead.createdAt = workDateFilter;
         }
-        const activitiesCount = await LeadActivity.count({ where: activitiesWhereForLead });
+        const activitiesCount = await LeadActivity.count({
+          where: activitiesWhereForLead,
+        });
 
         // Get last work date (most recent note or activity) - only if within date filter
         const lastNoteWhere: any = { notebleId: lead.id, notebleType: "lead" };
@@ -2185,7 +2311,10 @@ export const getLeadsWithWork = async ({
           attributes: ["createdAt"],
         });
 
-        const lastActivityWhere: any = { entityId: lead.id, entityType: "lead" };
+        const lastActivityWhere: any = {
+          entityId: lead.id,
+          entityType: "lead",
+        };
         if (workDateFilter) {
           lastActivityWhere.createdAt = workDateFilter;
         }
@@ -2195,11 +2324,12 @@ export const getLeadsWithWork = async ({
           attributes: ["createdAt"],
         });
 
-        const lastWorkDate = lastNote && lastActivity
-          ? (new Date(lastNote.createdAt) > new Date(lastActivity.createdAt) 
-              ? lastNote.createdAt 
-              : lastActivity.createdAt)
-          : (lastNote?.createdAt || lastActivity?.createdAt);
+        const lastWorkDate =
+          lastNote && lastActivity
+            ? new Date(lastNote.createdAt) > new Date(lastActivity.createdAt)
+              ? lastNote.createdAt
+              : lastActivity.createdAt
+            : lastNote?.createdAt || lastActivity?.createdAt;
 
         // Get assignees
         let assigneesRaw: AssigneeWithStatus[] = [];
@@ -2251,7 +2381,7 @@ export const getLeadsWithWork = async ({
             lastWorkDate,
           },
         };
-      })
+      }),
     );
 
     // Apply search filter if provided
@@ -2262,7 +2392,7 @@ export const getLeadsWithWork = async ({
         const leadDataStr = JSON.stringify(lead).toLowerCase();
         const campaignNameStr = (lead.campaignName || "").toLowerCase();
         const leadCodeStr = (lead.leadCode || "").toLowerCase();
-        
+
         return (
           leadDataStr.includes(searchLower) ||
           campaignNameStr.includes(searchLower) ||
@@ -2283,9 +2413,7 @@ export const getLeadsWithWork = async ({
       pageSize: limit,
     };
   } catch (error: any) {
-    throw new Error(
-      `Error fetching leads with work: ${error.message}`
-    );
+    throw new Error(`Error fetching leads with work: ${error.message}`);
   }
 };
 
@@ -2333,7 +2461,7 @@ export const getAssignmentLeadsWithWork = async ({
 
     for (const lead of allLeads) {
       let assigneesRaw: AssigneeWithStatus[] = [];
-      
+
       if (typeof lead.assignees === "string") {
         try {
           assigneesRaw = JSON.parse(lead.assignees);
@@ -2350,18 +2478,18 @@ export const getAssignmentLeadsWithWork = async ({
           const assigneeAssignedAt = assignee.assignedAt
             ? new Date(assignee.assignedAt)
             : lead.createdAt;
-          
+
           // Round to minute for comparison
           const assigneeDate = new Date(assigneeAssignedAt);
           assigneeDate.setSeconds(0, 0);
-          
+
           // Check if assignedAt matches (within the same minute)
           if (assigneeDate.getTime() === assignmentDate.getTime()) {
             // This lead matches the assignment! Now check if it has work
             const notesCount = await Note.count({
               where: { notebleId: lead.id, notebleType: "lead" },
             });
-            
+
             const activitiesCount = await LeadActivity.count({
               where: { entityId: lead.id, entityType: "lead" },
             });
@@ -2392,9 +2520,12 @@ export const getAssignmentLeadsWithWork = async ({
                 const noteDate = new Date(lastNote.createdAt);
                 if (activityDate > noteDate) {
                   lastWorkDate = activityDate;
-                  const activityUser = await User.findByPk(lastActivity.performedBy, {
-                    attributes: ["firstname", "lastname"],
-                  });
+                  const activityUser = await User.findByPk(
+                    lastActivity.performedBy,
+                    {
+                      attributes: ["firstname", "lastname"],
+                    },
+                  );
                   lastWorkedBy = activityUser
                     ? `${activityUser.firstname || ""} ${activityUser.lastname || ""}`.trim()
                     : null;
@@ -2409,9 +2540,12 @@ export const getAssignmentLeadsWithWork = async ({
                 }
               } else if (lastActivity) {
                 lastWorkDate = new Date(lastActivity.createdAt);
-                const activityUser = await User.findByPk(lastActivity.performedBy, {
-                  attributes: ["firstname", "lastname"],
-                });
+                const activityUser = await User.findByPk(
+                  lastActivity.performedBy,
+                  {
+                    attributes: ["firstname", "lastname"],
+                  },
+                );
                 lastWorkedBy = activityUser
                   ? `${activityUser.firstname || ""} ${activityUser.lastname || ""}`.trim()
                   : null;
@@ -2438,7 +2572,9 @@ export const getAssignmentLeadsWithWork = async ({
                 });
 
                 assigneesData = users.map((user) => {
-                  const assignment = assigneesRaw.find((a) => a.userId === user.id);
+                  const assignment = assigneesRaw.find(
+                    (a) => a.userId === user.id,
+                  );
                   return {
                     ...user.toJSON(),
                     status: assignment?.status || "pending",
@@ -2456,7 +2592,7 @@ export const getAssignmentLeadsWithWork = async ({
                 lastWorkedBy,
               });
             }
-            
+
             // Break inner loop since we found a match for this lead
             break;
           }
@@ -2479,7 +2615,7 @@ export const getAssignmentLeadsWithWork = async ({
           .map((word: string) => word[0]?.toLowerCase() || "")
           .join("");
         const leadCodeStr = `${initials}${lead.id}`.toLowerCase();
-        
+
         return (
           leadDataStr.includes(searchLower) ||
           campaignNameStr.includes(searchLower) ||
@@ -2502,7 +2638,7 @@ export const getAssignmentLeadsWithWork = async ({
     };
   } catch (error: any) {
     throw new Error(
-      `Error fetching assignment leads with work: ${error.message}`
+      `Error fetching assignment leads with work: ${error.message}`,
     );
   }
 };
@@ -2523,17 +2659,21 @@ export const getUserCampaignsWithWorkSummary = async ({
   }>;
 }> => {
   try {
-    console.log(`🔍 getUserCampaignsWithWorkSummary called for userId: ${userId}`);
-    
+    console.log(
+      `🔍 getUserCampaignsWithWorkSummary called for userId: ${userId}`,
+    );
+
     // Get user with role and permissions
     const user = await User.findByPk(userId);
-    
+
     if (!user) {
       console.log(`⚠️ User ${userId} not found`);
       return { campaigns: [] };
     }
 
-    console.log(`👤 User found: ${user.firstname} ${user.lastname}, roleId: ${(user as any).roleId}`);
+    console.log(
+      `👤 User found: ${user.firstname} ${user.lastname}, roleId: ${(user as any).roleId}`,
+    );
 
     // Get role separately if roleId exists
     let userRole: any = null;
@@ -2548,7 +2688,9 @@ export const getUserCampaignsWithWorkSummary = async ({
       return { campaigns: [] };
     }
 
-    console.log(`👤 User role: ${userRole.name}, Permissions count: ${(userRole as any).Permissions?.length || 0}`);
+    console.log(
+      `👤 User role: ${userRole.name}, Permissions count: ${(userRole as any).Permissions?.length || 0}`,
+    );
 
     const isAdmin = userRole.name?.toLowerCase() === "admin";
     console.log(`👤 isAdmin: ${isAdmin}`);
@@ -2572,20 +2714,26 @@ export const getUserCampaignsWithWorkSummary = async ({
       const campaignPermissions = permissions.filter(
         (perm: any) =>
           perm.name === "getCampaignById" &&
-          (perm.resourceId || perm.resourceType)
+          (perm.resourceId || perm.resourceType),
       );
 
-      console.log(`🎯 Found ${campaignPermissions.length} campaign permissions:`, campaignPermissions.map((p: any) => ({
-        name: p.name,
-        resourceId: p.resourceId,
-        resourceType: p.resourceType
-      })));
+      console.log(
+        `🎯 Found ${campaignPermissions.length} campaign permissions:`,
+        campaignPermissions.map((p: any) => ({
+          name: p.name,
+          resourceId: p.resourceId,
+          resourceType: p.resourceType,
+        })),
+      );
 
       // Extract campaign IDs and names from permissions
       for (const perm of campaignPermissions) {
         if (perm.resourceId) {
           const campaignId = parseInt(perm.resourceId);
-          if (!isNaN(campaignId) && !accessibleCampaignIds.includes(campaignId)) {
+          if (
+            !isNaN(campaignId) &&
+            !accessibleCampaignIds.includes(campaignId)
+          ) {
             accessibleCampaignIds.push(campaignId);
             console.log(`  ✅ Added campaign ID: ${campaignId}`);
           }
@@ -2597,23 +2745,27 @@ export const getUserCampaignsWithWorkSummary = async ({
             // First try to find by exact name match
             const campaignByName = await Campaign.findOne({
               where: Sequelize.where(
-                Sequelize.fn('LOWER', Sequelize.col('campaignName')),
-                Sequelize.fn('LOWER', campaignName)
+                Sequelize.fn("LOWER", Sequelize.col("campaignName")),
+                Sequelize.fn("LOWER", campaignName),
               ),
               attributes: ["id", "campaignName"],
             });
-            
+
             if (campaignByName) {
               const actualCampaignName = campaignByName.campaignName;
               if (!accessibleCampaignNames.includes(actualCampaignName)) {
                 accessibleCampaignNames.push(actualCampaignName);
-                console.log(`  ✅ Added campaign name from resourceType (matched in DB): ${actualCampaignName} (from: ${campaignName})`);
+                console.log(
+                  `  ✅ Added campaign name from resourceType (matched in DB): ${actualCampaignName} (from: ${campaignName})`,
+                );
               }
             } else {
               // If not found, use the extracted name as-is
               if (!accessibleCampaignNames.includes(campaignName)) {
                 accessibleCampaignNames.push(campaignName);
-                console.log(`  ✅ Added campaign name from resourceType (not found in DB): ${campaignName}`);
+                console.log(
+                  `  ✅ Added campaign name from resourceType (not found in DB): ${campaignName}`,
+                );
               }
             }
           }
@@ -2636,7 +2788,10 @@ export const getUserCampaignsWithWorkSummary = async ({
       }
     }
 
-    console.log(`📦 Accessible campaigns: ${accessibleCampaignNames.length}`, accessibleCampaignNames);
+    console.log(
+      `📦 Accessible campaigns: ${accessibleCampaignNames.length}`,
+      accessibleCampaignNames,
+    );
 
     if (accessibleCampaignNames.length === 0) {
       return { campaigns: [] };
@@ -2651,10 +2806,10 @@ export const getUserCampaignsWithWorkSummary = async ({
           where: {
             [Op.and]: [
               Sequelize.where(
-                Sequelize.fn('LOWER', Sequelize.col('campaignName')),
-                Sequelize.fn('LOWER', campaignName)
+                Sequelize.fn("LOWER", Sequelize.col("campaignName")),
+                Sequelize.fn("LOWER", campaignName),
               ),
-              Sequelize.literal("JSON_LENGTH(assignees) > 0")
+              Sequelize.literal("JSON_LENGTH(assignees) > 0"),
             ],
           },
         });
@@ -2664,7 +2819,7 @@ export const getUserCampaignsWithWorkSummary = async ({
 
         for (const lead of allLeads) {
           let assigneesRaw: AssigneeWithStatus[] = [];
-          
+
           if (typeof lead.assignees === "string") {
             try {
               assigneesRaw = JSON.parse(lead.assignees);
@@ -2676,8 +2831,10 @@ export const getUserCampaignsWithWorkSummary = async ({
           }
 
           // Check if this lead has this user as an assignee
-          const hasUser = assigneesRaw.some((assignee) => assignee.userId === userId);
-          
+          const hasUser = assigneesRaw.some(
+            (assignee) => assignee.userId === userId,
+          );
+
           if (hasUser) {
             totalLeads++;
             leadIds.push(lead.id);
@@ -2686,12 +2843,12 @@ export const getUserCampaignsWithWorkSummary = async ({
 
         // Count leads with work
         let leadsWithWorkCount = 0;
-        
+
         for (const leadId of leadIds) {
           const notesCount = await Note.count({
             where: { notebleId: leadId, notebleType: "lead" },
           });
-          
+
           const activitiesCount = await LeadActivity.count({
             where: { entityId: leadId, entityType: "lead" },
           });
@@ -2701,22 +2858,27 @@ export const getUserCampaignsWithWorkSummary = async ({
           }
         }
 
-        console.log(`✅ Campaign: ${campaignName}, Total: ${totalLeads}, With Work: ${leadsWithWorkCount}`);
+        console.log(
+          `✅ Campaign: ${campaignName}, Total: ${totalLeads}, With Work: ${leadsWithWorkCount}`,
+        );
 
         return {
           campaignName,
           totalLeads,
           leadsWithWork: leadsWithWorkCount,
         };
-      })
+      }),
     );
 
     console.log(`🎯 Returning ${campaignsSummary.length} campaigns`);
-    console.log(`📋 Final campaigns summary:`, campaignsSummary.map(c => ({
-      campaignName: c.campaignName,
-      totalLeads: c.totalLeads,
-      leadsWithWork: c.leadsWithWork
-    })));
+    console.log(
+      `📋 Final campaigns summary:`,
+      campaignsSummary.map((c) => ({
+        campaignName: c.campaignName,
+        totalLeads: c.totalLeads,
+        leadsWithWork: c.leadsWithWork,
+      })),
+    );
 
     return {
       campaigns: campaignsSummary,
@@ -2724,7 +2886,7 @@ export const getUserCampaignsWithWorkSummary = async ({
   } catch (error: any) {
     console.error(`❌ Error in getUserCampaignsWithWorkSummary:`, error);
     throw new Error(
-      `Error fetching user campaigns with work summary: ${error.message}`
+      `Error fetching user campaigns with work summary: ${error.message}`,
     );
   }
 };
@@ -2740,7 +2902,7 @@ export const getLeadCreationStats = async (
   userId?: number,
   startDate?: string,
   endDate?: string,
-  campaignName?: string
+  campaignName?: string,
 ): Promise<{
   success: boolean;
   data: Array<{
@@ -2799,10 +2961,10 @@ export const getLeadCreationStats = async (
       ORDER BY createdAt DESC, userName ASC
     `;
 
-    const results = await db.query(query, {
+    const results = (await db.query(query, {
       replacements,
       type: QueryTypes.SELECT,
-    }) as Array<{
+    })) as Array<{
       userId: number;
       userName: string;
       createdAt: string;
@@ -2818,7 +2980,10 @@ export const getLeadCreationStats = async (
         userName,
         createdAt: row.createdAt,
         campaignName: row.campaignName || "N/A",
-        leadCount: typeof row.leadCount === "string" ? parseInt(row.leadCount) : row.leadCount,
+        leadCount:
+          typeof row.leadCount === "string"
+            ? parseInt(row.leadCount)
+            : row.leadCount,
       };
     });
 
@@ -2831,6 +2996,8 @@ export const getLeadCreationStats = async (
     };
   } catch (error: any) {
     console.error("Error fetching lead creation statistics:", error);
-    throw new Error(`Error fetching lead creation statistics: ${error.message}`);
+    throw new Error(
+      `Error fetching lead creation statistics: ${error.message}`,
+    );
   }
 };

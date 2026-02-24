@@ -1726,6 +1726,61 @@ export type LeadStatus =
   | "not_interested"
   | "do_not_call";
 
+// export const updateLeadStatusForUser = async (
+//   leadId: number,
+//   userId: number,
+//   newStatus: LeadStatus,
+// ) => {
+//   if (!ALLOWED_STATUSES.includes(newStatus)) {
+//     throw new Error(
+//       `Invalid status. Allowed statuses: ${ALLOWED_STATUSES.join(", ")}`,
+//     );
+//   }
+
+//   const lead = await Lead.findByPk(leadId);
+//   if (!lead) {
+//     throw new Error(`Lead with ID ${leadId} not found`);
+//   }
+
+//   let assignees: AssigneeWithStatus[] = [];
+
+//   try {
+//     if (Array.isArray(lead.assignees)) {
+//       assignees = lead.assignees;
+//     } else if (typeof lead.assignees === "string") {
+//       assignees = JSON.parse(lead.assignees);
+//     } else if (lead.assignees && typeof lead.assignees === "object") {
+//       assignees = lead.assignees as AssigneeWithStatus[];
+//     }
+//   } catch (err) {
+//     assignees = [];
+//   }
+
+//   const index = assignees.findIndex((a) => Number(a.userId) === Number(userId));
+
+//   if (index === -1) {
+//     throw new Error(`User ID ${userId} is not assigned to lead ID ${leadId}`);
+//   }
+
+//   const previousStatus = assignees[index].status;
+//   assignees[index].status = newStatus;
+
+//   await lead.update({ assignees });
+
+//   try {
+//     const logResult = await logLeadActivity({
+//       entityId: leadId,
+//       entityType: "lead",
+//       action: "status_updated",
+//       performedBy: userId,
+//       details: `Status changed from "${previousStatus}" to "${newStatus}"`,
+//     });
+//   } catch (err) {}
+
+//   return { ...(lead.toJSON() as any) };
+// };
+
+// Service: updateLeadStatusForUser (UPDATED)
 export const updateLeadStatusForUser = async (
   leadId: number,
   userId: number,
@@ -1742,33 +1797,41 @@ export const updateLeadStatusForUser = async (
     throw new Error(`Lead with ID ${leadId} not found`);
   }
 
-  let assignees: AssigneeWithStatus[] = [];
+  let parsedAssignees: AssigneeWithStatus[] = [];
 
   try {
     if (Array.isArray(lead.assignees)) {
-      assignees = lead.assignees;
+      parsedAssignees = lead.assignees;
     } else if (typeof lead.assignees === "string") {
-      assignees = JSON.parse(lead.assignees);
+      parsedAssignees = JSON.parse(lead.assignees);
     } else if (lead.assignees && typeof lead.assignees === "object") {
-      assignees = lead.assignees as AssigneeWithStatus[];
+      parsedAssignees = lead.assignees as AssigneeWithStatus[];
     }
   } catch (err) {
-    assignees = [];
+    parsedAssignees = [];
   }
 
-  const index = assignees.findIndex((a) => Number(a.userId) === Number(userId));
+  // Clone so Sequelize sees a new JSON reference
+  const assignees = parsedAssignees.map((a) => ({ ...a }));
 
+  const index = assignees.findIndex((a) => Number(a.userId) === Number(userId));
   if (index === -1) {
     throw new Error(`User ID ${userId} is not assigned to lead ID ${leadId}`);
   }
 
   const previousStatus = assignees[index].status;
-  assignees[index].status = newStatus;
 
-  await lead.update({ assignees });
+  const updatedAssignees = assignees.map((a, i) =>
+    i === index ? { ...a, status: newStatus } : a,
+  );
+
+  // Force change detection for JSON column
+  lead.set("assignees", updatedAssignees);
+  lead.changed("assignees", true);
+  await lead.save();
 
   try {
-    const logResult = await logLeadActivity({
+    await logLeadActivity({
       entityId: leadId,
       entityType: "lead",
       action: "status_updated",

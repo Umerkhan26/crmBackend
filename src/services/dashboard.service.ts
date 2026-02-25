@@ -18,6 +18,8 @@ interface DashboardStatsParams {
   filterType?: FilterType;
   startDate?: string;
   endDate?: string;
+  notesPage?: number;
+  notesLimit?: number;
 }
 
 /**
@@ -34,13 +36,16 @@ export const getDashboardStats = async ({
   filterType = "",
   startDate,
   endDate,
+  notesPage = 1,
+  notesLimit = 5,
 }: DashboardStatsParams = {}) => {
   try {
     const dateFilter =
       filterType && filterType.trim() !== ""
         ? buildDateFilter(filterType, startDate, endDate)
         : {};
-    const dateWhereClause = dateFilter && Object.keys(dateFilter).length > 0 ? dateFilter : {};
+    const dateWhereClause =
+      dateFilter && Object.keys(dateFilter).length > 0 ? dateFilter : {};
 
     if (isAdmin) {
       // Admin sees global stats
@@ -79,7 +84,7 @@ export const getDashboardStats = async ({
           where: {
             ...dateWhereClause,
             [Op.and]: Sequelize.literal(
-              "JSON_LENGTH(COALESCE(assignees, '[]')) > 0"
+              "JSON_LENGTH(COALESCE(assignees, '[]')) > 0",
             ),
           } as any,
         }),
@@ -89,7 +94,7 @@ export const getDashboardStats = async ({
           where: {
             ...dateWhereClause,
             [Op.and]: Sequelize.literal(
-              "(assignees IS NULL OR assignees = '[]' OR assignees = '' OR JSON_LENGTH(COALESCE(assignees, '[]')) = 0)"
+              "(assignees IS NULL OR assignees = '[]' OR assignees = '' OR JSON_LENGTH(COALESCE(assignees, '[]')) = 0)",
             ),
           } as any,
         }),
@@ -112,10 +117,12 @@ export const getDashboardStats = async ({
         // Leads with Work Done - count distinct leads that have notes or activities.
         // We apply the same createdAt filter on leads if provided.
         (() => {
-          const hasDateFilter = dateWhereClause && (dateWhereClause as any).createdAt;
-          const dateCondition = hasDateFilter && (dateWhereClause as any).createdAt[Op.between]
-            ? "l.createdAt BETWEEN :start AND :end AND "
-            : "";
+          const hasDateFilter =
+            dateWhereClause && (dateWhereClause as any).createdAt;
+          const dateCondition =
+            hasDateFilter && (dateWhereClause as any).createdAt[Op.between]
+              ? "l.createdAt BETWEEN :start AND :end AND "
+              : "";
           return db.query(
             `SELECT COUNT(DISTINCT l.id) as count
              FROM leads l
@@ -137,7 +144,7 @@ export const getDashboardStats = async ({
                       end: (dateWhereClause as any).createdAt[Op.between][1],
                     }
                   : {},
-            }
+            },
           ) as Promise<any[]>;
         })(),
 
@@ -154,7 +161,10 @@ export const getDashboardStats = async ({
       const leadsWithWorkCount = (leadsWithWorkResult[0] as any)?.count || 0;
 
       // Get recent notes from all users (for admin dashboard)
-      const recentNotes = await NoteService.getRecentNotesForAdmin(10);
+      const recentNotes = await NoteService.getRecentNotesForAdmin(
+        notesPage,
+        notesLimit,
+      );
 
       return {
         users: {
@@ -177,20 +187,28 @@ export const getDashboardStats = async ({
         campaigns: {
           total: totalCampaigns,
         },
-        recentNotes: recentNotes.map((note: any) => ({
-          id: note.id,
-          content: note.content,
-          notebleId: note.notebleId,
-          notebleType: note.notebleType,
-          createdAt: note.createdAt,
-          creator: note.creator ? {
-            id: note.creator.id,
-            firstname: note.creator.firstname,
-            lastname: note.creator.lastname,
-            email: note.creator.email,
-          } : null,
-          lead: note.lead || null,
-        })),
+        recentNotes: {
+          notes: recentNotes.notes.map((note: any) => ({
+            id: note.id,
+            content: note.content,
+            notebleId: note.notebleId,
+            notebleType: note.notebleType,
+            createdAt: note.createdAt,
+            creator: note.creator
+              ? {
+                  id: note.creator.id,
+                  firstname: note.creator.firstname,
+                  lastname: note.creator.lastname,
+                  email: note.creator.email,
+                }
+              : null,
+            lead: note.lead || null,
+          })),
+          totalPages: recentNotes.totalPages,
+          currentPage: recentNotes.currentPage,
+          totalRecords: recentNotes.totalItems,
+          pageSize: recentNotes.pageSize,
+        },
       };
     } else {
       // Non-admin users: get user-specific stats
@@ -199,12 +217,12 @@ export const getDashboardStats = async ({
       }
 
       // Get user's campaign permissions
-      const user = await User.findByPk(userId, {
+      const user = (await User.findByPk(userId, {
         include: {
           model: Role,
           include: [Permission],
         },
-      }) as any;
+      })) as any;
 
       if (!user) {
         throw new Error("User not found");
@@ -216,7 +234,11 @@ export const getDashboardStats = async ({
 
       // Extract campaign permissions
       permissions.forEach((perm: any) => {
-        if (perm.name === "getCampaignById" && perm.resourceId && !isNaN(Number(perm.resourceId))) {
+        if (
+          perm.name === "getCampaignById" &&
+          perm.resourceId &&
+          !isNaN(Number(perm.resourceId))
+        ) {
           allowedCampaignIds.push(parseInt(perm.resourceId));
         }
         if (perm.resourceType?.startsWith("campaign-")) {
@@ -241,82 +263,94 @@ export const getDashboardStats = async ({
           campaignWhere[Op.or].push(
             Sequelize.where(
               Sequelize.fn("LOWER", Sequelize.col("campaignName")),
-              { [Op.in]: allowedCampaignNames }
-            )
+              { [Op.in]: allowedCampaignNames },
+            ),
           );
         }
         allowedCampaigns = await Campaign.findAll({ where: campaignWhere });
       } else {
         // Check for general campaign permission
-        const hasGeneralPermission = permissions.some((p: any) => p.name === "campaign:get");
+        const hasGeneralPermission = permissions.some(
+          (p: any) => p.name === "campaign:get",
+        );
         if (hasGeneralPermission) {
           allowedCampaigns = await Campaign.findAll();
         }
       }
 
-      const allowedCampaignNamesList = allowedCampaigns.map((c: any) => c.campaignName?.toLowerCase().trim()).filter(Boolean);
+      const allowedCampaignNamesList = allowedCampaigns
+        .map((c: any) => c.campaignName?.toLowerCase().trim())
+        .filter(Boolean);
 
       // My assigned leads (user is in assignees array AND in user's campaigns)
       // Show all leads assigned to this user, regardless of who created them
       const myAssignedLeadsCondition = {
         [Op.and]: [
           Sequelize.literal(
-            `JSON_CONTAINS(COALESCE(assignees, '[]'), JSON_OBJECT('userId', ${userId}), '$')`
+            `JSON_CONTAINS(COALESCE(assignees, '[]'), JSON_OBJECT('userId', ${userId}), '$')`,
           ),
-          ...(allowedCampaignNamesList.length > 0 ? [{
-            campaignName: { [Op.in]: allowedCampaignNamesList },
-          }] : []),
+          ...(allowedCampaignNamesList.length > 0
+            ? [
+                {
+                  campaignName: { [Op.in]: allowedCampaignNamesList },
+                },
+              ]
+            : []),
           ...(Object.keys(dateWhereClause).length > 0 ? [dateWhereClause] : []),
         ],
       };
-      const myAssignedLeadsCount = allowedCampaignNamesList.length > 0
-        ? await Lead.count({
-            where: myAssignedLeadsCondition as any,
-          })
-        : 0;
+      const myAssignedLeadsCount =
+        allowedCampaignNamesList.length > 0
+          ? await Lead.count({
+              where: myAssignedLeadsCondition as any,
+            })
+          : 0;
 
       // My unassigned leads (in user's campaigns but not assigned to user AND created by user)
       // For datascrapper and non-admin users: only show leads they created
       const myUnassignedLeadsCondition = {
         [Op.and]: [
           { createdBy: userId }, // Filter by creator - only show leads created by this user
-          ...(allowedCampaignNamesList.length > 0 ? [{
-            campaignName: { [Op.in]: allowedCampaignNamesList },
-          }] : []),
+          ...(allowedCampaignNamesList.length > 0
+            ? [
+                {
+                  campaignName: { [Op.in]: allowedCampaignNamesList },
+                },
+              ]
+            : []),
           Sequelize.literal(
-            `NOT JSON_CONTAINS(COALESCE(assignees, '[]'), JSON_OBJECT('userId', ${userId}), '$')`
+            `NOT JSON_CONTAINS(COALESCE(assignees, '[]'), JSON_OBJECT('userId', ${userId}), '$')`,
           ),
           Sequelize.literal(
-            `(assignees IS NULL OR assignees = '[]' OR assignees = '' OR JSON_LENGTH(COALESCE(assignees, '[]')) = 0)`
+            `(assignees IS NULL OR assignees = '[]' OR assignees = '' OR JSON_LENGTH(COALESCE(assignees, '[]')) = 0)`,
           ),
           ...(Object.keys(dateWhereClause).length > 0 ? [dateWhereClause] : []),
         ],
       };
-      const myUnassignedLeadsCount = allowedCampaignNamesList.length > 0
-        ? await Lead.count({
-            where: myUnassignedLeadsCondition as any,
-          })
-        : 0;
+      const myUnassignedLeadsCount =
+        allowedCampaignNamesList.length > 0
+          ? await Lead.count({
+              where: myUnassignedLeadsCondition as any,
+            })
+          : 0;
 
       // Total leads in user's campaigns (only leads created by user)
       // For datascrapper and non-admin users: only show leads they created
-      const myTotalLeadsCount = allowedCampaignNamesList.length > 0
-        ? await Lead.count({
-            where: {
-              campaignName: { [Op.in]: allowedCampaignNamesList },
-              createdBy: userId, // Filter by creator - only show leads created by this user
-              ...dateWhereClause,
-            } as any,
-          })
-        : 0;
+      const myTotalLeadsCount =
+        allowedCampaignNamesList.length > 0
+          ? await Lead.count({
+              where: {
+                campaignName: { [Op.in]: allowedCampaignNamesList },
+                createdBy: userId, // Filter by creator - only show leads created by this user
+                ...dateWhereClause,
+              } as any,
+            })
+          : 0;
 
       // My sales (products assigned to user or created by user)
       const mySalesCount = await ProductSale.count({
         where: {
-          [Op.or]: [
-            { assigneeId: userId },
-            { createdBy: userId },
-          ],
+          [Op.or]: [{ assigneeId: userId }, { createdBy: userId }],
           ...dateWhereClause,
         } as any,
       });
@@ -333,11 +367,17 @@ export const getDashboardStats = async ({
       const myCampaignsCount = allowedCampaigns.length;
 
       // Get recent notes created by the user (for dashboard display)
-      const recentNotes = await NoteService.getRecentNotesForUser(userId, 10);
+      const recentNotes = await NoteService.getRecentNotesForUser(
+        userId,
+        notesPage,
+        notesLimit,
+      );
 
       // Check if user has permission to create leads (for showing creator stats)
-      const hasLeadCreatePermission = permissions.some((p: any) => p.name === "lead:create");
-      
+      const hasLeadCreatePermission = permissions.some(
+        (p: any) => p.name === "lead:create",
+      );
+
       let myCreatedLeadsAssignedCount = 0;
       let myCreatedLeadsConvertedToSalesCount = 0;
 
@@ -349,9 +389,11 @@ export const getDashboardStats = async ({
             { createdBy: userId },
             Sequelize.literal("JSON_LENGTH(COALESCE(assignees, '[]')) > 0"),
             Sequelize.literal(
-              `NOT JSON_CONTAINS(COALESCE(assignees, '[]'), JSON_OBJECT('userId', ${userId}), '$')`
+              `NOT JSON_CONTAINS(COALESCE(assignees, '[]'), JSON_OBJECT('userId', ${userId}), '$')`,
             ),
-            ...(Object.keys(dateWhereClause).length > 0 ? [dateWhereClause] : []),
+            ...(Object.keys(dateWhereClause).length > 0
+              ? [dateWhereClause]
+              : []),
           ],
         };
         myCreatedLeadsAssignedCount = await Lead.count({
@@ -368,7 +410,7 @@ export const getDashboardStats = async ({
           attributes: ["id"],
         });
         const myCreatedLeadIds = myCreatedLeads.map((l: any) => l.id);
-        
+
         if (myCreatedLeadIds.length > 0) {
           myCreatedLeadsConvertedToSalesCount = await ProductSale.count({
             where: {
@@ -404,24 +446,31 @@ export const getDashboardStats = async ({
         campaigns: {
           total: myCampaignsCount,
         },
-        recentNotes: recentNotes.map((note: any) => ({
-          id: note.id,
-          content: note.content,
-          notebleId: note.notebleId,
-          notebleType: note.notebleType,
-          createdAt: note.createdAt,
-          creator: note.creator ? {
-            id: note.creator.id,
-            firstname: note.creator.firstname,
-            lastname: note.creator.lastname,
-            email: note.creator.email,
-          } : null,
-          lead: note.lead || null,
-        })),
+        recentNotes: {
+          notes: recentNotes.notes.map((note: any) => ({
+            id: note.id,
+            content: note.content,
+            notebleId: note.notebleId,
+            notebleType: note.notebleType,
+            createdAt: note.createdAt,
+            creator: note.creator
+              ? {
+                  id: note.creator.id,
+                  firstname: note.creator.firstname,
+                  lastname: note.creator.lastname,
+                  email: note.creator.email,
+                }
+              : null,
+            lead: note.lead || null,
+          })),
+          totalPages: recentNotes.totalPages,
+          currentPage: recentNotes.currentPage,
+          totalRecords: recentNotes.totalItems,
+          pageSize: recentNotes.pageSize,
+        },
       };
     }
   } catch (error: any) {
     throw new Error(`Error fetching dashboard stats: ${error.message}`);
   }
 };
-

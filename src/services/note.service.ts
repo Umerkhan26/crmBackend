@@ -1,5 +1,3 @@
-
-
 import Note from "../models/note.model";
 import User from "../models/user.model";
 import { logLeadActivity } from "../utils/logLeadActivity";
@@ -34,7 +32,7 @@ interface GetRemindersParams {
  */
 const extractLeadName = async (
   campaignName: string | null,
-  leadData: any
+  leadData: any,
 ): Promise<string | null> => {
   if (!campaignName || !leadData) {
     return null;
@@ -42,9 +40,8 @@ const extractLeadName = async (
 
   try {
     // Parse leadData if it's a string
-    const parsedLeadData = typeof leadData === "string" 
-      ? JSON.parse(leadData) 
-      : leadData;
+    const parsedLeadData =
+      typeof leadData === "string" ? JSON.parse(leadData) : leadData;
 
     // Fetch campaign to get its field structure
     const campaign = await Campaign.findOne({
@@ -67,22 +64,44 @@ const extractLeadName = async (
       );
     }
 
-    const campaignFields = Array.isArray(campaign.fields) 
-      ? campaign.fields 
+    const campaignFields = Array.isArray(campaign.fields)
+      ? campaign.fields
       : typeof campaign.fields === "string"
-      ? JSON.parse(campaign.fields)
-      : [];
+        ? JSON.parse(campaign.fields)
+        : [];
 
     // Priority order for name fields
     const nameFieldPatterns = [
       // Business/Company names
-      { patterns: ["business_name", "businessName", "company_name", "companyName", "organization"], priority: 1 },
+      {
+        patterns: [
+          "business_name",
+          "businessName",
+          "company_name",
+          "companyName",
+          "organization",
+        ],
+        priority: 1,
+      },
       // Title
       { patterns: ["title", "job_title", "position"], priority: 2 },
       // Full name fields
-      { patterns: ["name", "full_name", "fullName", "contact_name", "contactName"], priority: 3 },
+      {
+        patterns: [
+          "name",
+          "full_name",
+          "fullName",
+          "contact_name",
+          "contactName",
+        ],
+        priority: 3,
+      },
       // First + Last name combination
-      { patterns: ["first_name", "firstname", "firstName"], priority: 4, requiresLast: true },
+      {
+        patterns: ["first_name", "firstname", "firstName"],
+        priority: 4,
+        requiresLast: true,
+      },
     ];
 
     // Check each priority level
@@ -93,8 +112,10 @@ const extractLeadName = async (
           (field: any) =>
             field.col_slug?.toLowerCase() === pattern.toLowerCase() ||
             field.col_name?.toLowerCase() === pattern.toLowerCase() ||
-            field.col_slug?.toLowerCase().replace(/[^a-z0-9]/g, "") === pattern.toLowerCase().replace(/[^a-z0-9]/g, "") ||
-            field.col_name?.toLowerCase().replace(/[^a-z0-9]/g, "") === pattern.toLowerCase().replace(/[^a-z0-9]/g, "")
+            field.col_slug?.toLowerCase().replace(/[^a-z0-9]/g, "") ===
+              pattern.toLowerCase().replace(/[^a-z0-9]/g, "") ||
+            field.col_name?.toLowerCase().replace(/[^a-z0-9]/g, "") ===
+              pattern.toLowerCase().replace(/[^a-z0-9]/g, ""),
         );
 
         if (fieldExists) {
@@ -106,11 +127,20 @@ const extractLeadName = async (
             pattern.replace(/_/g, ""),
             pattern.replace(/_/g, "-"),
             // Camel case variations
-            pattern.split("_").map((w, i) => i === 0 ? w : w.charAt(0).toUpperCase() + w.slice(1)).join(""),
+            pattern
+              .split("_")
+              .map((w, i) =>
+                i === 0 ? w : w.charAt(0).toUpperCase() + w.slice(1),
+              )
+              .join(""),
           ];
 
           for (const key of possibleKeys) {
-            if (parsedLeadData[key] !== undefined && parsedLeadData[key] !== null && parsedLeadData[key] !== "") {
+            if (
+              parsedLeadData[key] !== undefined &&
+              parsedLeadData[key] !== null &&
+              parsedLeadData[key] !== ""
+            ) {
               // If it requires last name, combine first and last
               if (nameFieldGroup.requiresLast) {
                 const firstName = parsedLeadData[key];
@@ -135,7 +165,12 @@ const extractLeadName = async (
     // Fallback: try to find any value in leadData that matches campaign field slugs
     for (const field of campaignFields) {
       const slug = field.col_slug || field.col_name;
-      if (slug && parsedLeadData[slug] !== undefined && parsedLeadData[slug] !== null && parsedLeadData[slug] !== "") {
+      if (
+        slug &&
+        parsedLeadData[slug] !== undefined &&
+        parsedLeadData[slug] !== null &&
+        parsedLeadData[slug] !== ""
+      ) {
         // Check if this looks like a name field
         const slugLower = slug.toLowerCase();
         if (
@@ -166,9 +201,8 @@ const extractLeadName = async (
   } catch (error) {
     console.error("Error extracting lead name:", error);
     // Fallback to simple extraction
-    const parsedLeadData = typeof leadData === "string" 
-      ? JSON.parse(leadData) 
-      : leadData;
+    const parsedLeadData =
+      typeof leadData === "string" ? JSON.parse(leadData) : leadData;
     return (
       parsedLeadData?.business_name ||
       parsedLeadData?.businessName ||
@@ -238,7 +272,7 @@ export const getAllNotesWithPagination = async (
   page: number = 1,
   limit: number = 10,
   userId?: number,
-  isAdmin: boolean = false
+  isAdmin: boolean = false,
 ) => {
   const Lead = (await import("../models/lead.model")).default;
   const offset = (page - 1) * limit;
@@ -256,10 +290,10 @@ export const getAllNotesWithPagination = async (
   const { count, rows: notes } = await Note.findAndCountAll({
     where: whereCondition,
     include: [
-      { 
-        model: User, 
-        as: "creator", 
-        attributes: ["id", "firstname", "lastname", "email"] 
+      {
+        model: User,
+        as: "creator",
+        attributes: ["id", "firstname", "lastname", "email"],
       },
     ],
     order: [["createdAt", "DESC"]],
@@ -276,30 +310,39 @@ export const getAllNotesWithPagination = async (
           attributes: ["id", "campaignName", "leadData"],
         });
       }
-      
+
       // Extract phone and name/title from leadData based on campaign fields
       let phoneNumber = null;
       let businessName = null;
       if (lead && lead.leadData) {
-        const leadData = typeof lead.leadData === "string" 
-          ? JSON.parse(lead.leadData) 
-          : lead.leadData;
-        phoneNumber = leadData?.phone || leadData?.phone_number || leadData?.number || null;
+        const leadData =
+          typeof lead.leadData === "string"
+            ? JSON.parse(lead.leadData)
+            : lead.leadData;
+        phoneNumber =
+          leadData?.phone || leadData?.phone_number || leadData?.number || null;
         // Use helper function to extract name based on campaign fields
         businessName = await extractLeadName(lead.campaignName, lead.leadData);
       }
-      
+
       return {
         ...note.toJSON(),
-        lead: lead ? {
-          id: lead.id,
-          campaignName: lead.campaignName,
-          leadCode: lead.leadCode || `${lead.campaignName?.split(" ").map((w: string) => w[0]?.toUpperCase() || "").join("")}${lead.id}`,
-          phoneNumber,
-          businessName,
-        } : null,
+        lead: lead
+          ? {
+              id: lead.id,
+              campaignName: lead.campaignName,
+              leadCode:
+                lead.leadCode ||
+                `${lead.campaignName
+                  ?.split(" ")
+                  .map((w: string) => w[0]?.toUpperCase() || "")
+                  .join("")}${lead.id}`,
+              phoneNumber,
+              businessName,
+            }
+          : null,
       };
-    })
+    }),
   );
 
   return {
@@ -386,7 +429,7 @@ export const getRemindersForEntity = async ({
  */
 export const getUpcomingRemindersForUser = async (
   userId: number,
-  windowMinutes: number = 10
+  windowMinutes: number = 10,
 ) => {
   const now = new Date();
   const windowEnd = new Date(now.getTime() + windowMinutes * 60 * 1000);
@@ -413,30 +456,105 @@ export const getUpcomingRemindersForUser = async (
  * @param limit - Maximum number of notes to return (default: 10)
  * @returns Array of recent notes created by the user with lead information
  */
+// export const getRecentNotesForUser = async (
+//   userId: number,
+//   limit: number = 10,
+// ) => {
+//   const Lead = (await import("../models/lead.model")).default;
+
+//   const notes = await Note.findAll({
+//     where: {
+//       type: "comment",
+//       createdBy: userId,
+//       notebleType: "lead", // Only show notes on leads
+//     },
+//     include: [
+//       {
+//         model: User,
+//         as: "creator",
+//         attributes: ["id", "firstname", "lastname", "email"],
+//       },
+//     ],
+//     order: [["createdAt", "DESC"]],
+//     limit,
+//   });
+
+//   // Fetch lead information for each note
+//   const notesWithLeads = await Promise.all(
+//     notes.map(async (note: any) => {
+//       let lead = null;
+//       if (note.notebleType === "lead" && note.notebleId) {
+//         lead = await Lead.findByPk(note.notebleId, {
+//           attributes: ["id", "campaignName", "leadData"],
+//         });
+//       }
+
+//       // Extract phone and name/title from leadData based on campaign fields
+//       let phoneNumber = null;
+//       let businessName = null;
+//       if (lead && lead.leadData) {
+//         const leadData =
+//           typeof lead.leadData === "string"
+//             ? JSON.parse(lead.leadData)
+//             : lead.leadData;
+//         phoneNumber =
+//           leadData?.phone || leadData?.phone_number || leadData?.number || null;
+//         // Use helper function to extract name based on campaign fields
+//         businessName = await extractLeadName(lead.campaignName, lead.leadData);
+//       }
+
+//       return {
+//         ...note.toJSON(),
+//         lead: lead
+//           ? {
+//               id: lead.id,
+//               campaignName: lead.campaignName,
+//               leadCode:
+//                 lead.leadCode ||
+//                 `${lead.campaignName
+//                   ?.split(" ")
+//                   .map((w: string) => w[0]?.toUpperCase() || "")
+//                   .join("")}${lead.id}`,
+//               phoneNumber,
+//               businessName,
+//             }
+//           : null,
+//       };
+//     }),
+//   );
+
+//   return notesWithLeads;
+// };
+
 export const getRecentNotesForUser = async (
   userId: number,
-  limit: number = 10
+  page: number = 1,
+  limit: number = 10,
 ) => {
   const Lead = (await import("../models/lead.model")).default;
-  
-  const notes = await Note.findAll({
+
+  const safePage = Math.max(1, Number(page) || 1);
+  const safeLimit = Math.max(1, Math.min(100, Number(limit) || 10));
+  const offset = (safePage - 1) * safeLimit;
+
+  const { count, rows: notes } = await Note.findAndCountAll({
     where: {
       type: "comment",
       createdBy: userId,
-      notebleType: "lead", // Only show notes on leads
+      notebleType: "lead",
     },
     include: [
-      { 
-        model: User, 
-        as: "creator", 
-        attributes: ["id", "firstname", "lastname", "email"] 
+      {
+        model: User,
+        as: "creator",
+        attributes: ["id", "firstname", "lastname", "email"],
       },
     ],
     order: [["createdAt", "DESC"]],
-    limit,
+    limit: safeLimit,
+    offset,
   });
 
-  // Fetch lead information for each note
   const notesWithLeads = await Promise.all(
     notes.map(async (note: any) => {
       let lead = null;
@@ -445,33 +563,46 @@ export const getRecentNotesForUser = async (
           attributes: ["id", "campaignName", "leadData"],
         });
       }
-      
-      // Extract phone and name/title from leadData based on campaign fields
+
       let phoneNumber = null;
       let businessName = null;
       if (lead && lead.leadData) {
-        const leadData = typeof lead.leadData === "string" 
-          ? JSON.parse(lead.leadData) 
-          : lead.leadData;
-        phoneNumber = leadData?.phone || leadData?.phone_number || leadData?.number || null;
-        // Use helper function to extract name based on campaign fields
+        const leadData =
+          typeof lead.leadData === "string"
+            ? JSON.parse(lead.leadData)
+            : lead.leadData;
+        phoneNumber =
+          leadData?.phone || leadData?.phone_number || leadData?.number || null;
         businessName = await extractLeadName(lead.campaignName, lead.leadData);
       }
-      
+
       return {
         ...note.toJSON(),
-        lead: lead ? {
-          id: lead.id,
-          campaignName: lead.campaignName,
-          leadCode: lead.leadCode || `${lead.campaignName?.split(" ").map((w: string) => w[0]?.toUpperCase() || "").join("")}${lead.id}`,
-          phoneNumber,
-          businessName,
-        } : null,
+        lead: lead
+          ? {
+              id: lead.id,
+              campaignName: lead.campaignName,
+              leadCode:
+                lead.leadCode ||
+                `${lead.campaignName
+                  ?.split(" ")
+                  .map((w: string) => w[0]?.toUpperCase() || "")
+                  .join("")}${lead.id}`,
+              phoneNumber,
+              businessName,
+            }
+          : null,
       };
-    })
+    }),
   );
 
-  return notesWithLeads;
+  return {
+    notes: notesWithLeads,
+    totalItems: count,
+    totalPages: Math.ceil(count / safeLimit),
+    currentPage: safePage,
+    pageSize: safeLimit,
+  };
 };
 
 /**
@@ -480,28 +611,99 @@ export const getRecentNotesForUser = async (
  * @param limit - Maximum number of notes to return (default: 10)
  * @returns Array of recent notes from all users with lead information
  */
+// export const getRecentNotesForAdmin = async (limit: number = 10) => {
+//   const Lead = (await import("../models/lead.model")).default;
+
+//   const notes = await Note.findAll({
+//     where: {
+//       type: "comment",
+//       notebleType: "lead",
+//     },
+//     include: [
+//       {
+//         model: User,
+//         as: "creator",
+//         attributes: ["id", "firstname", "lastname", "email"],
+//       },
+//     ],
+//     order: [["createdAt", "DESC"]],
+//     limit,
+//   });
+
+//   // Fetch lead information for each note
+//   const notesWithLeads = await Promise.all(
+//     notes.map(async (note: any) => {
+//       let lead = null;
+//       if (note.notebleType === "lead" && note.notebleId) {
+//         lead = await Lead.findByPk(note.notebleId, {
+//           attributes: ["id", "campaignName", "leadData"],
+//         });
+//       }
+
+//       // Extract phone and name/title from leadData based on campaign fields
+//       let phoneNumber = null;
+//       let businessName = null;
+//       if (lead && lead.leadData) {
+//         const leadData =
+//           typeof lead.leadData === "string"
+//             ? JSON.parse(lead.leadData)
+//             : lead.leadData;
+//         phoneNumber =
+//           leadData?.phone || leadData?.phone_number || leadData?.number || null;
+//         // Use helper function to extract name based on campaign fields
+//         businessName = await extractLeadName(lead.campaignName, lead.leadData);
+//       }
+
+//       return {
+//         ...note.toJSON(),
+//         lead: lead
+//           ? {
+//               id: lead.id,
+//               campaignName: lead.campaignName,
+//               leadCode:
+//                 lead.leadCode ||
+//                 `${lead.campaignName
+//                   ?.split(" ")
+//                   .map((w: string) => w[0]?.toUpperCase() || "")
+//                   .join("")}${lead.id}`,
+//               phoneNumber,
+//               businessName,
+//             }
+//           : null,
+//       };
+//     }),
+//   );
+
+//   return notesWithLeads;
+// };
+
 export const getRecentNotesForAdmin = async (
-  limit: number = 10
+  page: number = 1,
+  limit: number = 10,
 ) => {
   const Lead = (await import("../models/lead.model")).default;
-  
-  const notes = await Note.findAll({
+
+  const safePage = Math.max(1, Number(page) || 1);
+  const safeLimit = Math.max(1, Math.min(100, Number(limit) || 10));
+  const offset = (safePage - 1) * safeLimit;
+
+  const { count, rows: notes } = await Note.findAndCountAll({
     where: {
       type: "comment",
-      notebleType: "lead", // Only show notes on leads
+      notebleType: "lead",
     },
     include: [
-      { 
-        model: User, 
-        as: "creator", 
-        attributes: ["id", "firstname", "lastname", "email"] 
+      {
+        model: User,
+        as: "creator",
+        attributes: ["id", "firstname", "lastname", "email"],
       },
     ],
     order: [["createdAt", "DESC"]],
-    limit,
+    limit: safeLimit,
+    offset,
   });
 
-  // Fetch lead information for each note
   const notesWithLeads = await Promise.all(
     notes.map(async (note: any) => {
       let lead = null;
@@ -510,39 +712,52 @@ export const getRecentNotesForAdmin = async (
           attributes: ["id", "campaignName", "leadData"],
         });
       }
-      
-      // Extract phone and name/title from leadData based on campaign fields
+
       let phoneNumber = null;
       let businessName = null;
       if (lead && lead.leadData) {
-        const leadData = typeof lead.leadData === "string" 
-          ? JSON.parse(lead.leadData) 
-          : lead.leadData;
-        phoneNumber = leadData?.phone || leadData?.phone_number || leadData?.number || null;
-        // Use helper function to extract name based on campaign fields
+        const leadData =
+          typeof lead.leadData === "string"
+            ? JSON.parse(lead.leadData)
+            : lead.leadData;
+        phoneNumber =
+          leadData?.phone || leadData?.phone_number || leadData?.number || null;
         businessName = await extractLeadName(lead.campaignName, lead.leadData);
       }
-      
+
       return {
         ...note.toJSON(),
-        lead: lead ? {
-          id: lead.id,
-          campaignName: lead.campaignName,
-          leadCode: lead.leadCode || `${lead.campaignName?.split(" ").map((w: string) => w[0]?.toUpperCase() || "").join("")}${lead.id}`,
-          phoneNumber,
-          businessName,
-        } : null,
+        lead: lead
+          ? {
+              id: lead.id,
+              campaignName: lead.campaignName,
+              leadCode:
+                lead.leadCode ||
+                `${lead.campaignName
+                  ?.split(" ")
+                  .map((w: string) => w[0]?.toUpperCase() || "")
+                  .join("")}${lead.id}`,
+              phoneNumber,
+              businessName,
+            }
+          : null,
       };
-    })
+    }),
   );
 
-  return notesWithLeads;
+  return {
+    notes: notesWithLeads,
+    totalItems: count,
+    totalPages: Math.ceil(count / safeLimit),
+    currentPage: safePage,
+    pageSize: safeLimit,
+  };
 };
 
 export const updateNote = async (
   id: number,
   data: Partial<Note>,
-  userId: number
+  userId: number,
 ) => {
   const note = await Note.findByPk(id);
   if (!note) throw new Error("Note not found");
@@ -582,7 +797,7 @@ export const deleteNote = async (id: number, userId: number) => {
 export const updateReminder = async (
   id: number,
   data: Partial<Note>,
-  userId: number
+  userId: number,
 ) => {
   const reminder = await Note.findByPk(id);
   if (!reminder) throw new Error("Reminder not found");

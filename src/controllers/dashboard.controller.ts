@@ -6,12 +6,12 @@ import Permission from "../models/permission.model";
 
 export const getDashboardStatsController = async (
   req: Request,
-  res: Response
+  res: Response,
 ): Promise<any> => {
   try {
     // Get user from request (set by verifyToken middleware)
     const userId = (req as any).user?.id;
-    
+
     if (!userId) {
       return res.status(401).json({
         success: false,
@@ -20,19 +20,30 @@ export const getDashboardStatsController = async (
     }
 
     // Optional date filters from query
-    const { filterType = "", startDate, endDate } = req.query as {
-      filterType?: string;
-      startDate?: string;
-      endDate?: string;
-    };
+    // const { filterType = "", startDate, endDate, } = req.query as {
+    //   filterType?: string;
+    //   startDate?: string;
+    //   endDate?: string;
+    // };
+
+    const {
+      filterType = "",
+      startDate,
+      endDate,
+      notesPage,
+      notesLimit,
+    } = req.query as any;
 
     // Get user with role to check if admin
-    const user = await User.findByPk(userId, {
+
+    const parsedNotesPage = parseInt(notesPage, 10) || 1;
+    const parsedNotesLimit = parseInt(notesLimit, 10) || 10;
+    const user = (await User.findByPk(userId, {
       include: {
         model: Role,
         include: [Permission],
       },
-    }) as any;
+    })) as any;
 
     if (!user) {
       return res.status(404).json({
@@ -53,6 +64,8 @@ export const getDashboardStatsController = async (
       filterType: (filterType || "").trim() as any,
       startDate,
       endDate,
+      notesPage: parsedNotesPage,
+      notesLimit: parsedNotesLimit,
     });
 
     return res.status(200).json({
@@ -68,6 +81,3 @@ export const getDashboardStatsController = async (
     });
   }
 };
-
-
-

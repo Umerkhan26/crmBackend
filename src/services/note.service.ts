@@ -754,6 +754,222 @@ export const getRecentNotesForAdmin = async (
   };
 };
 
+/**
+ * Fast recent notes for dashboard (non-blocking usage).
+ * Avoids N+1 queries by bulk-fetching leads and campaigns.
+ * Returns an array of notes (not paginated).
+ */
+export const getRecentNotesFast = async (params: {
+  limit?: number;
+  userId?: number;
+  isAdmin?: boolean;
+}) => {
+  const limit = Math.max(1, Math.min(20, Number(params.limit) || 10));
+  const isAdmin = Boolean(params.isAdmin);
+  const userId = params.userId;
+
+  const LeadModel = (await import("../models/lead.model")).default;
+
+  const safeJsonParse = (val: any) => {
+    if (val == null) return val;
+    if (typeof val !== "string") return val;
+    try {
+      return JSON.parse(val);
+    } catch {
+      return val;
+    }
+  };
+
+  const normalizeKey = (s: string) =>
+    (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+
+  const buildCampaignFieldKeySet = (campaignFields: any): Set<string> => {
+    const fields = Array.isArray(campaignFields)
+      ? campaignFields
+      : typeof campaignFields === "string"
+        ? safeJsonParse(campaignFields)
+        : campaignFields;
+
+    const arr = Array.isArray(fields) ? fields : [];
+    const keys = new Set<string>();
+
+    for (const f of arr) {
+      const slug = f?.col_slug ?? f?.col_name ?? "";
+      const name = f?.col_name ?? f?.col_slug ?? "";
+      if (slug) keys.add(normalizeKey(String(slug)));
+      if (name) keys.add(normalizeKey(String(name)));
+    }
+
+    return keys;
+  };
+
+  const extractLeadNameFromCampaign = (args: {
+    campaignFieldsKeySet?: Set<string>;
+    leadData: any;
+  }) => {
+    const parsedLeadData = safeJsonParse(args.leadData);
+    const keySet = args.campaignFieldsKeySet;
+
+    const nameFieldPatterns = [
+      { patterns: ["business_name", "businessName", "company_name", "companyName", "organization"], requiresLast: false },
+      { patterns: ["title", "job_title", "position"], requiresLast: false },
+      { patterns: ["name", "full_name", "fullName", "contact_name", "contactName"], requiresLast: false },
+      { patterns: ["first_name", "firstname", "firstName"], requiresLast: true },
+    ];
+
+    const getValueByPossibleKeys = (pattern: string) => {
+      const possibleKeys = [
+        pattern,
+        pattern.toLowerCase(),
+        pattern.toUpperCase(),
+        pattern.replace(/_/g, ""),
+        pattern.replace(/_/g, "-"),
+        pattern
+          .split("_")
+          .map((w, i) => (i === 0 ? w : w.charAt(0).toUpperCase() + w.slice(1)))
+          .join(""),
+      ];
+
+      for (const k of possibleKeys) {
+        const v = parsedLeadData?.[k];
+        if (v !== undefined && v !== null && String(v).trim() !== "") return v;
+      }
+      return undefined;
+    };
+
+    for (const group of nameFieldPatterns) {
+      for (const pattern of group.patterns) {
+        if (keySet && keySet.size > 0 && !keySet.has(normalizeKey(pattern))) continue;
+        const v = getValueByPossibleKeys(pattern);
+        if (v === undefined) continue;
+
+        if (group.requiresLast) {
+          const firstName = v;
+          const lastNameKeys = ["last_name", "lastname", "lastName"];
+          let lastName = "";
+          for (const lnKey of lastNameKeys) {
+            if (parsedLeadData?.[lnKey]) {
+              lastName = parsedLeadData[lnKey];
+              break;
+            }
+          }
+          const fullName = `${firstName} ${lastName}`.trim();
+          return fullName || null;
+        }
+
+        return String(v);
+      }
+    }
+
+    return (
+      parsedLeadData?.business_name ||
+      parsedLeadData?.businessName ||
+      parsedLeadData?.name ||
+      parsedLeadData?.title ||
+      (parsedLeadData?.first_name || parsedLeadData?.firstname
+        ? `${parsedLeadData.first_name || parsedLeadData.firstname || ""} ${
+            parsedLeadData.last_name || parsedLeadData.lastname || ""
+          }`.trim() || null
+        : null) ||
+      null
+    );
+  };
+
+  const whereCondition: any = {
+    type: "comment",
+    notebleType: "lead",
+  };
+  if (!isAdmin && userId) whereCondition.createdBy = userId;
+
+  const notes = await Note.findAll({
+    where: whereCondition,
+    include: [
+      {
+        model: User,
+        as: "creator",
+        attributes: ["id", "firstname", "lastname", "email"],
+      },
+    ],
+    order: [["createdAt", "DESC"]],
+    limit,
+  });
+
+  const leadIds = Array.from(
+    new Set(
+      notes
+        .map((n: any) => (n.notebleType === "lead" ? n.notebleId : null))
+        .filter((id: any) => typeof id === "number" && id > 0),
+    ),
+  );
+
+  const leads = leadIds.length
+    ? await LeadModel.findAll({
+        where: { id: { [Op.in]: leadIds } } as any,
+        attributes: ["id", "campaignName", "leadData"],
+      })
+    : [];
+
+  const leadById = new Map<number, any>();
+  for (const l of leads as any[]) leadById.set(l.id, l);
+
+  const campaignNames = Array.from(
+    new Set(
+      (leads as any[])
+        .map((l) => (l.campaignName ? String(l.campaignName) : ""))
+        .filter(Boolean),
+    ),
+  );
+
+  const campaigns = campaignNames.length
+    ? await Campaign.findAll({
+        where: { campaignName: { [Op.in]: campaignNames } } as any,
+        attributes: ["campaignName", "fields"],
+      })
+    : [];
+
+  const campaignFieldKeySetByName = new Map<string, Set<string>>();
+  for (const c of campaigns as any[]) {
+    campaignFieldKeySetByName.set(String(c.campaignName), buildCampaignFieldKeySet(c.fields));
+  }
+
+  return notes.map((note: any) => {
+    const lead = note.notebleType === "lead" ? leadById.get(note.notebleId) : null;
+    let phoneNumber: string | null = null;
+    let businessName: string | null = null;
+
+    if (lead?.leadData) {
+      const leadData = safeJsonParse(lead.leadData);
+      phoneNumber = leadData?.phone || leadData?.phone_number || leadData?.number || null;
+      const keySet = campaignFieldKeySetByName.get(String(lead.campaignName || "")) || undefined;
+      businessName = extractLeadNameFromCampaign({ campaignFieldsKeySet: keySet, leadData });
+    }
+
+    const leadCode =
+      lead?.leadCode ||
+      (lead?.campaignName
+        ? `${String(lead.campaignName)
+            .split(" ")
+            .map((w: string) => w[0]?.toUpperCase() || "")
+            .join("")}${lead.id}`
+        : lead?.id
+          ? `L${lead.id}`
+          : undefined);
+
+    return {
+      ...note.toJSON(),
+      lead: lead
+        ? {
+            id: lead.id,
+            campaignName: lead.campaignName,
+            leadCode,
+            phoneNumber,
+            businessName,
+          }
+        : null,
+    };
+  });
+};
+
 export const updateNote = async (
   id: number,
   data: Partial<Note>,

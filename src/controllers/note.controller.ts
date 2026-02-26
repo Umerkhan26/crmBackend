@@ -248,3 +248,45 @@ export const getAllNotes = async (req: Request, res: Response): Promise<any> => 
     });
   }
 };
+
+export const getRecentNotes = async (req: Request, res: Response): Promise<any> => {
+  try {
+    const userId = (req as any).user?.id;
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized: user ID not found",
+      });
+    }
+
+    const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 10;
+
+    // Determine admin vs non-admin (same approach as getAllNotes)
+    const User = (await import("../models/user.model")).default;
+    const Role = (await import("../models/role.model")).default;
+
+    const user = (await User.findByPk(userId, {
+      include: { model: Role },
+    })) as any;
+
+    const roleName = user?.Role?.name?.toLowerCase() || "";
+    const isAdmin = roleName === "admin" || roleName === "adminn";
+
+    const notes = await NoteService.getRecentNotesFast({
+      limit,
+      userId,
+      isAdmin,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Recent notes fetched successfully",
+      notes,
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to fetch recent notes",
+    });
+  }
+};

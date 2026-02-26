@@ -9,7 +9,7 @@ import LeadActivity from "../models/leadActivity.model";
 import { Op, Sequelize, QueryTypes } from "sequelize";
 import db from "../../db";
 import { buildDateFilter, FilterType } from "../utils/dateFilters";
-import * as NoteService from "./note.service";
+// Notes are loaded via a separate endpoint for performance.
 
 interface DashboardStatsParams {
   userId?: number;
@@ -160,12 +160,6 @@ export const getDashboardStats = async ({
       // Extract count from raw query result
       const leadsWithWorkCount = (leadsWithWorkResult[0] as any)?.count || 0;
 
-      // Get recent notes from all users (for admin dashboard)
-      const recentNotes = await NoteService.getRecentNotesForAdmin(
-        notesPage,
-        notesLimit,
-      );
-
       return {
         users: {
           total: totalUsers,
@@ -188,26 +182,11 @@ export const getDashboardStats = async ({
           total: totalCampaigns,
         },
         recentNotes: {
-          notes: recentNotes.notes.map((note: any) => ({
-            id: note.id,
-            content: note.content,
-            notebleId: note.notebleId,
-            notebleType: note.notebleType,
-            createdAt: note.createdAt,
-            creator: note.creator
-              ? {
-                  id: note.creator.id,
-                  firstname: note.creator.firstname,
-                  lastname: note.creator.lastname,
-                  email: note.creator.email,
-                }
-              : null,
-            lead: note.lead || null,
-          })),
-          totalPages: recentNotes.totalPages,
-          currentPage: recentNotes.currentPage,
-          totalRecords: recentNotes.totalItems,
-          pageSize: recentNotes.pageSize,
+          notes: [],
+          totalPages: 0,
+          currentPage: notesPage,
+          totalRecords: 0,
+          pageSize: notesLimit,
         },
       };
     } else {
@@ -366,13 +345,6 @@ export const getDashboardStats = async ({
       // My campaigns (campaigns user has access to)
       const myCampaignsCount = allowedCampaigns.length;
 
-      // Get recent notes created by the user (for dashboard display)
-      const recentNotes = await NoteService.getRecentNotesForUser(
-        userId,
-        notesPage,
-        notesLimit,
-      );
-
       // Check if user has permission to create leads (for showing creator stats)
       const hasLeadCreatePermission = permissions.some(
         (p: any) => p.name === "lead:create",
@@ -447,26 +419,11 @@ export const getDashboardStats = async ({
           total: myCampaignsCount,
         },
         recentNotes: {
-          notes: recentNotes.notes.map((note: any) => ({
-            id: note.id,
-            content: note.content,
-            notebleId: note.notebleId,
-            notebleType: note.notebleType,
-            createdAt: note.createdAt,
-            creator: note.creator
-              ? {
-                  id: note.creator.id,
-                  firstname: note.creator.firstname,
-                  lastname: note.creator.lastname,
-                  email: note.creator.email,
-                }
-              : null,
-            lead: note.lead || null,
-          })),
-          totalPages: recentNotes.totalPages,
-          currentPage: recentNotes.currentPage,
-          totalRecords: recentNotes.totalItems,
-          pageSize: recentNotes.pageSize,
+          notes: [],
+          totalPages: 0,
+          currentPage: notesPage,
+          totalRecords: 0,
+          pageSize: notesLimit,
         },
       };
     }

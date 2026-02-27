@@ -31,7 +31,9 @@ export const syncEmailPermissionsToDB = async () => {
   };
 
   for (const serviceName of EMAIL_PERMISSIONS) {
-    const existingTemplate = await EmailTemplate.findOne({ where: { serviceName } });
+    const existingTemplate = await EmailTemplate.findOne({
+      where: { serviceName },
+    });
 
     if (!existingTemplate && defaultTemplates[serviceName]) {
       const { name, subject, body } = defaultTemplates[serviceName];

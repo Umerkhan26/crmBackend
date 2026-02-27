@@ -22,7 +22,7 @@ router.post(
   "/registerr",
   uploadImageMiddleware("userImage"),
   // checkPermission(PERMISSIONS.USER_CREATE), // Uncomment if needed
-  registerUser
+  registerUser,
 );
 
 router.post("/login", login);
@@ -31,14 +31,14 @@ router.get(
   "/getAllUsers",
   verifyToken,
   checkPermission(PERMISSIONS.USER_GET),
-  getUsers
+  getUsers,
 );
 
 router.get(
   "/getUserById/:id",
   verifyToken,
   checkPermission(PERMISSIONS.USER_GET_by_Id),
-  getUser
+  getUser,
 );
 
 router.put(
@@ -46,31 +46,27 @@ router.put(
   verifyToken,
   uploadImageMiddleware("userImage", true),
   checkPermission(PERMISSIONS.USER_UPDATE),
-  updateUserController
+  updateUserController,
 );
 
 router.delete(
   "/deleteUserById/:id",
   verifyToken,
   checkPermission(PERMISSIONS.USER_DELETE),
-  deleteUserController
+  deleteUserController,
 );
 
 router.put(
   "/blockOrUnblockUser/:id",
   verifyToken,
   checkPermission(PERMISSIONS.USER_UPDATESTATUS),
-  blockOrUnblockUserController
+  blockOrUnblockUserController,
 );
 
 router.get("/get-vendors-clients", getVendorsAndClientsHandler);
 
 router.get("/users/summary", getUserSummaryController);
 
-router.get(
-  "/dashboard/stats",
-  verifyToken,
-  getDashboardStatsController
-);
+router.get("/dashboard/stats", verifyToken, getDashboardStatsController);
 
 export default router;

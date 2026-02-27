@@ -116,39 +116,61 @@ export const getDashboardStats = async ({
 
         // Leads with Work Done - count distinct leads that have notes or activities.
         // We apply the same createdAt filter on leads if provided.
-        (() => {
-          const hasDateFilter =
-            dateWhereClause && (dateWhereClause as any).createdAt;
-          const dateCondition =
-            hasDateFilter && (dateWhereClause as any).createdAt[Op.between]
-              ? "l.createdAt BETWEEN :start AND :end AND "
-              : "";
-          return db.query(
-            `SELECT COUNT(DISTINCT l.id) as count
-             FROM leads l
-             WHERE ${dateCondition}(
-               EXISTS (
-                 SELECT 1 FROM notes n 
-                 WHERE n.notebleId = l.id AND n.notebleType = 'lead'
-               ) OR EXISTS (
-                 SELECT 1 FROM lead_activities la 
-                 WHERE la.entityId = l.id AND la.entityType = 'lead'
-               )
-             )`,
-            {
-              type: QueryTypes.SELECT,
-              replacements:
-                hasDateFilter && (dateWhereClause as any).createdAt[Op.between]
-                  ? {
-                      start: (dateWhereClause as any).createdAt[Op.between][0],
-                      end: (dateWhereClause as any).createdAt[Op.between][1],
-                    }
-                  : {},
-            },
-          ) as Promise<any[]>;
-        })(),
-
+        // (() => {
+        //   const hasDateFilter =
+        //     dateWhereClause && (dateWhereClause as any).createdAt;
+        //   const dateCondition =
+        //     hasDateFilter && (dateWhereClause as any).createdAt[Op.between]
+        //       ? "l.createdAt BETWEEN :start AND :end AND "
+        //       : "";
+        //   return db.query(
+        //     `SELECT COUNT(DISTINCT l.id) as count
+        //      FROM leads l
+        //      WHERE ${dateCondition}(
+        //        EXISTS (
+        //          SELECT 1 FROM notes n
+        //          WHERE n.notebleId = l.id AND n.notebleType = 'lead'
+        //        ) OR EXISTS (
+        //          SELECT 1 FROM lead_activities la
+        //          WHERE la.entityId = l.id AND la.entityType = 'lead'
+        //        )
+        //      )`,
+        //     {
+        //       type: QueryTypes.SELECT,
+        //       replacements:
+        //         hasDateFilter && (dateWhereClause as any).createdAt[Op.between]
+        //           ? {
+        //               start: (dateWhereClause as any).createdAt[Op.between][0],
+        //               end: (dateWhereClause as any).createdAt[Op.between][1],
+        //             }
+        //           : {},
+        //     },
+        //   ) as Promise<any[]>;
+        // })(),
+        // Promise.resolve([{ count: 0 }]),
         // Total Sales - count all converted sales (optionally date-filtered)
+
+        db.query(
+          `
+  SELECT COUNT(DISTINCT l.id) AS count
+  FROM leads l
+  LEFT JOIN lead_activities la 
+    ON la.entityId = l.id AND la.entityType = 'lead'
+  LEFT JOIN notes n 
+    ON n.notebleId = l.id AND n.notebleType = 'lead'
+  WHERE la.id IS NOT NULL OR n.id IS NOT NULL
+  ${(dateWhereClause as any).createdAt?.[Op.between] ? "AND l.createdAt BETWEEN :start AND :end" : ""}
+  `,
+          {
+            type: QueryTypes.SELECT,
+            replacements: (dateWhereClause as any).createdAt?.[Op.between]
+              ? {
+                  start: (dateWhereClause as any).createdAt[Op.between][0],
+                  end: (dateWhereClause as any).createdAt[Op.between][1],
+                }
+              : {},
+          },
+        ),
         ProductSale.count({
           where: {
             status: "converted",

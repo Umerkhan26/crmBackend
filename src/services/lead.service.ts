@@ -817,13 +817,7 @@ export const bulkAssignLeadsToUser = async (
         results.push({ leadId, success: true });
         successCount++;
 
-        // Send notification for each lead
-        if (assignedByUserId) {
-          await sendNotification(
-            userId,
-            `You have been assigned lead ${lead.leadCode || leadId}`,
-          );
-        }
+        // NOTE: do not send per-lead notifications here (bulk assign should send a single summary)
       } catch (error: any) {
         results.push({ leadId, success: false, error: error.message });
         failCount++;
@@ -832,6 +826,12 @@ export const bulkAssignLeadsToUser = async (
 
     // Log a single activity for bulk assignment
     if (assignedByUserId && successCount > 0) {
+      // Single notification for bulk assignment (prevents 300 notifications for 300 leads)
+      await sendNotification(
+        userId,
+        `You have been assigned ${successCount} lead${successCount !== 1 ? "s" : ""}${assignerName ? ` by ${assignerName}` : ""}.`,
+      );
+
       await logActivity(
         assignedByUserId,
         "assign",
@@ -2262,66 +2262,61 @@ export const getLeadsWithWork = async ({
     const { offset } = getPagination({ page, limit });
 
     // Build date filter for work done date (when note/activity was created)
-    let workDateFilter: any = null;
-    if (filterType && filterType.trim() !== "") {
-      const dateFilter = buildDateFilter(filterType, startDate, endDate);
-      if (dateFilter && "createdAt" in dateFilter && dateFilter.createdAt) {
-        workDateFilter = dateFilter.createdAt;
-        console.log(`📅 Date filter applied: ${filterType}`, workDateFilter);
-      } else {
-        console.log(
-          `⚠️ Date filter not built correctly for: ${filterType}`,
-          dateFilter,
-        );
-      }
-    } else {
-      console.log(`ℹ️ No date filter - showing all leads with work`);
+    const dateFilter =
+      filterType && filterType.trim() !== ""
+        ? buildDateFilter(filterType, startDate, endDate)
+        : {};
+    const createdAtFilter: any = (dateFilter as any)?.createdAt;
+
+    // Translate date filter to SQL snippets for join conditions
+    let notesDateSql = "";
+    let actsDateSql = "";
+    const replacements: any = { limit, offset };
+
+    if (createdAtFilter?.[Op.between]) {
+      notesDateSql = " AND n.createdAt BETWEEN :start AND :end ";
+      actsDateSql = " AND la.createdAt BETWEEN :start AND :end ";
+      replacements.start = createdAtFilter[Op.between][0];
+      replacements.end = createdAtFilter[Op.between][1];
+    } else if (createdAtFilter?.[Op.gte]) {
+      notesDateSql = " AND n.createdAt >= :start ";
+      actsDateSql = " AND la.createdAt >= :start ";
+      replacements.start = createdAtFilter[Op.gte];
+    } else if (createdAtFilter?.[Op.lte]) {
+      notesDateSql = " AND n.createdAt <= :end ";
+      actsDateSql = " AND la.createdAt <= :end ";
+      replacements.end = createdAtFilter[Op.lte];
     }
 
-    // Get lead IDs that have notes (with date filter if provided)
-    const notesWhere: any = { notebleType: "lead" };
-    if (workDateFilter) {
-      notesWhere.createdAt = workDateFilter;
+    const q = (search || "").trim().toLowerCase();
+    let searchSql = "";
+    if (q) {
+      searchSql =
+        " AND (LOWER(l.campaignName) LIKE :q OR LOWER(CAST(l.leadData AS CHAR)) LIKE :q OR CAST(l.id AS CHAR) LIKE :q) ";
+      replacements.q = `%${q}%`;
     }
 
-    console.log(
-      `🔍 Notes query where clause:`,
-      JSON.stringify(notesWhere, null, 2),
-    );
-    const notes = await Note.findAll({
-      attributes: ["notebleId"],
-      where: notesWhere,
-      group: ["notebleId"],
-      raw: true,
-    });
-    console.log(`📝 Found ${notes.length} notes with date filter`);
-    const leadIdsFromNotes = notes.map((n: any) => n.notebleId);
+    // Count first (for pagination)
+    const countRows = (await db.query(
+      `
+      SELECT COUNT(DISTINCT l.id) AS total
+      FROM leads l
+      LEFT JOIN notes n
+        ON n.notebleId = l.id
+        AND n.notebleType = 'lead'
+        ${notesDateSql}
+      LEFT JOIN lead_activities la
+        ON la.entityId = l.id
+        AND la.entityType = 'lead'
+        ${actsDateSql}
+      WHERE (n.id IS NOT NULL OR la.id IS NOT NULL)
+      ${searchSql}
+      `,
+      { type: QueryTypes.SELECT, replacements },
+    )) as any[];
 
-    // Get lead IDs that have activities (with date filter if provided)
-    const activitiesWhere: any = { entityType: "lead" };
-    if (workDateFilter) {
-      activitiesWhere.createdAt = workDateFilter;
-    }
-
-    console.log(
-      `🔍 Activities query where clause:`,
-      JSON.stringify(activitiesWhere, null, 2),
-    );
-    const activities = await LeadActivity.findAll({
-      attributes: ["entityId"],
-      where: activitiesWhere,
-      group: ["entityId"],
-      raw: true,
-    });
-    console.log(`📝 Found ${activities.length} activities with date filter`);
-    const leadIdsFromActivities = activities.map((a: any) => a.entityId);
-
-    // Combine and get unique lead IDs
-    const leadIds = [
-      ...new Set([...leadIdsFromNotes, ...leadIdsFromActivities]),
-    ];
-
-    if (leadIds.length === 0) {
+    const totalItems = Number((countRows?.[0] as any)?.total || 0);
+    if (!totalItems) {
       return {
         data: [],
         totalItems: 0,
@@ -2331,146 +2326,59 @@ export const getLeadsWithWork = async ({
       };
     }
 
-    // Fetch full lead data with work summary
-    const allLeads = await Lead.findAll({
-      where: {
-        id: { [Op.in]: leadIds },
-      },
-      order: [["createdAt", "DESC"]],
+    const rows = (await db.query(
+      `
+      SELECT
+        l.*,
+        COUNT(DISTINCT n.id) AS notesCount,
+        COUNT(DISTINCT la.id) AS activitiesCount,
+        GREATEST(
+          IFNULL(MAX(n.createdAt), '1970-01-01'),
+          IFNULL(MAX(la.createdAt), '1970-01-01')
+        ) AS lastWorkDate
+      FROM leads l
+      LEFT JOIN notes n
+        ON n.notebleId = l.id
+        AND n.notebleType = 'lead'
+        ${notesDateSql}
+      LEFT JOIN lead_activities la
+        ON la.entityId = l.id
+        AND la.entityType = 'lead'
+        ${actsDateSql}
+      WHERE (n.id IS NOT NULL OR la.id IS NOT NULL)
+      ${searchSql}
+      GROUP BY l.id
+      ORDER BY l.createdAt DESC
+      LIMIT :limit OFFSET :offset
+      `,
+      { type: QueryTypes.SELECT, replacements },
+    )) as any[];
+
+    const data = rows.map((row: any) => {
+      const campaignName = row.campaignName || "";
+      const initials = String(campaignName)
+        .split(" ")
+        .map((w: string) => w[0]?.toUpperCase() || "")
+        .join("");
+      const leadCode = `${initials}${row.id}`;
+
+      const notesCount = Number(row.notesCount || 0);
+      const activitiesCount = Number(row.activitiesCount || 0);
+
+      return {
+        ...row,
+        leadCode,
+        workSummary: {
+          notesCount,
+          activitiesCount,
+          totalWorkCount: notesCount + activitiesCount,
+          lastWorkDate: row.lastWorkDate && row.lastWorkDate !== "1970-01-01" ? row.lastWorkDate : null,
+        },
+      };
     });
 
-    // Enrich leads with work summary
-    const enrichedLeads = await Promise.all(
-      allLeads.map(async (lead) => {
-        // Get notes count (with date filter if provided)
-        const notesWhereForLead: any = {
-          notebleId: lead.id,
-          notebleType: "lead",
-        };
-        if (workDateFilter) {
-          notesWhereForLead.createdAt = workDateFilter;
-        }
-        const notesCount = await Note.count({ where: notesWhereForLead });
-
-        // Get activities count (with date filter if provided)
-        const activitiesWhereForLead: any = {
-          entityId: lead.id,
-          entityType: "lead",
-        };
-        if (workDateFilter) {
-          activitiesWhereForLead.createdAt = workDateFilter;
-        }
-        const activitiesCount = await LeadActivity.count({
-          where: activitiesWhereForLead,
-        });
-
-        // Get last work date (most recent note or activity) - only if within date filter
-        const lastNoteWhere: any = { notebleId: lead.id, notebleType: "lead" };
-        if (workDateFilter) {
-          lastNoteWhere.createdAt = workDateFilter;
-        }
-        const lastNote = await Note.findOne({
-          where: lastNoteWhere,
-          order: [["createdAt", "DESC"]],
-          attributes: ["createdAt"],
-        });
-
-        const lastActivityWhere: any = {
-          entityId: lead.id,
-          entityType: "lead",
-        };
-        if (workDateFilter) {
-          lastActivityWhere.createdAt = workDateFilter;
-        }
-        const lastActivity = await LeadActivity.findOne({
-          where: lastActivityWhere,
-          order: [["createdAt", "DESC"]],
-          attributes: ["createdAt"],
-        });
-
-        const lastWorkDate =
-          lastNote && lastActivity
-            ? new Date(lastNote.createdAt) > new Date(lastActivity.createdAt)
-              ? lastNote.createdAt
-              : lastActivity.createdAt
-            : lastNote?.createdAt || lastActivity?.createdAt;
-
-        // Get assignees
-        let assigneesRaw: AssigneeWithStatus[] = [];
-        if (Array.isArray(lead.assignees)) {
-          assigneesRaw = lead.assignees;
-        } else if (typeof lead.assignees === "string") {
-          try {
-            assigneesRaw = JSON.parse(lead.assignees);
-          } catch {
-            assigneesRaw = [];
-          }
-        }
-
-        const userIds = assigneesRaw
-          .map((a) => a.userId)
-          .filter((id): id is number => typeof id === "number");
-
-        let assigneesData: EnrichedAssignee[] = [];
-        if (userIds.length > 0) {
-          const users = await User.findAll({
-            where: { id: userIds },
-            attributes: ["id", "firstname", "lastname", "email"],
-          });
-
-          assigneesData = users.map((user) => {
-            const assignment = assigneesRaw.find((a) => a.userId === user.id);
-            return {
-              ...user.toJSON(),
-              status: assignment?.status || "pending",
-            } as EnrichedAssignee;
-          });
-        }
-
-        // Generate leadCode
-        const initials = lead.campaignName
-          .split(" ")
-          .map((word) => word[0]?.toUpperCase() || "")
-          .join("");
-        const leadCode = `${initials}${lead.id}`;
-
-        return {
-          ...lead.toJSON(),
-          leadCode,
-          assignees: assigneesData,
-          workSummary: {
-            notesCount,
-            activitiesCount,
-            totalWorkCount: notesCount + activitiesCount,
-            lastWorkDate,
-          },
-        };
-      }),
-    );
-
-    // Apply search filter if provided
-    let filteredLeads = enrichedLeads;
-    if (search && search.trim() !== "") {
-      const searchLower = search.toLowerCase().trim();
-      filteredLeads = enrichedLeads.filter((lead) => {
-        const leadDataStr = JSON.stringify(lead).toLowerCase();
-        const campaignNameStr = (lead.campaignName || "").toLowerCase();
-        const leadCodeStr = (lead.leadCode || "").toLowerCase();
-
-        return (
-          leadDataStr.includes(searchLower) ||
-          campaignNameStr.includes(searchLower) ||
-          leadCodeStr.includes(searchLower)
-        );
-      });
-    }
-
-    // Apply pagination
-    const totalItems = filteredLeads.length;
-    const paginatedLeads = filteredLeads.slice(offset, offset + limit);
-
     return {
-      data: paginatedLeads,
+      data,
       totalItems,
       currentPage: page,
       totalPages: Math.ceil(totalItems / limit),

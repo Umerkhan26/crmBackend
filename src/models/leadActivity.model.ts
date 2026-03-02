@@ -84,6 +84,7 @@ LeadActivity.init(
     tableName: "lead_activities",
     timestamps: true,
     paranoid: true,
+    indexes: [{ fields: ["entityType", "entityId", "createdAt"] }],
   }
 );
 

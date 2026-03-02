@@ -55,6 +55,11 @@ Note.init(
     sequelize: db,
     tableName: "notes",
     timestamps: true,
+    indexes: [
+      { fields: ["notebleType", "notebleId", "createdAt"] },
+      { fields: ["type", "createdAt"] },
+      { fields: ["createdBy", "createdAt"] },
+    ],
   }
 );
 

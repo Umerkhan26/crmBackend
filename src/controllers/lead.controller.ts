@@ -3,8 +3,11 @@ import * as LeadService from "../services/lead.service";
 import { LeadStatus } from "../models/lead.model";
 import { FilterType } from "../utils/dateFilters";
 import { getPagingData } from "../utils/paginate";
-import User from "../models/user.model";
-import Role from "../models/role.model";
+import { PERMISSIONS } from "../constants/permissions";
+
+const canViewAllLeads = (req: Request): boolean => {
+  return req.user?.permissions?.includes(PERMISSIONS.LEAD_VIEW_ALL) ?? false;
+};
 
 export const createLead = async (req: Request, res: Response): Promise<any> => {
   try {
@@ -39,23 +42,8 @@ export const getAllLeads = async (
       });
     }
 
-    // Get user with role to check if admin (same approach as dashboard controller)
-    const user = (await User.findByPk(userId, {
-      include: {
-        model: Role,
-      },
-    })) as any;
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found",
-      });
-    }
-
-    // Check if user is admin
-    const roleName = user.Role?.name?.toLowerCase() || "";
-    const isAdmin = roleName === "admin" || roleName === "adminn";
+    // Scope is permission-based (no role-name hardcoding)
+    const isAdmin = canViewAllLeads(req);
 
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
@@ -152,23 +140,8 @@ export const getLeadsByCampaign = async (
       });
     }
 
-    // Get user with role to check if admin
-    const user = (await User.findByPk(userId, {
-      include: {
-        model: Role,
-      },
-    })) as any;
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found",
-      });
-    }
-
-    // Check if user is admin
-    const roleName = user.Role?.name?.toLowerCase() || "";
-    const isAdmin = roleName === "admin" || roleName === "adminn";
+    // Scope is permission-based (no role-name hardcoding)
+    const isAdmin = canViewAllLeads(req);
 
     const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
     const limit = req.query.limit
@@ -208,9 +181,10 @@ export const getLeadsByCampaign = async (
     }
 
     // Support createdBy filter for admin users (from URL params)
-    const createdBy = req.query.createdBy
-      ? parseInt(req.query.createdBy as string)
-      : undefined;
+    const createdBy =
+      isAdmin && req.query.createdBy
+        ? parseInt(req.query.createdBy as string)
+        : undefined;
 
     // Service call - pass userId and isAdmin to filter leads
     const leads = await LeadService.getLeadsByCampaign({
@@ -404,23 +378,8 @@ export const getAllLeadsWithAssignee = async (
       });
     }
 
-    // Get user with role to check if admin
-    const user = (await User.findByPk(userId, {
-      include: {
-        model: Role,
-      },
-    })) as any;
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found",
-      });
-    }
-
-    // Check if user is admin
-    const roleName = user.Role?.name?.toLowerCase() || "";
-    const isAdmin = roleName === "admin" || roleName === "adminn";
+    // Scope is permission-based (no role-name hardcoding)
+    const isAdmin = canViewAllLeads(req);
 
     const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
     const limit = req.query.limit
@@ -555,23 +514,8 @@ export const getUnassignedLeads = async (
       });
     }
 
-    // Get user with role to check if admin
-    const user = (await User.findByPk(userId, {
-      include: {
-        model: Role,
-      },
-    })) as any;
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found",
-      });
-    }
-
-    // Check if user is admin
-    const roleName = user.Role?.name?.toLowerCase() || "";
-    const isAdmin = roleName === "admin" || roleName === "adminn";
+    // Scope is permission-based (no role-name hardcoding)
+    const isAdmin = canViewAllLeads(req);
 
     const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
     const limit = req.query.limit
@@ -1054,23 +998,8 @@ export const getLeadsWithWork = async (
       });
     }
 
-    // Get user with role to check if admin (same approach as dashboard controller)
-    const user = (await User.findByPk(userId, {
-      include: {
-        model: Role,
-      },
-    })) as any;
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found",
-      });
-    }
-
-    // Check if user is admin (admin only feature)
-    const roleName = user.Role?.name?.toLowerCase() || "";
-    const isAdmin = roleName === "admin" || roleName === "adminn";
+    // Admin-only feature is permission-based (no role-name hardcoding)
+    const isAdmin = canViewAllLeads(req);
 
     if (!isAdmin) {
       return res.status(403).json({

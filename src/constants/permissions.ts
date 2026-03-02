@@ -22,6 +22,8 @@ export const PERMISSIONS = {
   // Lead permissions
   LEAD_CREATE: "lead:create",
   LEAD_GET_ALL: "lead:getAll",
+  // If granted, user can view *all* leads (otherwise endpoints may scope to `createdBy = userId`)
+  LEAD_VIEW_ALL: "lead:viewAll",
   LEAD_GET_BY_CAMPAIGN: "lead:getByCampaign",
   LEAD_UPDATE: "lead:update",
   LEAD_DELETE: "lead:delete",

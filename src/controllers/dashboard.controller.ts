@@ -53,8 +53,16 @@ export const getDashboardStatsController = async (
     }
 
     // Check if user is admin
-    const roleName = user.Role?.name?.toLowerCase() || "";
-    const isAdmin = roleName === "admin" || roleName === "adminn";
+    // const roleName = user.Role?.name?.toLowerCase() || "";
+    // const isAdmin = roleName === "admin" || roleName === "adminn";
+
+    // Check if user is admin or manager
+    const roleName = (user.Role?.name || "").toLowerCase().trim();
+    const isAdmin =
+      roleName === "admin" ||
+      roleName === "adminn" ||
+      roleName === "manager" ||
+      (!!roleName && roleName.includes("manager"));
 
     // Get dashboard stats (admin gets global, non-admin gets user-specific)
     const stats = await getDashboardStats({

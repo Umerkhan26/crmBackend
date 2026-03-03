@@ -203,13 +203,13 @@ export const getDashboardStats = async ({
         campaigns: {
           total: totalCampaigns,
         },
-        recentNotes: {
-          notes: [],
-          totalPages: 0,
-          currentPage: notesPage,
-          totalRecords: 0,
-          pageSize: notesLimit,
-        },
+        // recentNotes: {
+        //   notes: [],
+        //   totalPages: 0,
+        //   currentPage: notesPage,
+        //   totalRecords: 0,
+        //   pageSize: notesLimit,
+        // },
       };
     } else {
       // Non-admin users: get user-specific stats

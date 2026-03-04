@@ -130,9 +130,13 @@ export const getAllLeads = async ({
   endDate,
   userId, // Add userId parameter to filter by creator
   isAdmin = false, // Add isAdmin flag
+  isManager = false, // Add isManager flag
+  managerBrandUserIds = [], // User IDs under brands managed by this manager
 }: GetAllLeadsParams & {
   userId?: number;
   isAdmin?: boolean;
+  isManager?: boolean;
+  managerBrandUserIds?: number[];
 }) => {
   try {
     // Base where condition
@@ -143,9 +147,31 @@ export const getAllLeads = async ({
       whereCondition.campaignName = { [Op.like]: `%${campaign.trim()}%` };
     }
 
-    // Filter by creator if user is not admin
-    // Non-admin users should only see leads they created themselves
-    if (!isAdmin && userId) {
+    // Manager logic: Managers see all master leads + leads from their brand users
+    if (isManager && managerBrandUserIds.length > 0) {
+      // Managers see:
+      // 1. All master leads (no restriction - handled by not filtering)
+      // 2. Leads created by their brand users
+      // 3. Leads assigned to their brand users
+      
+      // Build OR condition for manager
+      const managerConditions: any[] = [];
+      
+      // Leads created by brand users
+      managerConditions.push({
+        createdBy: {
+          [Op.in]: managerBrandUserIds,
+        },
+      });
+      
+      // Leads assigned to brand users (check if assignees JSON contains brand user IDs)
+      // This is complex - we'll filter after fetching
+      
+      // For now, we'll include all leads and filter assignees later
+      // The whereCondition will not restrict by createdBy for managers
+    } else if (!isAdmin && userId) {
+      // Filter by creator if user is not admin and not a manager
+      // Non-admin users should only see leads they created themselves
       whereCondition.createdBy = userId;
     }
 
@@ -1081,10 +1107,14 @@ export const getUnassignedLeads = async ({
   conditions = [],
   userId, // Add userId parameter to filter by creator
   isAdmin = false, // Add isAdmin flag
+  isManager = false, // Add isManager flag
+  managerBrandUserIds = [], // User IDs under brands managed by this manager
 }: GetUnassignedLeadsParams & {
   conditions?: any[];
   userId?: number;
   isAdmin?: boolean;
+  isManager?: boolean;
+  managerBrandUserIds?: number[];
 }) => {
   try {
     // STEP 1: Build base where condition for unassigned leads
@@ -1124,9 +1154,12 @@ export const getUnassignedLeads = async ({
       const dynamicFilter = buildDynamicFilters(conditions);
       whereCondition[Op.and].push(dynamicFilter);
     }
-    // STEP 4.5: Filter by creator if user is not admin (datascrapper and other non-admin roles)
+    // STEP 4.5: Filter by creator if user is not admin and not a manager
+    // Managers see all unassigned leads (master leads)
     // Non-admin users should only see leads they created themselves
-    if (!isAdmin && userId) {
+    if (isManager) {
+      // Managers see all unassigned leads - no restriction
+    } else if (!isAdmin && userId) {
       whereCondition[Op.and].push({ createdBy: userId });
     }
     // STEP 5: Fetch ALL leads with Sequelize (NO search or pagination here)

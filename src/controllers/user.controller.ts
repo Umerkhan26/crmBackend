@@ -111,8 +111,14 @@ export const getUsers = async (req: Request, res: Response): Promise<any> => {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
     const search = (req.query.search as string) || "";
+    const requesterUserId = (req as any).user?.id; // Get user ID from token
 
-    const paginatedUsers = await getAllUsers({ page, limit, search });
+    const paginatedUsers = await getAllUsers({ 
+      page, 
+      limit, 
+      search,
+      requesterUserId 
+    });
 
     return res.status(200).json({
       success: true,
@@ -134,12 +140,13 @@ export const getUsers = async (req: Request, res: Response): Promise<any> => {
 export const getUser = async (req: Request, res: Response): Promise<any> => {
   try {
     const userId = parseInt(req.params.id);
+    const requesterUserId = (req as any).user?.id; // Get user ID from token
 
     if (isNaN(userId)) {
       return res.status(400).json({ message: "Invalid user ID!" });
     }
 
-    const user = await getUserById(userId);
+    const user = await getUserById(userId, requesterUserId);
 
     if (!user) {
       return res.status(404).json({ message: "User not found!" });
@@ -147,7 +154,11 @@ export const getUser = async (req: Request, res: Response): Promise<any> => {
 
     return res.status(200).json({ message: "User retrieved successfully!", user });
   } catch (error) {
-    return res.status(500).json({ message: "Internal Server Error", error: (error as Error).message });
+    const errorMessage = (error as Error).message;
+    if (errorMessage.includes("Access denied")) {
+      return res.status(403).json({ message: errorMessage });
+    }
+    return res.status(500).json({ message: "Internal Server Error", error: errorMessage });
   }
 };
 

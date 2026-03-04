@@ -96,4 +96,12 @@ export const PERMISSIONS = {
 
   // Dashboard permissions
   DASHBOARD_GET: "dashboard:get",
+
+  // Brand permissions
+  BRAND_CREATE: "brand:create",
+  BRAND_GET: "brand:get",
+  BRAND_UPDATE: "brand:update",
+  BRAND_DELETE: "brand:delete",
+  BRAND_ASSIGN_USERS: "brand:assignUsers",
+  BRAND_ASSIGN_MANAGERS: "brand:assignManagers",
 };

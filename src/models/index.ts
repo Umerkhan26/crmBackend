@@ -23,4 +23,7 @@ import "./permission.model";
 import "./emailTemplate.model";
 import "./emailPermission.model";
 import "./call.model";
+import "./brand.model";
+import "./brandUser.model";
+import "./brandManager.model";
 associateModels();

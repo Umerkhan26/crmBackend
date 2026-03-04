@@ -45,6 +45,11 @@ export const getAllLeads = async (
     // Scope is permission-based (no role-name hardcoding)
     const isAdmin = canViewAllLeads(req);
 
+    // Check if user is a manager
+    const { isUserManager, getManagerBrandUserIds } = await import("../utils/brandUtils");
+    const isManager = await isUserManager(userId);
+    const managerBrandUserIds = isManager ? await getManagerBrandUserIds(userId) : [];
+
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
 
@@ -83,6 +88,8 @@ export const getAllLeads = async (
       conditions, // ⭐ pass dynamic filters
       userId, // Pass userId to filter by creator
       isAdmin, // Pass isAdmin flag
+      isManager, // Pass isManager flag
+      managerBrandUserIds, // Pass brand user IDs for manager
     });
 
     return res.status(200).json({
@@ -517,6 +524,11 @@ export const getUnassignedLeads = async (
     // Scope is permission-based (no role-name hardcoding)
     const isAdmin = canViewAllLeads(req);
 
+    // Check if user is a manager
+    const { isUserManager, getManagerBrandUserIds } = await import("../utils/brandUtils");
+    const isManager = await isUserManager(userId);
+    const managerBrandUserIds = isManager ? await getManagerBrandUserIds(userId) : [];
+
     const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
     const limit = req.query.limit
       ? parseInt(req.query.limit as string, 10)
@@ -563,6 +575,8 @@ export const getUnassignedLeads = async (
       conditions, // pass dynamic filters to service
       userId, // Pass userId to filter by creator
       isAdmin, // Pass isAdmin flag
+      isManager, // Pass isManager flag
+      managerBrandUserIds, // Pass brand user IDs for manager
     });
 
     // If no leads

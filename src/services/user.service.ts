@@ -234,7 +234,10 @@ export const loginUser = async (userData: {
   };
 };
 
-export const getUserById = async (userId: number): Promise<any> => {
+export const getUserById = async (
+  userId: number,
+  requesterUserId?: number
+): Promise<any> => {
   const user = await User.findByPk(userId, {
     include: [
       {
@@ -255,6 +258,20 @@ export const getUserById = async (userId: number): Promise<any> => {
     throw new Error("User not found!");
   }
 
+  // Check if requester is a manager and if they can access this user
+  if (requesterUserId) {
+    const { isUserManager, getManagerBrandUserIds, canUserAccessBrand } = await import("../utils/brandUtils");
+    const isManager = await isUserManager(requesterUserId);
+    
+    if (isManager) {
+      // Manager can only see users under their brands
+      const brandUserIds = await getManagerBrandUserIds(requesterUserId);
+      if (!brandUserIds.includes(userId)) {
+        throw new Error("Access denied: You can only view users under your managed brands");
+      }
+    }
+  }
+
   return user;
 };
 
@@ -262,7 +279,8 @@ export const getAllUsers = async ({
   page = 1,
   limit = 10,
   search = "",
-}: PaginationParams & { search?: string }): Promise<any> => {
+  requesterUserId,
+}: PaginationParams & { search?: string; requesterUserId?: number }): Promise<any> => {
   const { offset, limit: pageLimit } = getPagination({ page, limit });
 
   const whereClause = buildSearchFilter(search, [
@@ -271,8 +289,30 @@ export const getAllUsers = async ({
     "email",
   ]);
 
+  // Check if requester is a manager and filter users accordingly
+  let brandUserIds: number[] | null = null;
+  if (requesterUserId) {
+    const { isUserManager, getManagerBrandUserIds } = await import("../utils/brandUtils");
+    const isManager = await isUserManager(requesterUserId);
+    if (isManager) {
+      brandUserIds = await getManagerBrandUserIds(requesterUserId);
+      // If manager has no brand users, return empty result
+      if (brandUserIds.length === 0) {
+        return getPagingData({ count: 0, rows: [] }, page, pageLimit);
+      }
+    }
+  }
+
+  // Add brand filtering if requester is a manager
+  const finalWhereClause: any = { ...whereClause };
+  if (brandUserIds !== null && brandUserIds.length > 0) {
+    finalWhereClause.id = {
+      [Op.in]: brandUserIds,
+    };
+  }
+
   const data = await User.findAndCountAll({
-    where: whereClause,
+    where: finalWhereClause,
     offset,
     limit: pageLimit,
     include: [

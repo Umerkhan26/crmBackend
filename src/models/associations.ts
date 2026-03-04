@@ -10,6 +10,9 @@ import ClientLead from "./clientLead.model";
 import Lead from "./lead.model";
 import ProductSale from "./product.model";
 import Call from "./call.model";
+import Brand from "./brand.model";
+import BrandUser from "./brandUser.model";
+import BrandManager from "./brandManager.model";
 
 Role.belongsToMany(Permission, {
   through: RolePermission,
@@ -84,3 +87,86 @@ Call.belongsTo(Lead, { foreignKey: "leadId", onDelete: "SET NULL" });
 
 ClientLead.hasMany(Call, { foreignKey: "clientLeadId", onDelete: "SET NULL" });
 Call.belongsTo(ClientLead, { foreignKey: "clientLeadId", onDelete: "SET NULL" });
+
+// Brand associations
+// Brand ↔ User (Many-to-Many through BrandUser)
+Brand.belongsToMany(User, {
+  through: BrandUser,
+  foreignKey: "brandId",
+  otherKey: "userId",
+  as: "users",
+  onDelete: "CASCADE",
+});
+
+User.belongsToMany(Brand, {
+  through: BrandUser,
+  foreignKey: "userId",
+  otherKey: "brandId",
+  as: "brands",
+  onDelete: "CASCADE",
+});
+
+Brand.hasMany(BrandUser, {
+  foreignKey: "brandId",
+  as: "brandUserRelations",
+  onDelete: "CASCADE",
+});
+
+BrandUser.belongsTo(Brand, {
+  foreignKey: "brandId",
+  as: "brand",
+  onDelete: "CASCADE",
+});
+
+BrandUser.belongsTo(User, {
+  foreignKey: "userId",
+  as: "user",
+  onDelete: "CASCADE",
+});
+
+User.hasMany(BrandUser, {
+  foreignKey: "userId",
+  as: "brandUserRelations",
+  onDelete: "CASCADE",
+});
+
+// Brand ↔ User (as Manager) (Many-to-Many through BrandManager)
+Brand.belongsToMany(User, {
+  through: BrandManager,
+  foreignKey: "brandId",
+  otherKey: "managerId",
+  as: "managers",
+  onDelete: "CASCADE",
+});
+
+User.belongsToMany(Brand, {
+  through: BrandManager,
+  foreignKey: "managerId",
+  otherKey: "brandId",
+  as: "managedBrands",
+  onDelete: "CASCADE",
+});
+
+Brand.hasMany(BrandManager, {
+  foreignKey: "brandId",
+  as: "brandManagerRelations",
+  onDelete: "CASCADE",
+});
+
+BrandManager.belongsTo(Brand, {
+  foreignKey: "brandId",
+  as: "brand",
+  onDelete: "CASCADE",
+});
+
+BrandManager.belongsTo(User, {
+  foreignKey: "managerId",
+  as: "manager",
+  onDelete: "CASCADE",
+});
+
+User.hasMany(BrandManager, {
+  foreignKey: "managerId",
+  as: "brandManagerRelations",
+  onDelete: "CASCADE",
+});

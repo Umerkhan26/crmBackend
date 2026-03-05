@@ -41,6 +41,7 @@ export interface UserAttributes {
   vendorData?: VendorAttributes;
   clientData?: ClientAttributes;
   roleId?: number;
+  brandId?: number | null;  // optional: old data null, new data can include
 }
 
 export type UserCreationAttributes = Optional<

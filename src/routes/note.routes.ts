@@ -22,77 +22,77 @@ router.post(
   "/add",
   verifyToken,
   checkPermission(PERMISSIONS.NOTE_CREATE),
-  addNote
+  addNote,
 );
 
 router.get(
   "/getNotes/:type/:id",
   verifyToken,
   checkPermission(PERMISSIONS.NOTE_VIEW),
-  getNotes
+  getNotes,
 );
 
 router.get(
   "/getAllNotes",
   verifyToken,
   checkPermission(PERMISSIONS.NOTE_VIEW),
-  getAllNotes
+  getAllNotes,
 );
 
 router.get(
   "/notes/recent",
   verifyToken,
   checkPermission(PERMISSIONS.NOTE_VIEW),
-  getRecentNotes
+  getRecentNotes,
 );
 
 router.put(
   "/update/:id",
   verifyToken,
   checkPermission(PERMISSIONS.NOTE_UPDATE),
-  updateNote
+  updateNote,
 );
 
 router.delete(
   "/delete/:id",
   verifyToken,
   checkPermission(PERMISSIONS.NOTE_DELETE),
-  deleteNote
+  deleteNote,
 );
 
 router.post(
   "/addReminder",
   verifyToken,
   checkPermission(PERMISSIONS.REMINDER_CREATE),
-  addReminder
+  addReminder,
 );
 
 router.get(
   "/getReminders/:type/:id",
   verifyToken,
   checkPermission(PERMISSIONS.REMINDER_VIEW),
-  getReminders
+  getReminders,
 );
 
 router.get(
   "/upcomingReminders",
   verifyToken,
   checkPermission(PERMISSIONS.REMINDER_VIEW),
-  getUpcomingReminders
+  getUpcomingReminders,
 );
 
 router.put(
   "/updateReminder/:id",
   verifyToken,
   checkPermission(PERMISSIONS.REMINDER_UPDATE),
-  updateReminder
+  updateReminder,
 );
 
 router.delete(
   "/deleteReminder/:id",
   verifyToken,
   checkPermission(PERMISSIONS.REMINDER_DELETE),
-  deleteReminder
+  deleteReminder,
 );
 
 export default router;

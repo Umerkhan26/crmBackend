@@ -45,6 +45,7 @@ export const createUser = async (
   const newUserData: UserAttributes = {
     ...userData,
     roleId,
+    brandId: userData.brandId ?? undefined, // optional: include for new users, old data has null
     status: "active",
     token: userData.token || "",
     created_at: new Date(),

@@ -8,11 +8,14 @@ import {
   updateUser,
   blockOrUnblockUser,
   getVendorsAndClients,
-  getUserSummaryService
+  getUserSummaryService,
 } from "../services/user.service";
 import { UserAttributes } from "../interfaces/user.interface";
 
-export const registerUser = async (req: Request, res: Response): Promise<any> => {
+export const registerUser = async (
+  req: Request,
+  res: Response,
+): Promise<any> => {
   try {
     const userData: Partial<UserAttributes> = req.body;
 
@@ -30,7 +33,6 @@ export const registerUser = async (req: Request, res: Response): Promise<any> =>
       user,
     });
   } catch (error: any) {
-
     if (error.name === "SequelizeUniqueConstraintError") {
       return res.status(400).json({
         success: false,
@@ -52,7 +54,6 @@ export const registerUser = async (req: Request, res: Response): Promise<any> =>
     });
   }
 };
-
 
 export const login = async (req: Request, res: Response): Promise<any> => {
   try {
@@ -80,7 +81,6 @@ export const login = async (req: Request, res: Response): Promise<any> => {
       ...result,
     });
   } catch (error: any) {
-
     if (error.name === "SequelizeDatabaseError") {
       return res.status(500).json({
         success: false,
@@ -103,9 +103,6 @@ export const login = async (req: Request, res: Response): Promise<any> => {
   }
 };
 
-
-
-
 export const getUsers = async (req: Request, res: Response): Promise<any> => {
   try {
     const page = parseInt(req.query.page as string) || 1;
@@ -113,11 +110,11 @@ export const getUsers = async (req: Request, res: Response): Promise<any> => {
     const search = (req.query.search as string) || "";
     const requesterUserId = (req as any).user?.id; // Get user ID from token
 
-    const paginatedUsers = await getAllUsers({ 
-      page, 
-      limit, 
+    const paginatedUsers = await getAllUsers({
+      page,
+      limit,
       search,
-      requesterUserId 
+      requesterUserId,
     });
 
     return res.status(200).json({
@@ -134,9 +131,6 @@ export const getUsers = async (req: Request, res: Response): Promise<any> => {
   }
 };
 
-
-
-
 export const getUser = async (req: Request, res: Response): Promise<any> => {
   try {
     const userId = parseInt(req.params.id);
@@ -152,17 +146,24 @@ export const getUser = async (req: Request, res: Response): Promise<any> => {
       return res.status(404).json({ message: "User not found!" });
     }
 
-    return res.status(200).json({ message: "User retrieved successfully!", user });
+    return res
+      .status(200)
+      .json({ message: "User retrieved successfully!", user });
   } catch (error) {
     const errorMessage = (error as Error).message;
     if (errorMessage.includes("Access denied")) {
       return res.status(403).json({ message: errorMessage });
     }
-    return res.status(500).json({ message: "Internal Server Error", error: errorMessage });
+    return res
+      .status(500)
+      .json({ message: "Internal Server Error", error: errorMessage });
   }
 };
 
-export const updateUserController = async (req: Request, res: Response): Promise<any> => {
+export const updateUserController = async (
+  req: Request,
+  res: Response,
+): Promise<any> => {
   try {
     const userId = req.params.id;
     const updatedData = req.body;
@@ -175,48 +176,64 @@ export const updateUserController = async (req: Request, res: Response): Promise
 
     return res.status(200).json({
       message: "User updated successfully!",
-      user: updatedUser
+      user: updatedUser,
     });
   } catch (error: any) {
     return res.status(500).json({
       message: "Something went wrong during the update.",
-      error: error.message
+      error: error.message,
     });
   }
 };
 
-
-export const deleteUserController = async (req: Request, res: Response): Promise<any> => {
+export const deleteUserController = async (
+  req: Request,
+  res: Response,
+): Promise<any> => {
   try {
     const userId = req.params.id;
 
     const message = await deleteUser(userId);
     return res.status(200).json({ message });
   } catch (error: any) {
-    return res.status(500).json({ message: "Something went wrong during deletion.", error: error.message });
+    return res.status(500).json({
+      message: "Something went wrong during deletion.",
+      error: error.message,
+    });
   }
 };
 
-export const blockOrUnblockUserController = async (req: Request, res: Response): Promise<any> => {
+export const blockOrUnblockUserController = async (
+  req: Request,
+  res: Response,
+): Promise<any> => {
   try {
     const userId = req.params.id;
     const { action } = req.body;
 
     if (!["block", "unblock"].includes(action)) {
-      return res.status(400).json({ message: "Invalid action. Use 'block' or 'unblock'." });
+      return res
+        .status(400)
+        .json({ message: "Invalid action. Use 'block' or 'unblock'." });
     }
 
-    const message = await blockOrUnblockUser(userId, action as "block" | "unblock");
+    const message = await blockOrUnblockUser(
+      userId,
+      action as "block" | "unblock",
+    );
 
     return res.status(200).json({ message });
   } catch (error: any) {
-    return res.status(500).json({ message: "Something went wrong during block/unblock.", error: error.message });
+    return res.status(500).json({
+      message: "Something went wrong during block/unblock.",
+      error: error.message,
+    });
   }
 };
 
 export const getVendorsAndClientsHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ): Promise<any> => {
   try {
     const page = parseInt(req.query.page as string) || 1;
@@ -239,10 +256,9 @@ export const getVendorsAndClientsHandler = async (
   }
 };
 
-
 export const getUserSummaryController = async (
   req: Request,
-  res: Response
+  res: Response,
 ): Promise<any> => {
   try {
     const summary = await getUserSummaryService();

@@ -84,6 +84,15 @@ export const User = db.define<UserModel>(
         key: "id",
       },
     },
+    // Optional: primary/default brand (old data = null; new data can include)
+    brandId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      references: {
+        model: "brands",
+        key: "id",
+      },
+    },
     smtpemail: {
       type: DataTypes.STRING(300),
       allowNull: true,

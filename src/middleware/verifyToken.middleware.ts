@@ -4,6 +4,7 @@ import { CustomRequest } from "../types/custom";
 import User from "../models/user.model";
 import Role from "../models/role.model";
 import Permission from "../models/permission.model";
+import { PERMISSIONS } from "../constants/permissions";
 
 export const verifyToken = async (req: CustomRequest, res: Response, next: NextFunction): Promise<void> => {
   const token = req.headers.authorization?.split(" ")[1];
@@ -22,10 +23,13 @@ export const verifyToken = async (req: CustomRequest, res: Response, next: NextF
 
   try {
     const user = await User.findByPk(userId, {
-      include: {
-        model: Role,
-        include: [Permission],
-      },
+      include: [
+        {
+          model: Role,
+          as: "role",
+          include: [{ model: Permission, through: { attributes: [] } }],
+        },
+      ],
     }) as any;
 
     if (!user) {
@@ -33,7 +37,17 @@ export const verifyToken = async (req: CustomRequest, res: Response, next: NextF
       return;
     }
 
-    const permissions = user.Role?.Permissions?.map((p: any) => p.name) || [];
+    const role = user.role;
+    const roleName = (role?.name || "").toLowerCase().trim();
+    const isAdmin = roleName === "admin" || roleName === "adminn";
+
+    let permissions: string[] = [];
+    if (isAdmin) {
+      permissions = Object.values(PERMISSIONS);
+    } else if (role) {
+      const perms = role.Permissions || role.permissions || [];
+      permissions = perms.map((p: any) => p.name).filter(Boolean);
+    }
 
     req.user = {
       id: user.id!,

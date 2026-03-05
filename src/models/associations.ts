@@ -28,6 +28,10 @@ Permission.belongsToMany(Role, {
 Role.hasMany(User, { foreignKey: "roleId", onDelete: "CASCADE" });
 User.belongsTo(Role, { foreignKey: "roleId", onDelete: "CASCADE" });
 
+// User optional default brand (brandId nullable for old data)
+User.belongsTo(Brand, { foreignKey: "brandId", as: "defaultBrand", onDelete: "SET NULL" });
+Brand.hasMany(User, { foreignKey: "brandId", as: "usersByDefaultBrand" });
+
 Order.belongsTo(Campaign, {
   foreignKey: "campaign_id",
   as: "campaign",

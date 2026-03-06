@@ -140,7 +140,7 @@ export const deleteBrand = async (brandId: number): Promise<string> => {
 };
 
 /**
- * Assign users to a brand
+ * Assign users to a brand (adds to existing, doesn't replace)
  */
 export const assignUsersToBrand = async (
   brandId: number,
@@ -152,22 +152,60 @@ export const assignUsersToBrand = async (
       throw new Error("Brand not found");
     }
 
-    // Remove existing assignments for this brand
-    await BrandUser.destroy({
-      where: { brandId },
-    });
-
-    // Create new assignments
-    if (userIds.length > 0) {
-      const brandUserRecords = userIds.map((userId) => ({
-        brandId,
-        userId,
-      }));
-
-      await BrandUser.bulkCreate(brandUserRecords);
+    if (userIds.length === 0) {
+      return "No users to assign";
     }
 
-    return "Users assigned to brand successfully";
+    // Get existing user assignments for this brand
+    const existingAssignments = await BrandUser.findAll({
+      where: { brandId },
+      attributes: ["userId"],
+    });
+
+    const existingUserIds = existingAssignments.map((bu) => bu.userId);
+
+    // Filter out users that are already assigned (avoid duplicates)
+    const newUserIds = userIds.filter((userId) => !existingUserIds.includes(userId));
+
+    if (newUserIds.length === 0) {
+      return "All selected users are already assigned to this brand";
+    }
+
+    // Create new assignments only for users not already assigned
+    const brandUserRecords = newUserIds.map((userId) => ({
+      brandId,
+      userId,
+    }));
+
+    try {
+      await BrandUser.bulkCreate(brandUserRecords);
+    } catch (bulkError: any) {
+      // Handle unique constraint errors gracefully (in case of race condition)
+      if (bulkError.name === "SequelizeUniqueConstraintError") {
+        // Try to create them one by one, skipping duplicates
+        for (const record of brandUserRecords) {
+          try {
+            await BrandUser.create(record);
+          } catch (createError: any) {
+            // Skip if duplicate, continue with others
+            if (createError.name !== "SequelizeUniqueConstraintError") {
+              throw createError;
+            }
+          }
+        }
+      } else {
+        throw bulkError;
+      }
+    }
+
+    const addedCount = newUserIds.length;
+    const skippedCount = userIds.length - newUserIds.length;
+
+    if (skippedCount > 0) {
+      return `${addedCount} user(s) assigned successfully. ${skippedCount} user(s) were already assigned.`;
+    }
+
+    return `${addedCount} user(s) assigned to brand successfully`;
   } catch (error: any) {
     throw new Error(`Error assigning users to brand: ${error.message}`);
   }
@@ -196,7 +234,7 @@ export const removeUserFromBrand = async (
 };
 
 /**
- * Assign managers to a brand
+ * Assign managers to a brand (adds to existing, doesn't replace)
  */
 export const assignManagersToBrand = async (
   brandId: number,
@@ -208,22 +246,62 @@ export const assignManagersToBrand = async (
       throw new Error("Brand not found");
     }
 
-    // Remove existing manager assignments for this brand
-    await BrandManager.destroy({
-      where: { brandId },
-    });
-
-    // Create new manager assignments
-    if (managerIds.length > 0) {
-      const brandManagerRecords = managerIds.map((managerId) => ({
-        brandId,
-        managerId,
-      }));
-
-      await BrandManager.bulkCreate(brandManagerRecords);
+    if (managerIds.length === 0) {
+      return "No managers to assign";
     }
 
-    return "Managers assigned to brand successfully";
+    // Get existing manager assignments for this brand
+    const existingAssignments = await BrandManager.findAll({
+      where: { brandId },
+      attributes: ["managerId"],
+    });
+
+    const existingManagerIds = existingAssignments.map((bm) => bm.managerId);
+
+    // Filter out managers that are already assigned (avoid duplicates)
+    const newManagerIds = managerIds.filter(
+      (managerId) => !existingManagerIds.includes(managerId)
+    );
+
+    if (newManagerIds.length === 0) {
+      return "All selected managers are already assigned to this brand";
+    }
+
+    // Create new assignments only for managers not already assigned
+    const brandManagerRecords = newManagerIds.map((managerId) => ({
+      brandId,
+      managerId,
+    }));
+
+    try {
+      await BrandManager.bulkCreate(brandManagerRecords);
+    } catch (bulkError: any) {
+      // Handle unique constraint errors gracefully (in case of race condition)
+      if (bulkError.name === "SequelizeUniqueConstraintError") {
+        // Try to create them one by one, skipping duplicates
+        for (const record of brandManagerRecords) {
+          try {
+            await BrandManager.create(record);
+          } catch (createError: any) {
+            // Skip if duplicate, continue with others
+            if (createError.name !== "SequelizeUniqueConstraintError") {
+              throw createError;
+            }
+          }
+        }
+      } else {
+        throw bulkError;
+      }
+    }
+
+    const addedCount = newManagerIds.length;
+    const skippedCount = managerIds.length - newManagerIds.length;
+
+    if (skippedCount > 0) {
+      return `${addedCount} manager(s) assigned successfully. ${skippedCount} manager(s) were already assigned.`;
+    }
+
+    return `${addedCount} manager(s) assigned to brand successfully`;
   } catch (error: any) {
     throw new Error(`Error assigning managers to brand: ${error.message}`);
   }

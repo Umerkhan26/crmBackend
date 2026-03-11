@@ -1012,13 +1012,15 @@ export const getLeadsWithWork = async (
       });
     }
 
-    // Admin-only feature is permission-based (no role-name hardcoding)
     const isAdmin = canViewAllLeads(req);
+    const { isUserManager, getManagerBrandUserIds } = await import("../utils/brandUtils");
+    const isManager = await isUserManager(userId);
+    const managerBrandUserIds = isManager ? await getManagerBrandUserIds(userId) : [];
 
-    if (!isAdmin) {
+    if (!isAdmin && !isManager) {
       return res.status(403).json({
         success: false,
-        message: "Access denied. Admin only feature.",
+        message: "Access denied. Admin or Manager only feature.",
       });
     }
 
@@ -1044,6 +1046,7 @@ export const getLeadsWithWork = async (
       filterType,
       startDate,
       endDate,
+      brandUserIds: isManager ? managerBrandUserIds : undefined,
     });
 
     return res.status(200).json({

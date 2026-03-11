@@ -265,14 +265,14 @@ export const getNotesForEntity = async ({
 
 /**
  * Get all notes with pagination (filtered by user role)
- * For admin: returns all notes from all users
- * For non-admin: returns only notes created by the user
+ * Admin: all notes. Manager: notes by brand users. Simple user: own notes.
  */
 export const getAllNotesWithPagination = async (
   page: number = 1,
   limit: number = 10,
   userId?: number,
   isAdmin: boolean = false,
+  brandUserIds?: number[],
 ) => {
   const Lead = (await import("../models/lead.model")).default;
   const offset = (page - 1) * limit;
@@ -282,8 +282,22 @@ export const getAllNotesWithPagination = async (
     notebleType: "lead", // Only show notes on leads
   };
 
-  // For non-admin users, only show their own notes
-  if (!isAdmin && userId) {
+  if (isAdmin) {
+    // Admin: no filter
+  } else if (brandUserIds !== undefined) {
+    // Manager: notes by brand users (empty = no notes)
+    if (brandUserIds.length === 0) {
+      return {
+        notes: [],
+        totalItems: 0,
+        totalPages: 0,
+        currentPage: page,
+        pageSize: limit,
+      };
+    }
+    whereCondition.createdBy = { [Op.in]: brandUserIds };
+  } else if (userId) {
+    // Simple user: own notes only
     whereCondition.createdBy = userId;
   }
 
@@ -296,7 +310,7 @@ export const getAllNotesWithPagination = async (
         attributes: ["id", "firstname", "lastname", "email"],
       },
     ],
-    order: [["createdAt", "DESC"]],
+    order: [["createdAt", "DESC"], ["id", "DESC"]],
     limit,
     offset,
   });
@@ -756,17 +770,18 @@ export const getRecentNotesForAdmin = async (
 
 /**
  * Fast recent notes for dashboard (non-blocking usage).
- * Avoids N+1 queries by bulk-fetching leads and campaigns.
- * Returns an array of notes (not paginated).
+ * Admin: all. Manager: brand users. Simple user: own.
  */
 export const getRecentNotesFast = async (params: {
   limit?: number;
   userId?: number;
   isAdmin?: boolean;
+  brandUserIds?: number[];
 }) => {
   const limit = Math.max(1, Math.min(20, Number(params.limit) || 10));
   const isAdmin = Boolean(params.isAdmin);
   const userId = params.userId;
+  const brandUserIds = params.brandUserIds;
 
   const LeadModel = (await import("../models/lead.model")).default;
 
@@ -879,7 +894,14 @@ export const getRecentNotesFast = async (params: {
     type: "comment",
     notebleType: "lead",
   };
-  if (!isAdmin && userId) whereCondition.createdBy = userId;
+  if (isAdmin) {
+    // no filter
+  } else if (brandUserIds !== undefined) {
+    if (brandUserIds.length === 0) return [];
+    whereCondition.createdBy = { [Op.in]: brandUserIds };
+  } else if (userId) {
+    whereCondition.createdBy = userId;
+  }
 
   const notes = await Note.findAll({
     where: whereCondition,
@@ -890,7 +912,7 @@ export const getRecentNotesFast = async (params: {
         attributes: ["id", "firstname", "lastname", "email"],
       },
     ],
-    order: [["createdAt", "DESC"]],
+    order: [["createdAt", "DESC"], ["id", "DESC"]],
     limit,
   });
 

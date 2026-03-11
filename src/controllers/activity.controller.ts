@@ -1,25 +1,56 @@
 import { Request, Response } from "express";
 import ActivityLog from "../models/activityLog.model";
+import User from "../models/user.model";
+import Role from "../models/role.model";
 import { getPagination, getPagingData } from "../utils/paginate";
 import { Op } from "sequelize";
+import { isUserManager, getManagerBrandUserIds } from "../utils/brandUtils";
 
-export const getAllActivities = async (req: Request, res: Response) => {
+export const getAllActivities = async (req: Request, res: Response): Promise<void> => {
   try {
+    const authUserId = (req as any).user?.id;
+    if (!authUserId) {
+      res.status(401).json({ error: "Unauthorized: user ID not found" });
+      return;
+    }
+
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
-    const userId = req.query.userId ? parseInt(req.query.userId as string) : undefined;
+    const queryUserId = req.query.userId ? parseInt(req.query.userId as string) : undefined;
     const search = (req.query.search as string) || "";
     const startDate = req.query.startDate as string;
     const endDate = req.query.endDate as string;
 
     const { offset } = getPagination({ page, limit });
 
+    // Role-based filtering: admin = all, manager = brand users, simple = own
+    const user = (await User.findByPk(authUserId, {
+      include: [{ model: Role, as: "role" }],
+    })) as any;
+    const roleName = (user?.role?.name || user?.Role?.name || "").toLowerCase().trim();
+    const isAdmin = roleName === "admin" || roleName === "adminn";
+    const isManager = await isUserManager(authUserId);
+    const brandUserIds = isManager && !isAdmin ? await getManagerBrandUserIds(authUserId) : undefined;
+
     // Build where clause
     const where: any = {};
 
-    // Filter by user ID if provided
-    if (userId && !isNaN(userId)) {
-      where.userId = userId;
+    if (isAdmin) {
+      // Admin: filter by query param userId if provided
+      if (queryUserId && !isNaN(queryUserId)) {
+        where.userId = queryUserId;
+      }
+    } else if (brandUserIds !== undefined) {
+      // Manager
+      if (brandUserIds.length === 0) {
+        const emptyResponse = getPagingData({ count: 0, rows: [] }, page, limit);
+        res.status(200).json(emptyResponse);
+        return;
+      }
+      where.userId = { [Op.in]: brandUserIds };
+    } else {
+      // Simple user: only own activities
+      where.userId = authUserId;
     }
 
     // Search filter

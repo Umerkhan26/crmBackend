@@ -9,11 +9,13 @@ import LeadActivity from "../models/leadActivity.model";
 import { Op, Sequelize, QueryTypes } from "sequelize";
 import db from "../../db";
 import { buildDateFilter, FilterType } from "../utils/dateFilters";
+import { getManagerBrandUserIds } from "../utils/brandUtils";
 // Notes are loaded via a separate endpoint for performance.
 
 interface DashboardStatsParams {
   userId?: number;
   isAdmin?: boolean;
+  isManager?: boolean;
   userRole?: Role | null;
   filterType?: FilterType;
   startDate?: string;
@@ -32,6 +34,7 @@ interface DashboardStatsParams {
 export const getDashboardStats = async ({
   userId,
   isAdmin,
+  isManager,
   userRole,
   filterType = "",
   startDate,
@@ -210,6 +213,109 @@ export const getDashboardStats = async ({
         //   totalRecords: 0,
         //   pageSize: notesLimit,
         // },
+      };
+    } else if (isManager && userId) {
+      // Manager: Users + LeadsWithWork = brand-scoped; rest = admin/master (global)
+      const brandUserIds = await getManagerBrandUserIds(userId);
+      const brandUserIdsList = brandUserIds.length > 0 ? brandUserIds.join(",") : "0";
+
+      const [
+        totalUsers,
+        activeUsers,
+        blockedUsers,
+        totalLeads,
+        assignedLeadsCount,
+        unassignedLeadsCount,
+        totalProducts,
+        totalCampaigns,
+        leadsWithWorkResult,
+        totalSales,
+      ] = await Promise.all([
+        // Users: only manager's brand users
+        User.count({
+          where: brandUserIds.length > 0 ? { id: { [Op.in]: brandUserIds } } : { id: -1 },
+        }),
+        User.count({
+          where: brandUserIds.length > 0
+            ? { id: { [Op.in]: brandUserIds }, status: "active" }
+            : { id: -1 },
+        }),
+        User.count({
+          where: brandUserIds.length > 0
+            ? { id: { [Op.in]: brandUserIds }, status: "blocked" }
+            : { id: -1 },
+        }),
+        // Leads: admin view (all master leads)
+        Lead.count({ where: dateWhereClause as any }),
+        Lead.count({
+          where: {
+            ...dateWhereClause,
+            [Op.and]: Sequelize.literal(
+              "JSON_LENGTH(COALESCE(assignees, '[]')) > 0",
+            ),
+          } as any,
+        }),
+        Lead.count({
+          where: {
+            ...dateWhereClause,
+            [Op.and]: Sequelize.literal(
+              "(assignees IS NULL OR assignees = '[]' OR assignees = '' OR JSON_LENGTH(COALESCE(assignees, '[]')) = 0)",
+            ),
+          } as any,
+        }),
+        // Products: admin view
+        ProductSale.count({
+          where: { status: "pending", ...dateWhereClause } as any,
+        }),
+        // Campaigns: admin view
+        Campaign.count({
+          distinct: true,
+          col: "campaignName",
+          where: dateWhereClause as any,
+        }),
+        // Leads with Work: only leads where work (notes/activities) done by manager's users
+        brandUserIds.length > 0
+          ? db.query(
+              `SELECT COUNT(DISTINCT l.id) AS count FROM leads l
+               WHERE (
+                 EXISTS (SELECT 1 FROM notes n WHERE n.notebleId = l.id AND n.notebleType = 'lead' AND n.createdBy IN (${brandUserIdsList}))
+                 OR EXISTS (SELECT 1 FROM lead_activities la WHERE la.entityId = l.id AND la.entityType = 'lead' AND la.performedBy IN (${brandUserIdsList}))
+               )
+               ${(dateWhereClause as any).createdAt?.[Op.between] ? "AND l.createdAt BETWEEN :start AND :end" : ""}`,
+              {
+                type: QueryTypes.SELECT,
+                replacements: (dateWhereClause as any).createdAt?.[Op.between]
+                  ? {
+                      start: (dateWhereClause as any).createdAt[Op.between][0],
+                      end: (dateWhereClause as any).createdAt[Op.between][1],
+                    }
+                  : {},
+              },
+            )
+          : Promise.resolve([{ count: 0 }]),
+        // Sales: admin view
+        ProductSale.count({
+          where: { status: "converted", ...dateWhereClause } as any,
+        }),
+      ]);
+
+      const leadsWithWorkCount = (leadsWithWorkResult[0] as any)?.count || 0;
+
+      return {
+        users: {
+          total: totalUsers,
+          active: activeUsers,
+          blocked: blockedUsers,
+        },
+        leads: {
+          total: totalLeads,
+          assigned: assignedLeadsCount,
+          unassigned: unassignedLeadsCount,
+          withWork: leadsWithWorkCount,
+        },
+        products: { total: totalProducts },
+        sales: { total: totalSales },
+        campaigns: { total: totalCampaigns },
       };
     } else {
       // Non-admin users: get user-specific stats

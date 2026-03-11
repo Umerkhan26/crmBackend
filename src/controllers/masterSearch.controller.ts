@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import * as MasterSearchService from "../services/masterSearch.service";
 import User from "../models/user.model";
 import Role from "../models/role.model";
+import { isUserManager } from "../utils/brandUtils";
 
 export const masterSearch = async (
   req: Request,
@@ -40,8 +41,8 @@ export const masterSearch = async (
       });
     }
 
-    // Get user info to check if admin
-    let isAdmin = false;
+    // Get user info: admin and manager get full search (same as admin)
+    let hasFullSearch = false;
     let userPermissions: any[] = [];
     let allowedCampaignNames: string[] = [];
 
@@ -55,9 +56,11 @@ export const masterSearch = async (
 
       if (user) {
         const roleName = user.Role?.name?.toLowerCase() || "";
-        isAdmin = roleName === "admin" || roleName === "adminn";
-        
-        if (!isAdmin) {
+        const isAdmin = roleName === "admin" || roleName === "adminn";
+        const isManager = await isUserManager(userId);
+        hasFullSearch = isAdmin || isManager;
+
+        if (!hasFullSearch) {
           // Get user's campaign permissions
           userPermissions = user.Role?.Permissions || [];
           const allowedCampaignIds: number[] = [];
@@ -102,10 +105,10 @@ export const masterSearch = async (
     }
 
     const searchResults = await MasterSearchService.masterSearch(
-      query, 
-      limit, 
-      isAdmin ? undefined : userId,
-      isAdmin ? undefined : allowedCampaignNames
+      query,
+      limit,
+      hasFullSearch ? undefined : userId,
+      hasFullSearch ? undefined : allowedCampaignNames
     );
 
     // Extract results and totals separately

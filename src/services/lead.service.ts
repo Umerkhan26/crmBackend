@@ -2274,7 +2274,7 @@ export const getAssignmentLeads = async ({
 
 /**
  * Get leads with work done (notes, comments, activities, reminders)
- * Admin only feature
+ * Admin: all leads with work. Manager: only leads where work done by their brand users.
  */
 export const getLeadsWithWork = async ({
   page = 1,
@@ -2283,6 +2283,7 @@ export const getLeadsWithWork = async ({
   filterType,
   startDate,
   endDate,
+  brandUserIds,
 }: {
   page?: number;
   limit?: number;
@@ -2290,8 +2291,19 @@ export const getLeadsWithWork = async ({
   filterType?: FilterType;
   startDate?: string;
   endDate?: string;
+  brandUserIds?: number[];
 }) => {
   try {
+    if (brandUserIds !== undefined && brandUserIds.length === 0) {
+      return {
+        data: [],
+        totalItems: 0,
+        currentPage: page,
+        totalPages: 0,
+        pageSize: limit,
+      };
+    }
+
     const { offset } = getPagination({ page, limit });
 
     // Build date filter for work done date (when note/activity was created)
@@ -2329,6 +2341,11 @@ export const getLeadsWithWork = async ({
       replacements.q = `%${q}%`;
     }
 
+    const managerFilter =
+      brandUserIds && brandUserIds.length > 0
+        ? ` AND ((n.id IS NOT NULL AND n.createdBy IN (${brandUserIds.join(",")})) OR (la.id IS NOT NULL AND la.performedBy IN (${brandUserIds.join(",")}))) `
+        : "";
+
     // Count first (for pagination)
     const countRows = (await db.query(
       `
@@ -2343,6 +2360,7 @@ export const getLeadsWithWork = async ({
         AND la.entityType = 'lead'
         ${actsDateSql}
       WHERE (n.id IS NOT NULL OR la.id IS NOT NULL)
+      ${managerFilter}
       ${searchSql}
       `,
       { type: QueryTypes.SELECT, replacements },
@@ -2379,6 +2397,7 @@ export const getLeadsWithWork = async ({
         AND la.entityType = 'lead'
         ${actsDateSql}
       WHERE (n.id IS NOT NULL OR la.id IS NOT NULL)
+      ${managerFilter}
       ${searchSql}
       GROUP BY l.id
       ORDER BY l.createdAt DESC

@@ -255,14 +255,12 @@ export const getAllNotes = async (
       });
     }
 
-    // Get user role to check if admin
     const User = (await import("../models/user.model")).default;
     const Role = (await import("../models/role.model")).default;
+    const { isUserManager, getManagerBrandUserIds } = await import("../utils/brandUtils");
 
     const user = (await User.findByPk(userId, {
-      include: {
-        model: Role,
-      },
+      include: [{ model: Role, as: "role" }],
     })) as any;
 
     if (!user) {
@@ -272,8 +270,10 @@ export const getAllNotes = async (
       });
     }
 
-    const roleName = user.Role?.name?.toLowerCase() || "";
+    const roleName = (user.role?.name || user.Role?.name || "").toLowerCase().trim();
     const isAdmin = roleName === "admin" || roleName === "adminn";
+    const isManager = await isUserManager(userId);
+    const brandUserIds = isManager && !isAdmin ? await getManagerBrandUserIds(userId) : undefined;
 
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
@@ -283,6 +283,7 @@ export const getAllNotes = async (
       limit,
       userId,
       isAdmin,
+      brandUserIds,
     );
 
     return res.status(200).json({
@@ -315,28 +316,24 @@ export const getRecentNotes = async (
       ? parseInt(req.query.limit as string, 10)
       : 10;
 
-    // Determine admin vs non-admin (same approach as getAllNotes)
     const User = (await import("../models/user.model")).default;
     const Role = (await import("../models/role.model")).default;
+    const { isUserManager, getManagerBrandUserIds } = await import("../utils/brandUtils");
 
     const user = (await User.findByPk(userId, {
-      include: { model: Role },
+      include: [{ model: Role, as: "role" }],
     })) as any;
 
-    // const roleName = user?.Role?.name?.toLowerCase() || "";
-    // const isAdmin = roleName === "admin" || roleName === "adminn";
-
-    const roleName = (user?.Role?.name || "").toLowerCase().trim();
-    const isAdmin =
-      roleName === "admin" ||
-      roleName === "adminn" ||
-      roleName === "manager" ||
-      (!!roleName && roleName.includes("manager"));
+    const roleName = (user?.role?.name || user?.Role?.name || "").toLowerCase().trim();
+    const isAdmin = roleName === "admin" || roleName === "adminn";
+    const isManager = await isUserManager(userId);
+    const brandUserIds = isManager && !isAdmin ? await getManagerBrandUserIds(userId) : undefined;
 
     const notes = await NoteService.getRecentNotesFast({
       limit,
       userId,
       isAdmin,
+      brandUserIds,
     });
 
     return res.status(200).json({

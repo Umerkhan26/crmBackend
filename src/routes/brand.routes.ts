@@ -64,7 +64,7 @@ router.post(
 // Remove user from brand
 router.delete(
   "/:id/users/:userId",
-  checkPermission(PERMISSIONS.BRAND_ASSIGN_USERS),
+  checkPermission(PERMISSIONS.BRAND_REMOVE_USERS),
   removeUserFromBrandController,
 );
 
@@ -78,7 +78,7 @@ router.post(
 // Remove manager from brand
 router.delete(
   "/:id/managers/:managerId",
-  checkPermission(PERMISSIONS.BRAND_ASSIGN_MANAGERS),
+  checkPermission(PERMISSIONS.BRAND_REMOVE_MANAGERS),
   removeManagerFromBrandController,
 );
 

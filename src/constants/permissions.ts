@@ -103,5 +103,7 @@ export const PERMISSIONS = {
   BRAND_UPDATE: "brand:update",
   BRAND_DELETE: "brand:delete",
   BRAND_ASSIGN_USERS: "brand:assignUsers",
+  BRAND_REMOVE_USERS: "brand:removeUsers",
   BRAND_ASSIGN_MANAGERS: "brand:assignManagers",
+  BRAND_REMOVE_MANAGERS: "brand:removeManagers",
 };

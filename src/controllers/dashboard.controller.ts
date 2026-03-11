@@ -3,6 +3,7 @@ import { getDashboardStats } from "../services/dashboard.service";
 import User from "../models/user.model";
 import Role from "../models/role.model";
 import Permission from "../models/permission.model";
+import { isUserManager } from "../utils/brandUtils";
 
 export const getDashboardStatsController = async (
   req: Request,
@@ -39,10 +40,9 @@ export const getDashboardStatsController = async (
     const parsedNotesPage = parseInt(notesPage, 10) || 1;
     const parsedNotesLimit = parseInt(notesLimit, 10) || 10;
     const user = (await User.findByPk(userId, {
-      include: {
-        model: Role,
-        include: [Permission],
-      },
+      include: [
+        { model: Role, as: "role", include: [Permission] },
+      ],
     })) as any;
 
     if (!user) {
@@ -56,19 +56,16 @@ export const getDashboardStatsController = async (
     // const roleName = user.Role?.name?.toLowerCase() || "";
     // const isAdmin = roleName === "admin" || roleName === "adminn";
 
-    // Check if user is admin or manager
-    const roleName = (user.Role?.name || "").toLowerCase().trim();
-    const isAdmin =
-      roleName === "admin" ||
-      roleName === "adminn" ||
-      roleName === "manager" ||
-      (!!roleName && roleName.includes("manager"));
+    const roleName = (user.role?.name || user.Role?.name || "").toLowerCase().trim();
+    const isSuperAdmin = roleName === "admin" || roleName === "adminn";
+    const isManager = await isUserManager(userId);
 
-    // Get dashboard stats (admin gets global, non-admin gets user-specific)
+    // Super admin: global stats | Manager: brand-scoped stats | Regular user: personal stats
     const stats = await getDashboardStats({
       userId,
-      isAdmin,
-      userRole: user.Role,
+      isAdmin: isSuperAdmin,
+      isManager: isManager && !isSuperAdmin,
+      userRole: user.role || user.Role,
       filterType: (filterType || "").trim() as any,
       startDate,
       endDate,
@@ -80,7 +77,8 @@ export const getDashboardStatsController = async (
       success: true,
       message: "Dashboard statistics fetched successfully",
       data: stats,
-      isAdmin, // Include admin flag in response for frontend
+      isAdmin: isSuperAdmin,
+      isManager,
     });
   } catch (error: any) {
     return res.status(500).json({

@@ -10,6 +10,7 @@ import { Op, Sequelize, QueryTypes } from "sequelize";
 import db from "../../db";
 import { buildDateFilter, FilterType } from "../utils/dateFilters";
 import { getManagerBrandUserIds } from "../utils/brandUtils";
+import { PERMISSIONS } from "../constants/permissions";
 // Notes are loaded via a separate endpoint for performance.
 
 interface DashboardStatsParams {
@@ -217,7 +218,8 @@ export const getDashboardStats = async ({
     } else if (isManager && userId) {
       // Manager: Users + LeadsWithWork = brand-scoped; rest = admin/master (global)
       const brandUserIds = await getManagerBrandUserIds(userId);
-      const brandUserIdsList = brandUserIds.length > 0 ? brandUserIds.join(",") : "0";
+      const brandUserIdsList =
+        brandUserIds.length > 0 ? brandUserIds.join(",") : "0";
 
       const [
         totalUsers,
@@ -233,17 +235,22 @@ export const getDashboardStats = async ({
       ] = await Promise.all([
         // Users: only manager's brand users
         User.count({
-          where: brandUserIds.length > 0 ? { id: { [Op.in]: brandUserIds } } : { id: -1 },
+          where:
+            brandUserIds.length > 0
+              ? { id: { [Op.in]: brandUserIds } }
+              : { id: -1 },
         }),
         User.count({
-          where: brandUserIds.length > 0
-            ? { id: { [Op.in]: brandUserIds }, status: "active" }
-            : { id: -1 },
+          where:
+            brandUserIds.length > 0
+              ? { id: { [Op.in]: brandUserIds }, status: "active" }
+              : { id: -1 },
         }),
         User.count({
-          where: brandUserIds.length > 0
-            ? { id: { [Op.in]: brandUserIds }, status: "blocked" }
-            : { id: -1 },
+          where:
+            brandUserIds.length > 0
+              ? { id: { [Op.in]: brandUserIds }, status: "blocked" }
+              : { id: -1 },
         }),
         // Leads: admin view (all master leads)
         Lead.count({ where: dateWhereClause as any }),
@@ -454,21 +461,38 @@ export const getDashboardStats = async ({
             })
           : 0;
 
-      // My sales (products assigned to user or created by user)
-      const mySalesCount = await ProductSale.count({
-        where: {
-          [Op.or]: [{ assigneeId: userId }, { createdBy: userId }],
-          ...dateWhereClause,
-        } as any,
-      });
+      // Check product/sale permissions - show 0 if user lacks permission
+      const hasProductPermission = permissions.some(
+        (p: any) =>
+          p.name === PERMISSIONS.PRODUCT_GET_ALL ||
+          p.name === PERMISSIONS.PRODUCT_GET_BY_ID,
+      );
+      const hasSalePermission = permissions.some(
+        (p: any) =>
+          p.name === PERMISSIONS.SALE_GET_ALL ||
+          p.name === PERMISSIONS.SALE_GET_BY_ID ||
+          p.name === PERMISSIONS.SALE_GET_BY_ASSIGNEE,
+      );
 
-      // My products (products assigned to user)
-      const myProductsCount = await ProductSale.count({
-        where: {
-          assigneeId: userId,
-          ...dateWhereClause,
-        } as any,
-      });
+      // My sales (products assigned to user or created by user) - 0 if no sale permission
+      const mySalesCount = hasSalePermission
+        ? await ProductSale.count({
+            where: {
+              [Op.or]: [{ assigneeId: userId }, { createdBy: userId }],
+              ...dateWhereClause,
+            } as any,
+          })
+        : 0;
+
+      // My products (products assigned to user) - 0 if no product permission
+      const myProductsCount = hasProductPermission
+        ? await ProductSale.count({
+            where: {
+              assigneeId: userId,
+              ...dateWhereClause,
+            } as any,
+          })
+        : 0;
 
       // My campaigns (campaigns user has access to)
       const myCampaignsCount = allowedCampaigns.length;

@@ -1,0 +1,110 @@
+CRM — Teams + Auto Lead Division (concise plan)
+
+Goal
+- Daily: new leads are assigned automatically to a team and divided equally among that team’s members.
+- Daily: existing leads in a team are shuffled only within that team, but “sticky” leads stay with the same user.
+- Rotation: leads stay inside Team A for N days (e.g., 10) and only shuffle within Team A. After N days they move to Team B (except locked). Same for Team B → Team C → Team D → Team E. Team E is final (no loop).
+- Must not disturb existing CRM flow (permissions, assigned-leads UI, lead detail UI).
+
+Tables to create (names only)
+1) teams
+2) team_members
+3) lead_assignment_batches (recommended for audit)
+4) lead_locks
+5) lead_assignment_state
+6) team_rotation_config
+7) lead_rotation_state
+
+What these tables mean (simple)
+- teams:
+  - Defines each team (Team A, Team B, … Team E)
+  - Used to group users and control rotation/shuffle scope (leads stay/shuffle within their current team)
+- team_members:
+  - Stores which users belong to which team
+  - Used to compute daily split quotas (equal distribution) and tenureDays rule (member count of the day)
+- lead_assignment_batches:
+  - One record per batch operation (daily run / import / manual)
+  - Helps audit “today 500 leads assigned” and avoids per-lead spam logs
+- lead_locks:
+  - Tracks locked leads (sticky)
+  - Locked leads stay with the same user and do not rotate teams until unlocked
+- lead_assignment_state:
+  - Source of truth for current team + current assignee of each lead
+  - Makes automation logic simple (no heavy reliance on parsing assignees JSON)
+- team_rotation_config:
+  - Stores rotation settings (Team A→B→C→D→E) and enable/disable flag
+  - Even if tenureDays = “member count of the day”, this controls order + active/inactive
+- lead_rotation_state:
+  - Stores which team a lead is currently in and when it entered that team
+  - Used to decide when to move the lead to the next team
+
+Key decisions (small, required)
+- Entry team for new leads:
+  - Fixed “default entry team” = Team A (fully automated)
+- Split policy:
+  - “As equal as possible” (difference max 1 if not divisible)
+- Rotation end:
+  - Team E is final (no more rotation)
+
+Daily sticky rules (leads that MUST stay with the same user)
+- Type 1) Locked lead:
+  - If a user locks a lead, it stays with that user and does NOT rotate teams until unlocked.
+- Type 2) No-work lead:
+  - If lead is assigned to user X AND user X has done NO work on it, keep it with user X.
+  - “Work” = any activity/interaction by that user on that lead (use your existing work sources: notes OR leadActivity OR calls, etc.)
+
+What gets shuffled daily (movable leads)
+- Any lead that is NOT locked and NOT “no-work” is movable.
+- Movable leads are re-distributed equally among members of the same team (no cross-team shuffle).
+
+Avoid giving the same lead to the same user again next day (your new requirement)
+- Rule: for movable leads, do NOT assign a lead to the same user who had it yesterday / last rebalance.
+- How: use lead_assignment_state.currentAssigneeUserId + lastAssignedAt to know “who had it last”.
+- Simple assignment approach (works well in practice):
+  - Calculate each user’s quota for today (equal split).
+  - Iterate movable leads in random order.
+  - For each lead, pick a user who:
+    - still has remaining quota, AND
+    - is not the lead’s previous assignee (if possible).
+  - If not possible (e.g., team size = 1, or quotas force it), allow the repeat as a fallback.
+- Note: sticky leads are not part of this rule because they are kept with the same user by design.
+
+Suggested daily order (important)
+- Step 1) Team rotation (A → B → C → D → E):
+  - For each team, move leads whose “time in current team” >= tenureDays
+  - tenureDays rule (your requirement): tenureDays = active team member count for that team on that day
+    - Recommended: snapshot memberCount at the start of the daily job (so the whole run uses the same tenureDays value)
+  - EXCEPT locked leads (they never move)
+- Step 2) Rebalance within each team:
+  - Keep sticky leads with their current user
+  - Shuffle movable leads equally across that team members
+- Step 3) Assign today’s new leads:
+  - New leads = createdAt in today’s window (your timezone) OR “inserted today” batch
+  - Assign to entry team, then split equally
+
+Why this order
+- Rotation first ensures old inventory progresses through the pipeline.
+- Rebalance next ensures fairness inside each team before new work arrives.
+- Assign new leads last prevents “fresh leads” being rotated/shuffled unexpectedly.
+
+Equal split algorithm (used for both new assignment and rebalance)
+- Input: leadIds[], teamMemberUserIds[]
+- If members = 0 → stop with clear error (“No team members”)
+- Distribute as-equal-as-possible:
+  - base = floor(leadsCount / membersCount)
+  - remainder = leadsCount % membersCount
+  - First “remainder” members get +1 lead
+
+Audit / notifications (clean)
+- One activity + one notification per batch/day/team (no spam):
+  - “Team A: rotated X leads to Team B, rebalanced Y leads, assigned Z new leads.”
+
+Edge cases (simple)
+- Leads < members: first N members get 1, rest 0.
+- Member disabled/removed: excluded from split; their movable leads get redistributed.
+- Performance: daily job needs efficient “has work?” checks (don’t do per-lead N+1 queries).
+
+Rollout steps (safe)
+1) Create teams + team members UI (or seed 5 teams + members).
+2) Implement daily job (rotation → rebalance → new-leads assign) behind a feature flag.
+3) Add lock/unlock UI on lead detail (optional at first).

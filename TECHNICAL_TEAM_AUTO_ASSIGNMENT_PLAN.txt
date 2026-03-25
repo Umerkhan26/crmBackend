@@ -1,0 +1,75 @@
+CRM — Technical Plan (SHORT, based on final flow)
+Goal (daily)
+Rotate leads across teams A→B→C→D→E (E is final), using tenureDays = active member count of that team for that day (snapshotted at job start).
+Rebalance (shuffle) leads within each team fairly, with sticky rules + anti-repeat where possible.
+Assign today’s new leads to Team A equally.
+Tables (name + 1-line purpose)
+teams: defines Team A–E
+team_members: maps users to teams (used for quotas + tenureDays snapshot)
+lead_assignment_batches: 1 record per daily run/import/manual batch (audit + safe reruns)
+lead_locks: locked leads (excluded from rotation + shuffle until unlocked)
+lead_assignment_state: current owner of each lead (team + assignee + lastAssignedAt)
+lead_rotation_state: current team + enteredTeamAt (rotation timing) — so the daily job knows when to move a lead to the next team (A→B→C→D→E)
+team_rotation_config: rotation order A→B→C→D→E + enable/disable
+Rules
+Locked lead: stays with same user and never rotates/shuffles until unlocked.
+No-work lead: if assigned user has done no work on it, keep it with same user.
+Anti-repeat: for movable leads, avoid giving the same lead to the same user on consecutive days when possible (fallback allowed).
+Complete flow (end-to-end, steps)
+Admin creates 5 teams (A–E) and adds members (teams, team_members).
+Daily Job starts and creates one batch record (lead_assignment_batches).
+Job snapshots active member count per team (tenureDays for that day).
+Rotate (A→B→C→D→E; E final):
+Move eligible leads based on (now - enteredTeamAt) >= tenureDays, except locked (lead_rotation_state, lead_locks).
+Rebalance per team:
+Keep locked + no-work leads with same user.
+Shuffle movable leads equally, avoid assigning a lead to the same user as yesterday when possible (lead_assignment_state).
+Assign today’s new leads:
+Find today-created unassigned leads → assign to Team A equally (lead_assignment_state, lead_rotation_state).
+UI reads assignments (Lead.assignees + lead_assignment_state).
+If a user locks a lead, it stays with that user and is excluded from rotation and shuffle until unlocked (lead_locks).
+
+Cron jobs (how many + how they work)
+- 3 separate cron jobs (each uses the same job-lock + runId from lead_assignment_batches)
+  - rotateTeamsJob
+    - Schedule: once/day
+    - Uses tables: team_rotation_config (order), team_members (memberCountToday=tenureDays), lead_rotation_state (enteredTeamAt), lead_locks (skip locked), lead_assignment_state (update teamId), lead_assignment_batches (runId/audit)
+  - rebalanceTeamsJob
+    - Schedule: once/day (after rotateTeamsJob)
+    - Uses tables: team_members (active members + quotas), lead_assignment_state (current assignee + update), lead_locks (sticky), notes/leadActivity/calls (no-work check), lead_assignment_batches (runId/audit)
+  - assignNewLeadsJob
+    - Schedule: once/day (after rebalanceTeamsJob)
+    - Uses tables: team_members (Team A members), lead_assignment_state (insert assignments), lead_rotation_state (insert enteredTeamAt for Team A), lead_assignment_batches (runId/audit)
+Backend (work items for estimation)
+DB work
+Create 7 tables:
+teams
+team_members
+lead_assignment_batches
+lead_locks
+lead_assignment_state
+lead_rotation_state
+team_rotation_config
+Add required indexes for daily-job performance
+Seed initial 5 teams
+Core logic/services
+Team CRUD (teams + team_members) and “active member” support
+Lead lock/unlock logic (lead_locks) + permission checks
+“No-work” detection (bulk queries across notes/activities/calls for (leadId,userId) pairs)
+Daily job runner:
+Acquire job lock (avoid double runs)
+Snapshot memberCountToday per team (tenureDays)
+Rotation step (A→B→C→D→E; E final; skip locked)
+Rebalance step per team (sticky rules + anti-repeat + quotas + fallback)
+New-leads assignment to Team A (created today & unassigned)
+Idempotency:
+Batch/runId tracking via lead_assignment_batches
+Safe re-run behavior (don’t double-insert assignment_state; don’t duplicate logs)
+Data write integration (compatibility)
+Update Lead.assignees JSON after assignments so current UI keeps working
+Decide whether to also set any existing single-assignee fields
+Observability + admin visibility
+Structured logs for rotated/rebalanced/newAssigned/stickyLocked/stickyNoWork counts
+Error reporting + partial failure handling (per-team transaction boundaries)
+Ops
+Schedule daily job (node-cron/Task Scheduler) + env flags to enable/disable safely

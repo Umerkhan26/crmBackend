@@ -106,4 +106,11 @@ export const PERMISSIONS = {
   BRAND_REMOVE_USERS: "brand:removeUsers",
   BRAND_ASSIGN_MANAGERS: "brand:assignManagers",
   BRAND_REMOVE_MANAGERS: "brand:removeManagers",
+
+  // Team permissions
+  TEAM_CREATE: "team:create",
+  TEAM_GET: "team:get",
+  TEAM_UPDATE: "team:update",
+  TEAM_DELETE: "team:delete",
+  TEAM_MANAGE_MEMBERS: "team:manageMembers",
 };

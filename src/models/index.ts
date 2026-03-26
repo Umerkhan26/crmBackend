@@ -26,4 +26,6 @@ import "./call.model";
 import "./brand.model";
 import "./brandUser.model";
 import "./brandManager.model";
+import "./team.model";
+import "./teamMember.model";
 associateModels();

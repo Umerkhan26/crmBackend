@@ -13,6 +13,8 @@ import Call from "./call.model";
 import Brand from "./brand.model";
 import BrandUser from "./brandUser.model";
 import BrandManager from "./brandManager.model";
+import Team from "./team.model";
+import TeamMember from "./teamMember.model";
 
 Role.belongsToMany(Permission, {
   through: RolePermission,
@@ -172,5 +174,28 @@ BrandManager.belongsTo(User, {
 User.hasMany(BrandManager, {
   foreignKey: "managerId",
   as: "brandManagerRelations",
+  onDelete: "CASCADE",
+});
+
+// Team associations
+Team.hasMany(TeamMember, { foreignKey: "teamId", as: "teamMembers", onDelete: "CASCADE" });
+TeamMember.belongsTo(Team, { foreignKey: "teamId", as: "team", onDelete: "CASCADE" });
+
+User.hasOne(TeamMember, { foreignKey: "userId", as: "teamMembership", onDelete: "CASCADE" });
+TeamMember.belongsTo(User, { foreignKey: "userId", as: "user", onDelete: "CASCADE" });
+
+// Convenience many-to-many (Team <-> User) via TeamMember
+Team.belongsToMany(User, {
+  through: TeamMember,
+  foreignKey: "teamId",
+  otherKey: "userId",
+  as: "members",
+  onDelete: "CASCADE",
+});
+User.belongsToMany(Team, {
+  through: TeamMember,
+  foreignKey: "userId",
+  otherKey: "teamId",
+  as: "teams",
   onDelete: "CASCADE",
 });

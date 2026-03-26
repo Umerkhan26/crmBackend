@@ -19,11 +19,11 @@ router.post(
 );
 
 // Teams CRUD
-router.get("/teams", checkPermission(PERMISSIONS.TEAM_GET), TeamController.getAllTeamsController);
-router.post("/teams", checkPermission(PERMISSIONS.TEAM_CREATE), TeamController.createTeamController);
-router.get("/teams/:id", checkPermission(PERMISSIONS.TEAM_GET), TeamController.getTeamByIdController);
-router.put("/teams/:id", checkPermission(PERMISSIONS.TEAM_UPDATE), TeamController.updateTeamController);
-router.delete("/teams/:id", checkPermission(PERMISSIONS.TEAM_DELETE), TeamController.deleteTeamController);
+router.get("/GetAllTeams", checkPermission(PERMISSIONS.TEAM_GET), TeamController.getAllTeamsController);
+router.post("/CreateTeams", checkPermission(PERMISSIONS.TEAM_CREATE), TeamController.createTeamController);
+router.get("/getTeamById/:id", checkPermission(PERMISSIONS.TEAM_GET), TeamController.getTeamByIdController);
+router.put("/updateTeamById/:id", checkPermission(PERMISSIONS.TEAM_UPDATE), TeamController.updateTeamController);
+router.delete("/deleteTeams/:id", checkPermission(PERMISSIONS.TEAM_DELETE), TeamController.deleteTeamController);
 
 // Members
 router.get(

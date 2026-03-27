@@ -58,7 +58,12 @@ export const getAllTeamsController = async (req: Request, res: Response): Promis
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 100;
     const search = (req.query.search as string) || "";
-    const result = await getAllTeams({ page, limit, search });
+    const statusRaw = String(req.query.status ?? "").toLowerCase().trim();
+    const status =
+      statusRaw === "active" || statusRaw === "inactive"
+        ? (statusRaw as "active" | "inactive")
+        : undefined;
+    const result = await getAllTeams({ page, limit, search, status });
     return res.status(200).json({
       success: true,
       message: "Teams retrieved successfully",

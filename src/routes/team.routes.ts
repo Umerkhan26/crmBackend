@@ -19,15 +19,35 @@ router.post(
 );
 
 // Teams CRUD
-router.get("/GetAllTeams", checkPermission(PERMISSIONS.TEAM_GET), TeamController.getAllTeamsController);
-router.post("/CreateTeams", checkPermission(PERMISSIONS.TEAM_CREATE), TeamController.createTeamController);
-router.get("/getTeamById/:id", checkPermission(PERMISSIONS.TEAM_GET), TeamController.getTeamByIdController);
-router.put("/updateTeamById/:id", checkPermission(PERMISSIONS.TEAM_UPDATE), TeamController.updateTeamController);
-router.delete("/deleteTeams/:id", checkPermission(PERMISSIONS.TEAM_DELETE), TeamController.deleteTeamController);
+router.get(
+  "/GetAllTeams",
+  checkPermission(PERMISSIONS.TEAM_GET),
+  TeamController.getAllTeamsController,
+);
+router.post(
+  "/CreateTeams",
+  checkPermission(PERMISSIONS.TEAM_CREATE),
+  TeamController.createTeamController,
+);
+router.get(
+  "/getTeamById/:id",
+  checkPermission(PERMISSIONS.TEAM_GET),
+  TeamController.getTeamByIdController,
+);
+router.put(
+  "/updateTeamById/:id",
+  checkPermission(PERMISSIONS.TEAM_UPDATE),
+  TeamController.updateTeamController,
+);
+router.delete(
+  "/deleteTeams/:id",
+  checkPermission(PERMISSIONS.TEAM_DELETE),
+  TeamController.deleteTeamController,
+);
 
 // Members
 router.get(
-  "/teams/:id/members",
+  "/getteams/:id/members",
   checkPermission([PERMISSIONS.TEAM_GET, PERMISSIONS.TEAM_MANAGE_MEMBERS]),
   TeamController.getTeamMembersController,
 );
@@ -43,4 +63,3 @@ router.patch(
 );
 
 export default router;
-

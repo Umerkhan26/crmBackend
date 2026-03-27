@@ -10,6 +10,8 @@ interface PaginationParams {
   page?: number;
   limit?: number;
   search?: string;
+  /** Omit, empty, or "all" → no team status filter. "active" | "inactive" → filter teams by that status. */
+  status?: "active" | "inactive";
 }
 
 const DEFAULT_TEAMS: Array<Pick<TeamAttributes, "name" | "code" | "sortOrder" | "status">> = [
@@ -38,7 +40,7 @@ export const seedDefaultTeams = async (): Promise<{ created: number; existing: n
 export const createTeam = async (data: TeamCreationAttributes): Promise<TeamAttributes> => {
   try {
     const created = await Team.create(data);
-    return created.toJSON();
+    return created.get({ plain: true }) as TeamAttributes;
   } catch (error: any) {
     if (error.name === "SequelizeUniqueConstraintError") {
       throw new Error("Team with this code already exists");
@@ -47,13 +49,22 @@ export const createTeam = async (data: TeamCreationAttributes): Promise<TeamAttr
   }
 };
 
+/**
+ * Lists teams with pagination. Member include still only loads active memberships (for counts).
+ * Team-level filter: pass status=active|inactive from API; omit or all → every team status.
+ */
 export const getAllTeams = async ({
   page = 1,
   limit = 100,
   search = "",
+  status,
 }: PaginationParams): Promise<any> => {
   const { offset, limit: pageLimit } = getPagination({ page, limit });
-  const whereClause = buildSearchFilter(search, ["name", "code"]);
+  const searchWhere = buildSearchFilter(search, ["name", "code"]);
+  const whereClause: any = { ...searchWhere };
+  if (status === "active" || status === "inactive") {
+    whereClause.status = status;
+  }
 
   const data = await Team.findAndCountAll({
     where: whereClause,
@@ -75,10 +86,15 @@ export const getAllTeams = async ({
   });
 
   const paging = getPagingData(data, page, pageLimit);
-  paging.data = (paging.data || []).map((t: any) => ({
-    ...t,
-    activeMemberCount: Array.isArray(t.teamMembers) ? t.teamMembers.length : 0,
-  }));
+  paging.data = (paging.data || []).map((t: any) => {
+    const json =
+      typeof t?.toJSON === "function" ? t.toJSON() : t?.get?.({ plain: true }) ?? t;
+    const teamMembers = json.teamMembers;
+    return {
+      ...json,
+      activeMemberCount: Array.isArray(teamMembers) ? teamMembers.length : 0,
+    };
+  });
 
   return paging;
 };
@@ -115,7 +131,7 @@ export const updateTeam = async (
     const team = await Team.findByPk(teamId);
     if (!team) throw new Error("Team not found");
     await team.update(data);
-    return team.toJSON();
+    return team.get({ plain: true }) as TeamAttributes;
   } catch (error: any) {
     if (error.name === "SequelizeUniqueConstraintError") {
       throw new Error("Team with this code already exists");
@@ -124,12 +140,12 @@ export const updateTeam = async (
   }
 };
 
-// Soft delete (recommended): mark inactive. Avoid dropping rows that could be referenced later.
+/** Permanently deletes the team row. Related team_members are removed by DB ON DELETE CASCADE if configured. */
 export const deleteTeam = async (teamId: number): Promise<string> => {
   const team = await Team.findByPk(teamId);
   if (!team) throw new Error("Team not found");
-  await team.update({ status: "inactive" } as any);
-  return "Team disabled successfully";
+  await team.destroy();
+  return "Team deleted successfully";
 };
 
 export const getTeamMembers = async ({
@@ -178,7 +194,11 @@ export const getTeamMembers = async ({
     ],
   });
 
-  return getPagingData(data, page, pageLimit);
+  const paging = getPagingData(data, page, pageLimit);
+  paging.data = (paging.data || []).map((row: any) =>
+    typeof row?.toJSON === "function" ? row.toJSON() : row?.get?.({ plain: true }) ?? row,
+  );
+  return paging;
 };
 
 export const addUsersToTeam = async (

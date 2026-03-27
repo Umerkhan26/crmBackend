@@ -45,21 +45,4 @@ router.delete(
   TeamController.deleteTeamController,
 );
 
-// Members
-router.get(
-  "/getteams/:id/members",
-  checkPermission([PERMISSIONS.TEAM_GET, PERMISSIONS.TEAM_MANAGE_MEMBERS]),
-  TeamController.getTeamMembersController,
-);
-router.post(
-  "/teams/:id/members",
-  checkPermission(PERMISSIONS.TEAM_MANAGE_MEMBERS),
-  TeamController.addTeamMembersController,
-);
-router.patch(
-  "/teams/:id/members/:userId",
-  checkPermission(PERMISSIONS.TEAM_MANAGE_MEMBERS),
-  TeamController.setTeamMemberStatusController,
-);
-
 export default router;

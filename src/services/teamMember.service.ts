@@ -139,3 +139,11 @@ export const setTeamMemberStatus = async (
   return "Member deactivated";
 };
 
+export const deleteTeamMember = async (teamId: number, userId: number): Promise<string> => {
+  const member = await TeamMember.findOne({ where: { teamId, userId } });
+  if (!member) throw new Error("Team member not found");
+
+  await member.destroy();
+  return "Team member deleted successfully";
+};
+

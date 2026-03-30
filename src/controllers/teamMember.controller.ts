@@ -1,5 +1,10 @@
 import { Request, Response } from "express";
-import { addUsersToTeam, getTeamMembers, setTeamMemberStatus } from "../services/teamMember.service";
+import {
+  addUsersToTeam,
+  deleteTeamMember,
+  getTeamMembers,
+  setTeamMemberStatus,
+} from "../services/teamMember.service";
 
 export const getTeamMembersController = async (req: Request, res: Response): Promise<any> => {
   try {
@@ -72,6 +77,25 @@ export const setTeamMemberStatusController = async (req: Request, res: Response)
     return res.status(statusCode).json({
       success: false,
       message: error.message || "Error updating member status",
+    });
+  }
+};
+
+export const deleteTeamMemberController = async (req: Request, res: Response): Promise<any> => {
+  try {
+    const teamId = parseInt(req.params.id);
+    const userId = parseInt(req.params.userId);
+    if (isNaN(teamId) || isNaN(userId)) {
+      return res.status(400).json({ success: false, message: "Invalid teamId or userId" });
+    }
+
+    const message = await deleteTeamMember(teamId, userId);
+    return res.status(200).json({ success: true, message });
+  } catch (error: any) {
+    const statusCode = error.message === "Team member not found" ? 404 : 500;
+    return res.status(statusCode).json({
+      success: false,
+      message: error.message || "Error deleting team member",
     });
   }
 };

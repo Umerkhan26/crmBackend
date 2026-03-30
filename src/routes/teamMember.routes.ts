@@ -8,28 +8,28 @@ const router = express.Router();
 
 router.use(verifyToken);
 
+// Team member routes (following existing naming trend)
 router.get(
-  "/teams/:id/members",
+  "/getTeamMembers/:id",
   checkPermission([PERMISSIONS.TEAM_GET, PERMISSIONS.TEAM_MANAGE_MEMBERS]),
   TeamMemberController.getTeamMembersController,
 );
-router.get(
-  "/getteams/:id/members",
-  checkPermission([PERMISSIONS.TEAM_GET, PERMISSIONS.TEAM_MANAGE_MEMBERS]),
-  TeamMemberController.getTeamMembersController,
-);
-
 router.post(
-  "/teams/:id/members",
+  "/CreateTeamMembers/:id",
   checkPermission(PERMISSIONS.TEAM_MANAGE_MEMBERS),
   TeamMemberController.addTeamMembersController,
 );
-
 router.patch(
-  "/teams/:id/members/:userId",
+  "/updateTeamMemberStatus/:id/:userId",
   checkPermission(PERMISSIONS.TEAM_MANAGE_MEMBERS),
   TeamMemberController.setTeamMemberStatusController,
 );
+router.delete(
+  "/deleteTeamMember/:id/:userId",
+  checkPermission(PERMISSIONS.TEAM_MANAGE_MEMBERS),
+  TeamMemberController.deleteTeamMemberController,
+);
+
 
 export default router;
 

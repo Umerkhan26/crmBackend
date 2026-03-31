@@ -28,4 +28,6 @@ import "./brandUser.model";
 import "./brandManager.model";
 import "./team.model";
 import "./teamMember.model";
+import "./leadAssignmentBatch.model";
+import "./leadLock.model";
 associateModels();

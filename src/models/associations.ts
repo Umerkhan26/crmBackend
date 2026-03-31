@@ -15,6 +15,8 @@ import BrandUser from "./brandUser.model";
 import BrandManager from "./brandManager.model";
 import Team from "./team.model";
 import TeamMember from "./teamMember.model";
+import LeadLock from "./leadLock.model";
+import LeadAssignmentBatch from "./leadAssignmentBatch.model";
 
 Role.belongsToMany(Permission, {
   through: RolePermission,
@@ -198,4 +200,22 @@ User.belongsToMany(Team, {
   otherKey: "teamId",
   as: "teams",
   onDelete: "CASCADE",
+});
+
+// Lead lock associations
+Lead.hasMany(LeadLock, { foreignKey: "leadId", as: "leadLocks", onDelete: "CASCADE" });
+LeadLock.belongsTo(Lead, { foreignKey: "leadId", as: "lead", onDelete: "CASCADE" });
+User.hasMany(LeadLock, { foreignKey: "lockedByUserId", as: "lockedLeads", onDelete: "CASCADE" });
+LeadLock.belongsTo(User, { foreignKey: "lockedByUserId", as: "lockedBy", onDelete: "CASCADE" });
+
+// Lead assignment batch associations
+User.hasMany(LeadAssignmentBatch, {
+  foreignKey: "triggeredByUserId",
+  as: "leadAssignmentBatches",
+  onDelete: "SET NULL",
+});
+LeadAssignmentBatch.belongsTo(User, {
+  foreignKey: "triggeredByUserId",
+  as: "triggeredBy",
+  onDelete: "SET NULL",
 });

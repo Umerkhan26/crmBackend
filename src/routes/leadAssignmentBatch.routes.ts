@@ -10,22 +10,22 @@ router.use(verifyToken);
 
 router.post(
   "/lead-assignment-batches",
-  checkPermission(PERMISSIONS.LEAD_UPDATE),
+  checkPermission(PERMISSIONS.LEAD_ASSIGNMENT_BATCH_WRITE),
   LeadAssignmentBatchController.createLeadAssignmentBatchController,
 );
 router.get(
   "/lead-assignment-batches",
-  checkPermission(PERMISSIONS.LEAD_GET_ALL),
+  checkPermission(PERMISSIONS.LEAD_ASSIGNMENT_BATCH_READ),
   LeadAssignmentBatchController.getLeadAssignmentBatchesController,
-);
+);  
 router.get(
   "/lead-assignment-batches/:id",
-  checkPermission(PERMISSIONS.LEAD_GET_ALL),
+  checkPermission(PERMISSIONS.LEAD_ASSIGNMENT_BATCH_READ),
   LeadAssignmentBatchController.getLeadAssignmentBatchByIdController,
 );
 router.patch(
   "/lead-assignment-batches/:id",
-  checkPermission(PERMISSIONS.LEAD_UPDATE),
+  checkPermission(PERMISSIONS.LEAD_ASSIGNMENT_BATCH_WRITE),
   LeadAssignmentBatchController.updateLeadAssignmentBatchController,
 );
 

@@ -1,37 +1,32 @@
 import { Request, Response } from "express";
 import { getLeadLockByLeadId, getLeadLocks, lockLead, unlockLead } from "../services/leadLock.service";
 
-export const lockLeadController = async (req: Request, res: Response): Promise<any> => {
+export const setLeadLockStatusController = async (req: Request, res: Response): Promise<any> => {
   try {
     const leadId = parseInt(req.params.leadId);
     if (isNaN(leadId)) return res.status(400).json({ success: false, message: "Invalid lead ID" });
+    const { status, reason } = req.body as { status?: "locked" | "unlocked"; reason?: string };
+    if (status !== "locked" && status !== "unlocked") {
+      return res.status(400).json({ success: false, message: "status must be 'locked' or 'unlocked'" });
+    }
 
-    const { reason } = req.body;
-    const lock = await lockLead({ leadId, lockedByUserId: req.user!.id, reason });
-    return res.status(201).json({ success: true, message: "Lead locked successfully", data: lock });
+    if (status === "locked") {
+      const lock = await lockLead({ leadId, lockedByUserId: req.user!.id, reason });
+      return res.status(200).json({ success: true, message: "Lead locked successfully", data: lock });
+    } else {
+      const lock = await unlockLead({ leadId });
+      return res.status(200).json({ success: true, message: "Lead unlocked successfully", data: lock });
+    }
   } catch (error: any) {
     const code =
-      error.message === "Lead not found"
+      error.message === "Lead not found" || error.message === "Locking user not found"
         ? 404
         : error.message === "Lead is already locked"
           ? 409
-          : error.message === "Locking user not found"
+          : error.message === "Lead is not locked"
             ? 404
             : 500;
-    return res.status(code).json({ success: false, message: error.message || "Error locking lead" });
-  }
-};
-
-export const unlockLeadController = async (req: Request, res: Response): Promise<any> => {
-  try {
-    const leadId = parseInt(req.params.leadId);
-    if (isNaN(leadId)) return res.status(400).json({ success: false, message: "Invalid lead ID" });
-
-    const lock = await unlockLead({ leadId });
-    return res.status(200).json({ success: true, message: "Lead unlocked successfully", data: lock });
-  } catch (error: any) {
-    const code = error.message === "Lead is not locked" ? 404 : 500;
-    return res.status(code).json({ success: false, message: error.message || "Error unlocking lead" });
+    return res.status(code).json({ success: false, message: error.message || "Error updating lead lock" });
   }
 };
 

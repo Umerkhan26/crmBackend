@@ -8,24 +8,19 @@ const router = express.Router();
 
 router.use(verifyToken);
 
-router.post(
-  "/lead-locks/:leadId/lock",
-  checkPermission(PERMISSIONS.LEAD_UPDATE),
-  LeadLockController.lockLeadController,
-);
 router.patch(
-  "/lead-locks/:leadId/unlock",
-  checkPermission(PERMISSIONS.LEAD_UPDATE),
-  LeadLockController.unlockLeadController,
+  "/lead-locks/:leadId",
+  checkPermission(PERMISSIONS.LEAD_LOCK_WRITE),
+  LeadLockController.setLeadLockStatusController,
 );
 router.get(
   "/lead-locks/:leadId",
-  checkPermission(PERMISSIONS.LEAD_GET_ALL),
+  checkPermission(PERMISSIONS.LEAD_LOCK_READ),
   LeadLockController.getLeadLockController,
 );
 router.get(
   "/lead-locks",
-  checkPermission(PERMISSIONS.LEAD_GET_ALL),
+  checkPermission(PERMISSIONS.LEAD_LOCK_READ),
   LeadLockController.getLeadLocksController,
 );
 

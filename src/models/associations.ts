@@ -17,6 +17,9 @@ import Team from "./team.model";
 import TeamMember from "./teamMember.model";
 import LeadLock from "./leadLock.model";
 import LeadAssignmentBatch from "./leadAssignmentBatch.model";
+import TeamRotationConfig from "./teamRotationConfig.model";
+import LeadRotationState from "./leadRotationState.model";
+import LeadAssignmentState from "./leadAssignmentState.model";
 
 Role.belongsToMany(Permission, {
   through: RolePermission,
@@ -217,5 +220,26 @@ User.hasMany(LeadAssignmentBatch, {
 LeadAssignmentBatch.belongsTo(User, {
   foreignKey: "triggeredByUserId",
   as: "triggeredBy",
+  onDelete: "SET NULL",
+});
+
+// Lead rotation/assignment state associations
+Lead.hasOne(LeadRotationState, { foreignKey: "leadId", as: "rotationState", onDelete: "CASCADE" });
+LeadRotationState.belongsTo(Lead, { foreignKey: "leadId", as: "lead", onDelete: "CASCADE" });
+Team.hasMany(LeadRotationState, { foreignKey: "teamId", as: "rotationLeads", onDelete: "SET NULL" });
+LeadRotationState.belongsTo(Team, { foreignKey: "teamId", as: "team", onDelete: "SET NULL" });
+
+Lead.hasOne(LeadAssignmentState, { foreignKey: "leadId", as: "assignmentState", onDelete: "CASCADE" });
+LeadAssignmentState.belongsTo(Lead, { foreignKey: "leadId", as: "lead", onDelete: "CASCADE" });
+Team.hasMany(LeadAssignmentState, { foreignKey: "teamId", as: "assignmentLeads", onDelete: "SET NULL" });
+LeadAssignmentState.belongsTo(Team, { foreignKey: "teamId", as: "team", onDelete: "SET NULL" });
+User.hasMany(LeadAssignmentState, {
+  foreignKey: "currentAssigneeUserId",
+  as: "assignedLeadStates",
+  onDelete: "SET NULL",
+});
+LeadAssignmentState.belongsTo(User, {
+  foreignKey: "currentAssigneeUserId",
+  as: "currentAssignee",
   onDelete: "SET NULL",
 });

@@ -113,4 +113,17 @@ export const PERMISSIONS = {
   TEAM_UPDATE: "team:update",
   TEAM_DELETE: "team:delete",
   TEAM_MANAGE_MEMBERS: "team:manageMembers",
+
+  // Lead Lock permissions (new)
+  LEAD_LOCK_READ: "leadLock:read",
+  LEAD_LOCK_WRITE: "leadLock:write",
+
+  // Lead Assignment Batch permissions (new)
+  LEAD_ASSIGNMENT_BATCH_READ: "leadAssignmentBatch:read",
+  LEAD_ASSIGNMENT_BATCH_WRITE: "leadAssignmentBatch:write",
+
+  // Incoming Leads (staging) permissions (new)
+  INCOMING_LEAD_READ: "incomingLead:read",
+  INCOMING_LEAD_WRITE: "incomingLead:write",
+  INCOMING_LEAD_PROMOTE: "incomingLead:promote",
 };

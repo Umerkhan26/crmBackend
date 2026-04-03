@@ -27,7 +27,15 @@ export const getIncomingLeadsController = async (req: Request, res: Response): P
     const status = (req.query.status as string) as any;
     const search = (req.query.search as string) || "";
     const runId = (req.query.runId as string) || undefined;
-    const result = await getIncomingLeads({ page, limit, search, status, runId });
+    const campaignName = (req.query.campaignName as string) || undefined;
+    const result = await getIncomingLeads({
+      page,
+      limit,
+      search,
+      status,
+      runId,
+      campaignName,
+    });
     return res.status(200).json({ success: true, message: "Incoming leads retrieved", ...result });
   } catch (error: any) {
     return res.status(500).json({ success: false, message: error.message || "Error fetching incoming leads" });

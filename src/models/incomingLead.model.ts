@@ -22,6 +22,8 @@ export interface IncomingLeadAttributes {
   promotedAt?: Date | null;
   // Optional references for audit (not enforcing FK now to keep staging isolated)
   targetLeadId?: number | null; // id in leads after promotion
+  createdAt?: Date;
+  updatedAt?: Date;
 }
 
 export interface IncomingLeadCreationAttributes
@@ -37,6 +39,8 @@ export interface IncomingLeadCreationAttributes
     | "assignedAt"
     | "promotedAt"
     | "targetLeadId"
+    | "createdAt"
+    | "updatedAt"
   > {}
 
 export class IncomingLead

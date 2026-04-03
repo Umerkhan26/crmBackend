@@ -342,7 +342,7 @@ export const assignByDateToTeamA = async ({
     const members = await getActiveMemberUserIds(teamA.id);
     if (members.length === 0) throw new Error("No active members in Team A");
 
-    const rows = await IncomingLead.findAll({
+    const rows: InstanceType<typeof IncomingLead>[] = await IncomingLead.findAll({
       where: {
         status: { [Op.ne]: "promoted" },
         createdAt: { [Op.between]: [start, end] },

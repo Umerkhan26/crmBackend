@@ -1,6 +1,29 @@
 import { Request, Response } from "express";
 import { assignByDateToTeamA, rebalanceTeam, rotateByTenure, runManualAutoAssignment } from "../services/autoAssignment.service";
 
+const formatAssignmentError = (error: any): { status: number; message: string } => {
+  if (!error) return { status: 500, message: "Unknown error" };
+  const name = error.name as string | undefined;
+  if (name === "SequelizeUniqueConstraintError") {
+    return {
+      status: 409,
+      message:
+        "A batch record with this key already exists. Retry the operation; audit batch ids are generated uniquely per run.",
+    };
+  }
+  if (name === "SequelizeValidationError" && Array.isArray(error.errors) && error.errors.length > 0) {
+    return {
+      status: 400,
+      message: error.errors.map((e: any) => e.message).join("; "),
+    };
+  }
+  const msg = error.message || "Request failed";
+  if (/not found|Invalid team|No active members|rotation order is empty|rotation config/i.test(msg)) {
+    return { status: 400, message: msg };
+  }
+  return { status: 500, message: msg };
+};
+
 export const runManualAutoAssignmentController = async (req: Request, res: Response): Promise<any> => {
   try {
     const { runId, tenureHours } = req.body || {};
@@ -12,7 +35,8 @@ export const runManualAutoAssignmentController = async (req: Request, res: Respo
     });
     return res.status(200).json({ success: true, message: "Auto-assignment run completed", data: result });
   } catch (error: any) {
-    return res.status(500).json({ success: false, message: error.message || "Auto-assignment error" });
+    const { status, message } = formatAssignmentError(error);
+    return res.status(status).json({ success: false, message });
   }
 };
 
@@ -29,7 +53,8 @@ export const assignByDateToTeamAController = async (req: Request, res: Response)
     });
     return res.status(200).json({ success: true, message: "Assigned to Team A by date window", data });
   } catch (error: any) {
-    return res.status(500).json({ success: false, message: error.message || "Assign-by-date error" });
+    const { status, message } = formatAssignmentError(error);
+    return res.status(status).json({ success: false, message });
   }
 };
 
@@ -46,11 +71,13 @@ export const rebalanceTeamController = async (req: Request, res: Response): Prom
 
 export const rotateByTenureController = async (req: Request, res: Response): Promise<any> => {
   try {
-    const { tenureHours = 24 } = req.body || {};
+    const raw = (req.body || {}).tenureHours;
+    const tenureHours = Number.isFinite(Number(raw)) && Number(raw) >= 0 ? Number(raw) : 24;
     const data = await rotateByTenure({ tenureHours });
     return res.status(200).json({ success: true, message: "Rotation completed", data });
   } catch (error: any) {
-    return res.status(500).json({ success: false, message: error.message || "Rotation error" });
+    const { status, message } = formatAssignmentError(error);
+    return res.status(status).json({ success: false, message });
   }
 };
 

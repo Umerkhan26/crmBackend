@@ -2,8 +2,16 @@ import EmailTemplate from "../models/emailTemplate.model";
 import { Request, Response } from "express";
 
 export const getEmailTemplates = async (req: Request, res: Response) => {
-  const templates = await EmailTemplate.findAll();
-  res.json(templates);
+  try {
+    const templates = await EmailTemplate.findAll({ order: [["id", "ASC"]] });
+    res.json(templates);
+  } catch (error: any) {
+    console.error("[getEmailTemplates]", error);
+    res.status(500).json({
+      success: false,
+      message: error?.message || "Failed to load email templates",
+    });
+  }
 };
 
 export const updateEmailTemplate = async (req: Request, res: Response): Promise<any> => {

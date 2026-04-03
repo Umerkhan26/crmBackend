@@ -2,6 +2,7 @@ import { Op, Sequelize } from "sequelize";
 import IncomingLead from "../models/incomingLead.model";
 import Lead from "../models/lead.model";
 import { getPagination, getPagingData } from "../utils/paginate";
+import { normalizeLeadDataInput } from "../utils/normalizeLeadData";
 
 export const createIncomingLead = async ({
   runId,
@@ -134,7 +135,7 @@ export const promoteIncomingLead = async ({
   // Create live lead (no assignment here; cron will handle later)
   const lead = await Lead.create({
     campaignName,
-    leadData: payload,
+    leadData: normalizeLeadDataInput(payload),
     createdBy: createdBy || null,
     assignees: [],
   } as any);

@@ -10,8 +10,25 @@ import LeadAssignmentState from "../models/leadAssignmentState.model";
 import IncomingLead from "../models/incomingLead.model";
 import LeadAssignmentBatch from "../models/leadAssignmentBatch.model";
 import { DateTime } from "luxon";
+import { normalizeLeadDataInput } from "../utils/normalizeLeadData";
 
 type Id = number;
+
+/** DB requires unique `lead_assignment_batches.runId` — never reuse import batch ids here. */
+const makeAuditBatchRunId = (prefix: string, hint?: string): string => {
+  const ts = Date.now().toString(36);
+  const rand = Math.random().toString(36).slice(2, 8);
+  const safeHint = hint?.trim()
+    ? hint
+        .trim()
+        .replace(/[^a-zA-Z0-9_-]/g, "")
+        .slice(0, 48)
+    : "";
+  const base = safeHint
+    ? `${prefix}-${safeHint}-${ts}-${rand}`
+    : `${prefix}-${ts}-${rand}`;
+  return base.slice(0, 128);
+};
 
 const getTeamByCodeA = async (): Promise<Team> => {
   const teamA =
@@ -41,12 +58,97 @@ const chooseAssigneesEqualSplit = (leadIds: Id[], userIds: Id[]): Map<Id, Id> =>
   return map;
 };
 
+/**
+ * Rebalance: exact equal quotas per active member (remainder to first members in array order).
+ * For each lead, prefer a member with remaining quota whose id !== current assignee; otherwise
+ * any member with quota (single-member team or no alternative left).
+ */
+const buildRebalanceTeamAssigneePlan = (
+  movableLeadIds: Id[],
+  memberIds: Id[],
+  leadIdToCurrentAssignee: Map<Id, Id | null | undefined>,
+): Map<Id, Id> => {
+  const plan = new Map<Id, Id>();
+  if (movableLeadIds.length === 0 || memberIds.length === 0) return plan;
+
+  const m = memberIds.length;
+  const n = movableLeadIds.length;
+  const base = Math.floor(n / m);
+  const rem = n % m;
+  const quotaLeft = new Map<Id, number>();
+  memberIds.forEach((uid, i) => {
+    quotaLeft.set(uid, base + (i < rem ? 1 : 0));
+  });
+
+  const sortedLeads = [...movableLeadIds].sort((a, b) => a - b);
+
+  for (const leadId of sortedLeads) {
+    const currentRaw = leadIdToCurrentAssignee.get(leadId);
+    const current =
+      currentRaw != null && Number.isFinite(Number(currentRaw)) ? Number(currentRaw) : null;
+
+    const withQuota = memberIds.filter((uid) => (quotaLeft.get(uid) ?? 0) > 0);
+    let chosen: Id;
+    if (withQuota.length === 0) {
+      chosen = memberIds[0];
+    } else if (withQuota.length === 1) {
+      chosen = withQuota[0];
+    } else {
+      const prefer = withQuota.filter((uid) => uid !== current);
+      const pool = prefer.length > 0 ? prefer : withQuota;
+      chosen = [...pool].sort((a, b) => {
+        const diff = (quotaLeft.get(b) ?? 0) - (quotaLeft.get(a) ?? 0);
+        if (diff !== 0) return diff;
+        return a - b;
+      })[0];
+    }
+
+    plan.set(leadId, chosen);
+    quotaLeft.set(chosen, (quotaLeft.get(chosen) ?? 0) - 1);
+  }
+
+  return plan;
+};
+
 const getRotationOrderTeamIds = async (): Promise<number[]> => {
-  const cfg = await TeamRotationConfig.findOne();
-  if (!cfg) throw new Error("Team rotation config not found");
-  const order = (cfg.get("rotationOrder") as any[]) || [];
-  if (!Array.isArray(order) || order.length === 0) throw new Error("Team rotation order is empty");
-  return order.map((x) => Number(x)).filter((x) => Number.isFinite(x));
+  let cfg = await TeamRotationConfig.findOne();
+  if (!cfg) {
+    const teams = await Team.findAll({
+      order: [["sortOrder", "ASC"], ["id", "ASC"]],
+      attributes: ["id"],
+    });
+    const ids = teams.map((t: any) => t.id as number);
+    if (ids.length === 0) {
+      throw new Error(
+        "No team_rotation_config row and no teams in `teams`. Create teams, then run: npx ts-node src/scripts/sync-auto-assignment.ts",
+      );
+    }
+    cfg = await TeamRotationConfig.create({ enabled: true, rotationOrder: ids } as any);
+  }
+
+  let order = (cfg!.get("rotationOrder") as any[]) || [];
+  if (!Array.isArray(order) || order.length === 0) {
+    const teams = await Team.findAll({
+      order: [["sortOrder", "ASC"], ["id", "ASC"]],
+      attributes: ["id"],
+    });
+    const ids = teams.map((t: any) => t.id as number);
+    if (ids.length === 0) {
+      throw new Error(
+        "team_rotation_config.rotationOrder is empty and there are no teams. Add teams, then run: npx ts-node src/scripts/sync-auto-assignment.ts",
+      );
+    }
+    await cfg!.update({ rotationOrder: ids } as any);
+    order = ids;
+  }
+
+  const numeric = order.map((x) => Number(x)).filter((x) => Number.isFinite(x));
+  if (numeric.length === 0) {
+    throw new Error(
+      "team_rotation_config.rotationOrder has no valid team ids. Fix JSON in DB or run: npx ts-node src/scripts/sync-auto-assignment.ts",
+    );
+  }
+  return numeric;
 };
 
 const getNextTeamId = (order: number[], currentTeamId: number): number | null => {
@@ -66,12 +168,14 @@ export const runManualAutoAssignment = async ({
   triggeredByUserId?: number;
 }) => {
   if (!runId?.trim()) throw new Error("runId is required");
+  const incomingRunId = runId.trim();
   const startedBatch = await LeadAssignmentBatch.create({
-    runId: runId.trim(),
+    runId: makeAuditBatchRunId("man", incomingRunId),
     triggerType: "manual",
     status: "running",
     startedAt: new Date(),
     triggeredByUserId: triggeredByUserId || null,
+    metadata: { incomingRunId } as any,
   } as any);
 
   let rotatedCount = 0;
@@ -264,6 +368,7 @@ export const runManualAutoAssignment = async ({
     );
     return {
       batchId: (startedBatch as any).id,
+      incomingRunId,
       rotatedCount,
       rebalancedCount,
       newAssignedCount,
@@ -326,13 +431,20 @@ export const assignByDateToTeamA = async ({
   triggeredByUserId?: number;
 }) => {
   const { start, end, zone } = computeWindow({ window, tz, customStart, customEnd });
+  const hint = runId?.trim() || DateTime.fromJSDate(start).toFormat("yyyyLLdd");
   const batch = await LeadAssignmentBatch.create({
-    runId: runId || `assign-${DateTime.fromJSDate(start).toFormat("yyyyLLdd")}`,
+    runId: makeAuditBatchRunId("asg", hint),
     triggerType: "manual",
     status: "running",
     startedAt: new Date(),
     triggeredByUserId: triggeredByUserId || null,
-    metadata: { window, tz: zone, start, end },
+    metadata: {
+      window,
+      tz: zone,
+      start,
+      end,
+      ...(runId?.trim() ? { labelRunId: runId.trim() } : {}),
+    } as any,
   } as any);
 
   let newAssignedCount = 0;
@@ -363,7 +475,7 @@ export const assignByDateToTeamA = async ({
       const lead = await Lead.create(
         {
           campaignName,
-          leadData: payload,
+          leadData: normalizeLeadDataInput(payload),
           assignees: [],
           createdBy: triggeredByUserId || null,
         } as any,
@@ -411,10 +523,31 @@ export const assignByDateToTeamA = async ({
 };
 
 export const rebalanceTeam = async ({ teamId }: { teamId: number }) => {
+  if (!Number.isFinite(teamId) || teamId < 1) {
+    throw new Error("Invalid team ID: use a positive team id from GET /teams (or your teams table).");
+  }
+  const teamExists = await Team.findByPk(teamId);
+  if (!teamExists) {
+    const sample = await Team.findAll({
+      attributes: ["id", "name", "code"],
+      order: [["sortOrder", "ASC"], ["id", "ASC"]],
+      limit: 15,
+    });
+    const hint =
+      sample.length > 0
+        ? ` Valid ids right now: ${sample.map((t: any) => `${t.id}(${t.code || t.name})`).join(", ")}.`
+        : " No teams exist yet — create teams in admin first.";
+    throw new Error(`Team not found (id=${teamId}).${hint}`);
+  }
+
   const t = await db.transaction();
   try {
     const members = await getActiveMemberUserIds(teamId);
-    if (members.length === 0) throw new Error("No active members in team");
+    if (members.length === 0) {
+      throw new Error(
+        `No active members in team ${teamId}. Add active team_members for this team before rebalancing.`,
+      );
+    }
     const states = await LeadAssignmentState.findAll({
       where: { teamId },
       transaction: t,
@@ -423,7 +556,12 @@ export const rebalanceTeam = async ({ teamId }: { teamId: number }) => {
     const leadIds = states.map((s: any) => s.leadId as number);
     if (leadIds.length === 0) {
       await t.commit();
-      return { rebalanced: 0 };
+      return {
+        rebalanced: 0,
+        /** Rows in lead_assignment_state for this team (0 = no pipeline-tracked leads on this team yet). */
+        trackedForTeam: 0,
+        skippedLocked: 0,
+      };
     }
     const lockedRows = await LeadLock.findAll({
       where: { leadId: { [Op.in]: leadIds }, status: "locked" },
@@ -432,7 +570,12 @@ export const rebalanceTeam = async ({ teamId }: { teamId: number }) => {
     });
     const lockedSet = new Set<number>(lockedRows.map((r: any) => r.leadId as number));
     const movable = leadIds.filter((id) => !lockedSet.has(id));
-    const plan = chooseAssigneesEqualSplit(movable, members);
+    const skippedLocked = leadIds.length - movable.length;
+    const leadIdToCurrentAssignee = new Map<Id, Id | null | undefined>();
+    for (const s of states) {
+      leadIdToCurrentAssignee.set((s as any).leadId as number, (s as any).currentAssigneeUserId as Id | null);
+    }
+    const plan = buildRebalanceTeamAssigneePlan(movable, members, leadIdToCurrentAssignee);
     let count = 0;
     for (const leadId of movable) {
       const assigneeId = plan.get(leadId)!;
@@ -448,40 +591,59 @@ export const rebalanceTeam = async ({ teamId }: { teamId: number }) => {
       count++;
     }
     await t.commit();
-    return { rebalanced: count };
+    return { rebalanced: count, trackedForTeam: leadIds.length, skippedLocked };
   } catch (e: any) {
     await t.rollback();
     throw e;
   }
 };
 
+/** tenureHours 0 → cutoff is “now”, so every rotation row with enteredTeamAt ≤ now is eligible (typical testing). */
 export const rotateByTenure = async ({ tenureHours = 24 }: { tenureHours?: number }) => {
   const t = await db.transaction();
   try {
     const order = await getRotationOrderTeamIds();
     const cutoff = new Date(Date.now() - tenureHours * 60 * 60 * 1000);
+    const rotationRowsTotal = await LeadRotationState.count({ transaction: t });
     const toRotate = await LeadRotationState.findAll({
       where: { enteredTeamAt: { [Op.lte]: cutoff } },
       transaction: t,
       lock: t.LOCK.UPDATE,
     });
+    const pastTenureCount = toRotate.length;
     let rotated = 0;
+    let skippedNoNext = 0;
+    let skippedNoMembers = 0;
+    let skippedLocked = 0;
+    let skippedLeadMissing = 0;
     for (const rs of toRotate) {
       const leadId = (rs as any).leadId as number;
       const currentTeamId = (rs as any).teamId as number;
       const nextTeamId = getNextTeamId(order, currentTeamId);
-      if (!nextTeamId) continue;
+      if (!nextTeamId) {
+        skippedNoNext++;
+        continue;
+      }
       const nextMembers = await getActiveMemberUserIds(nextTeamId);
-      if (nextMembers.length === 0) continue;
+      if (nextMembers.length === 0) {
+        skippedNoMembers++;
+        continue;
+      }
       const lock = await LeadLock.findOne({
         where: { leadId, status: "locked" },
         transaction: t,
         lock: t.LOCK.UPDATE,
       });
-      if (lock) continue;
+      if (lock) {
+        skippedLocked++;
+        continue;
+      }
       const assignee = nextMembers[leadId % nextMembers.length];
       const lead = await Lead.findByPk(leadId, { transaction: t, lock: t.LOCK.UPDATE });
-      if (!lead) continue;
+      if (!lead) {
+        skippedLeadMissing++;
+        continue;
+      }
       const assignedAt = new Date().toISOString();
       const assignees = [{ userId: assignee, status: "pending", assignedAt }];
       await lead.update({ assignees } as any, { transaction: t });
@@ -498,7 +660,17 @@ export const rotateByTenure = async ({ tenureHours = 24 }: { tenureHours?: numbe
       rotated++;
     }
     await t.commit();
-    return { rotated };
+    return {
+      rotated,
+      tenureHours,
+      cutoffAt: cutoff.toISOString(),
+      rotationRowsTotal,
+      pastTenureCount,
+      skippedNoNext,
+      skippedNoMembers,
+      skippedLocked,
+      skippedLeadMissing,
+    };
   } catch (e: any) {
     await t.rollback();
     throw e;

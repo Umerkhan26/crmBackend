@@ -1,7 +1,8 @@
-import { Op } from "sequelize";
+import { Op, Sequelize } from "sequelize";
 import IncomingLead from "../models/incomingLead.model";
 import Lead from "../models/lead.model";
 import { getPagination, getPagingData } from "../utils/paginate";
+import { normalizeLeadDataInput } from "../utils/normalizeLeadData";
 
 export const createIncomingLead = async ({
   runId,
@@ -35,24 +36,47 @@ export const getIncomingLeads = async ({
   search = "",
   status = "all",
   runId,
+  campaignName,
 }: {
   page?: number;
   limit?: number;
   search?: string;
   status?: "pending" | "validated" | "assigned" | "promoted" | "failed" | "all";
   runId?: string;
+  /** Exact match on stored campaign name (same string as import) */
+  campaignName?: string;
 }) => {
   const { offset, limit: pageLimit } = getPagination({ page, limit });
-  const whereClause: any = {};
-  if (status !== "all") whereClause.status = status;
-  if (runId) whereClause.runId = runId;
-  if (search) {
-    whereClause[Op.or] = [
-      { campaignName: { [Op.like]: `%${search}%` } },
-      { externalId: { [Op.like]: `%${search}%` } },
-      { runId: { [Op.like]: `%${search}%` } },
+
+  const andParts: any[] = [];
+  if (status !== "all") andParts.push({ status });
+  if (runId?.trim()) andParts.push({ runId: runId.trim() });
+  if (campaignName?.trim()) andParts.push({ campaignName: campaignName.trim() });
+
+  if (search?.trim()) {
+    const term = `%${search.trim()}%`;
+    const orParts: any[] = [
+      { externalId: { [Op.like]: term } },
+      { runId: { [Op.like]: term } },
     ];
+    if (!campaignName?.trim()) {
+      orParts.push({ campaignName: { [Op.like]: term } });
+    }
+    orParts.push(
+      Sequelize.where(Sequelize.cast(Sequelize.col("payload"), "CHAR"), {
+        [Op.like]: term,
+      }),
+    );
+    andParts.push({ [Op.or]: orParts });
   }
+
+  const whereClause =
+    andParts.length === 0
+      ? {}
+      : andParts.length === 1
+        ? andParts[0]
+        : { [Op.and]: andParts };
+
   const data = await IncomingLead.findAndCountAll({
     where: whereClause,
     offset,
@@ -111,7 +135,7 @@ export const promoteIncomingLead = async ({
   // Create live lead (no assignment here; cron will handle later)
   const lead = await Lead.create({
     campaignName,
-    leadData: payload,
+    leadData: normalizeLeadDataInput(payload),
     createdBy: createdBy || null,
     assignees: [],
   } as any);

@@ -835,3 +835,71 @@ export const rotateByTenure = async ({
   }
 };
 
+export const deepResetByRunOrWindow = async ({
+  runId,
+  start,
+  end,
+}: {
+  runId?: string;
+  start?: string;
+  end?: string;
+}): Promise<{
+  incomingDeleted: number;
+  leadsDeleted: number;
+  stateDeleted: { assignment: number; rotation: number; locks: number };
+}> => {
+  if (!runId && (!start || !end)) {
+    throw new Error("Provide runId or start+end ISO timestamps to reset.");
+  }
+  const whereIncoming: any = {};
+  if (runId) whereIncoming.runId = runId.trim();
+  if (start && end) {
+    const s = new Date(start);
+    const e = new Date(end);
+    if (Number.isNaN(s.getTime()) || Number.isNaN(e.getTime())) throw new Error("Invalid start/end");
+    whereIncoming.createdAt = { [Op.between]: [s, e] };
+  }
+
+  const incomingRows: InstanceType<typeof IncomingLead>[] = await IncomingLead.findAll({
+    where: whereIncoming,
+    attributes: ["id", "targetLeadId"],
+  });
+  if (incomingRows.length === 0) {
+    return {
+      incomingDeleted: 0,
+      leadsDeleted: 0,
+      stateDeleted: { assignment: 0, rotation: 0, locks: 0 },
+    };
+  }
+  const leadIds = incomingRows
+    .map((r) => Number((r as any).targetLeadId))
+    .filter((id) => Number.isFinite(id) && id > 0);
+
+  const t = await db.transaction();
+  try {
+    let locksDel = 0;
+    let assignDel = 0;
+    let rotDel = 0;
+    let leadsDel = 0;
+
+    if (leadIds.length > 0) {
+      locksDel = await LeadLock.destroy({ where: { leadId: { [Op.in]: leadIds } }, transaction: t } as any);
+      assignDel = await LeadAssignmentState.destroy({ where: { leadId: { [Op.in]: leadIds } }, transaction: t } as any);
+      rotDel = await LeadRotationState.destroy({ where: { leadId: { [Op.in]: leadIds } }, transaction: t } as any);
+      leadsDel = await Lead.destroy({ where: { id: { [Op.in]: leadIds } }, transaction: t } as any);
+    }
+
+    const incomingDel = await IncomingLead.destroy({ where: whereIncoming, transaction: t } as any);
+
+    await t.commit();
+    return {
+      incomingDeleted: incomingDel,
+      leadsDeleted: leadsDel,
+      stateDeleted: { assignment: assignDel, rotation: rotDel, locks: locksDel },
+    };
+  } catch (e) {
+    await t.rollback();
+    throw e;
+  }
+};
+

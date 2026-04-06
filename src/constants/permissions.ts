@@ -130,4 +130,5 @@ export const PERMISSIONS = {
   // Auto-assignment settings permissions (new)
   AUTO_ASSIGNMENT_SETTINGS_READ: "autoAssignmentSettings:read",
   AUTO_ASSIGNMENT_SETTINGS_WRITE: "autoAssignmentSettings:write",
+  AUTO_ASSIGNMENT_RESET: "autoAssignment:reset",
 };

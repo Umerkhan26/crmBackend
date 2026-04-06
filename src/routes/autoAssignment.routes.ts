@@ -8,6 +8,7 @@ import {
   rotateByTenureController,
   runManualAutoAssignmentController,
 } from "../controllers/autoAssignment.controller";
+import { deepResetByRunOrWindowController } from "../controllers/autoAssignment.controller";
 import {
   getAutoAssignmentSettingsController,
   updateAutoAssignmentSettingsController,
@@ -54,6 +55,13 @@ router.post(
   "/auto-assignment/rotate",
   checkPermission(PERMISSIONS.LEAD_ASSIGNMENT_BATCH_WRITE),
   rotateByTenureController,
+);
+
+// Deep reset (testing): delete promoted leads and related states for runId or window
+router.post(
+  "/auto-assignment/reset-batch",
+  checkPermission(PERMISSIONS.AUTO_ASSIGNMENT_RESET),
+  deepResetByRunOrWindowController,
 );
 
 export default router;

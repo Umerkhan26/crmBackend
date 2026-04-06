@@ -10,11 +10,12 @@ export interface LeadLockAttributes {
   status: LeadLockStatus;
   reason?: string | null;
   lockedAt: Date;
+  lockUntil?: Date | null;
   unlockedAt?: Date | null;
 }
 
 export interface LeadLockCreationAttributes
-  extends Optional<LeadLockAttributes, "id" | "status" | "reason" | "lockedAt" | "unlockedAt"> {}
+  extends Optional<LeadLockAttributes, "id" | "status" | "reason" | "lockedAt" | "lockUntil" | "unlockedAt"> {}
 
 export class LeadLock
   extends Model<LeadLockAttributes, LeadLockCreationAttributes>
@@ -26,6 +27,7 @@ export class LeadLock
   public status!: LeadLockStatus;
   public reason?: string | null;
   public lockedAt!: Date;
+  public lockUntil?: Date | null;
   public unlockedAt?: Date | null;
 
   public readonly createdAt!: Date;
@@ -65,6 +67,10 @@ LeadLock.init(
       allowNull: false,
       defaultValue: DataTypes.NOW,
     },
+    lockUntil: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
     unlockedAt: {
       type: DataTypes.DATE,
       allowNull: true,
@@ -79,6 +85,7 @@ LeadLock.init(
       { fields: ["lockedByUserId"] },
       { fields: ["status"] },
       { fields: ["leadId", "status"] },
+      { fields: ["lockUntil"] },
       { fields: ["lockedAt"] },
     ],
   },

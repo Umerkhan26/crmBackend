@@ -150,3 +150,12 @@ export const bulkPromoteIncomingLeads = async ({
   }
   return { count: rows.length, results };
 };
+
+export const resetIncomingLeads = async () => {
+  const deleted = await IncomingLead.destroy({
+    where: {},
+    truncate: true,
+    force: true,
+  } as any);
+  return { deletedCount: deleted };
+};

@@ -8,10 +8,14 @@ export const lockLead = async ({
   leadId,
   lockedByUserId,
   reason,
+  lockDays,
+  lockUntil,
 }: {
   leadId: number;
   lockedByUserId: number;
   reason?: string;
+  lockDays?: number;
+  lockUntil?: string | Date;
 }) => {
   const lead = await Lead.findByPk(leadId);
   if (!lead) throw new Error("Lead not found");
@@ -19,15 +23,32 @@ export const lockLead = async ({
   const locker = await User.findByPk(lockedByUserId);
   if (!locker) throw new Error("Locking user not found");
 
-  const activeLock = await LeadLock.findOne({ where: { leadId, status: "locked" } });
+  const now = new Date();
+  const activeLock = await LeadLock.findOne({
+    where: {
+      leadId,
+      status: "locked",
+      [Op.or]: [{ lockUntil: null }, { lockUntil: { [Op.gt]: now } }],
+    },
+  });
   if (activeLock) throw new Error("Lead is already locked");
+
+  let resolvedLockUntil: Date | null = null;
+  if (lockDays !== undefined && Number.isFinite(Number(lockDays)) && Number(lockDays) > 0) {
+    resolvedLockUntil = new Date(now.getTime() + Number(lockDays) * 24 * 60 * 60 * 1000);
+  } else if (lockUntil) {
+    const d = new Date(lockUntil);
+    if (Number.isNaN(d.getTime())) throw new Error("Invalid lockUntil date");
+    resolvedLockUntil = d;
+  }
 
   const lock = await LeadLock.create({
     leadId,
     lockedByUserId,
     reason: reason?.trim() || null,
     status: "locked",
-    lockedAt: new Date(),
+    lockedAt: now,
+    lockUntil: resolvedLockUntil,
     unlockedAt: null,
   } as any);
 
@@ -39,7 +60,14 @@ export const unlockLead = async ({
 }: {
   leadId: number;
 }) => {
-  const activeLock = await LeadLock.findOne({ where: { leadId, status: "locked" } });
+  const now = new Date();
+  const activeLock = await LeadLock.findOne({
+    where: {
+      leadId,
+      status: "locked",
+      [Op.or]: [{ lockUntil: null }, { lockUntil: { [Op.gt]: now } }],
+    },
+  });
   if (!activeLock) throw new Error("Lead is not locked");
 
   await activeLock.update({
@@ -51,6 +79,7 @@ export const unlockLead = async ({
 };
 
 export const getLeadLockByLeadId = async (leadId: number) => {
+  const now = new Date();
   const latest = await LeadLock.findOne({
     where: { leadId },
     include: [
@@ -68,7 +97,9 @@ export const getLeadLockByLeadId = async (leadId: number) => {
     return { leadId, isLocked: false, lock: null };
   }
 
-  return { leadId, isLocked: latest.status === "locked", lock: latest.toJSON() };
+  const isLocked =
+    latest.status === "locked" && (!latest.get("lockUntil") || new Date(latest.get("lockUntil") as any) > now);
+  return { leadId, isLocked, lock: latest.toJSON() };
 };
 
 export const getLeadLocks = async ({
@@ -84,7 +115,16 @@ export const getLeadLocks = async ({
 }) => {
   const { offset, limit: pageLimit } = getPagination({ page, limit });
   const whereClause: any = {};
-  if (status !== "all") whereClause.status = status;
+  const now = new Date();
+  if (status === "locked") {
+    whereClause.status = "locked";
+    whereClause[Op.or] = [{ lockUntil: null }, { lockUntil: { [Op.gt]: now } }];
+  } else if (status === "unlocked") {
+    whereClause[Op.or] = [
+      { status: "unlocked" },
+      { status: "locked", lockUntil: { [Op.lte]: now } },
+    ];
+  }
 
   const userWhere = search
     ? {

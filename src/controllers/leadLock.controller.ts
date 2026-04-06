@@ -5,13 +5,18 @@ export const setLeadLockStatusController = async (req: Request, res: Response): 
   try {
     const leadId = parseInt(req.params.leadId);
     if (isNaN(leadId)) return res.status(400).json({ success: false, message: "Invalid lead ID" });
-    const { status, reason } = req.body as { status?: "locked" | "unlocked"; reason?: string };
+    const { status, reason, lockDays, lockUntil } = req.body as {
+      status?: "locked" | "unlocked";
+      reason?: string;
+      lockDays?: number;
+      lockUntil?: string;
+    };
     if (status !== "locked" && status !== "unlocked") {
       return res.status(400).json({ success: false, message: "status must be 'locked' or 'unlocked'" });
     }
 
     if (status === "locked") {
-      const lock = await lockLead({ leadId, lockedByUserId: req.user!.id, reason });
+      const lock = await lockLead({ leadId, lockedByUserId: req.user!.id, reason, lockDays, lockUntil });
       return res.status(200).json({ success: true, message: "Lead locked successfully", data: lock });
     } else {
       const lock = await unlockLead({ leadId });

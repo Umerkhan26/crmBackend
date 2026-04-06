@@ -6,6 +6,7 @@ import {
   getIncomingLeadById,
   getIncomingLeads,
   promoteIncomingLead,
+  resetIncomingLeads,
   updateIncomingLead,
   validateIncomingLead,
 } from "../services/incomingLead.service";
@@ -102,5 +103,14 @@ export const bulkPromoteIncomingLeadsController = async (req: Request, res: Resp
     return res.status(200).json({ success: true, message: "Bulk promotion completed", data });
   } catch (error: any) {
     return res.status(500).json({ success: false, message: error.message || "Bulk promotion error" });
+  }
+};
+
+export const resetIncomingLeadsController = async (_req: Request, res: Response): Promise<any> => {
+  try {
+    const data = await resetIncomingLeads();
+    return res.status(200).json({ success: true, message: "Incoming leads table reset", data });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message || "Reset incoming leads error" });
   }
 };

@@ -1,4 +1,4 @@
-import { Op, Transaction } from "sequelize";
+import { Op } from "sequelize";
 import db from "../../db";
 import Team from "../models/team.model";
 import TeamMember from "../models/teamMember.model";
@@ -49,6 +49,55 @@ const getRotationOrderTeamIds = async (): Promise<number[]> => {
   return order.map((x) => Number(x)).filter((x) => Number.isFinite(x));
 };
 
+const getOrCreateSettings = async () => {
+  let cfg = await TeamRotationConfig.findOne();
+  if (!cfg) {
+    const teams = await Team.findAll({ order: [["sortOrder", "ASC"], ["id", "ASC"]], attributes: ["id"] });
+    const rotationOrder = teams.map((t: any) => t.id);
+    cfg = await TeamRotationConfig.create({
+      enabled: true,
+      rotationOrder,
+      tenureHours: 24,
+      rebalanceHours: 24,
+      timezone: "Asia/Karachi",
+      assignWindowDefault: "yesterday",
+    } as any);
+  }
+  return cfg;
+};
+
+export const getAutoAssignmentSettings = async () => {
+  const cfg = await getOrCreateSettings();
+  return cfg.toJSON();
+};
+
+export const updateAutoAssignmentSettings = async ({
+  enabled,
+  rotationOrder,
+  tenureHours,
+  rebalanceHours,
+  timezone,
+  assignWindowDefault,
+}: {
+  enabled?: boolean;
+  rotationOrder?: number[];
+  tenureHours?: number;
+  rebalanceHours?: number;
+  timezone?: string;
+  assignWindowDefault?: "today" | "yesterday" | "day_before_yesterday" | "custom";
+}) => {
+  const cfg = await getOrCreateSettings();
+  const payload: any = {};
+  if (enabled !== undefined) payload.enabled = enabled;
+  if (rotationOrder !== undefined) payload.rotationOrder = rotationOrder;
+  if (tenureHours !== undefined) payload.tenureHours = tenureHours;
+  if (rebalanceHours !== undefined) payload.rebalanceHours = rebalanceHours;
+  if (timezone !== undefined) payload.timezone = timezone;
+  if (assignWindowDefault !== undefined) payload.assignWindowDefault = assignWindowDefault;
+  await cfg.update(payload);
+  return cfg.toJSON();
+};
+
 const getNextTeamId = (order: number[], currentTeamId: number): number | null => {
   const idx = order.indexOf(currentTeamId);
   if (idx === -1) return null;
@@ -56,9 +105,15 @@ const getNextTeamId = (order: number[], currentTeamId: number): number | null =>
   return order[idx + 1];
 };
 
+const buildActiveLockWhere = (leadId: number) => ({
+  leadId,
+  status: "locked",
+  [Op.or]: [{ lockUntil: null }, { lockUntil: { [Op.gt]: new Date() } }],
+});
+
 export const runManualAutoAssignment = async ({
   runId,
-  tenureHours = 1,
+  tenureHours,
   triggeredByUserId,
 }: {
   runId: string;
@@ -77,6 +132,10 @@ export const runManualAutoAssignment = async ({
   let rotatedCount = 0;
   let rebalancedCount = 0;
   let newAssignedCount = 0;
+  const cfg = await getOrCreateSettings();
+  const effectiveTenureHours = Number.isFinite(Number(tenureHours))
+    ? Number(tenureHours)
+    : Number((cfg as any).tenureHours || 24);
 
   const t = await db.transaction();
   try {
@@ -156,7 +215,7 @@ export const runManualAutoAssignment = async ({
     }
 
     // 2) Rotate leads whose tenure elapsed (>= tenureHours)
-    const cutoff = new Date(Date.now() - tenureHours * 60 * 60 * 1000);
+    const cutoff = new Date(Date.now() - effectiveTenureHours * 60 * 60 * 1000);
     const toRotate = await LeadRotationState.findAll({
       where: { enteredTeamAt: { [Op.lte]: cutoff } },
       transaction: t,
@@ -175,7 +234,7 @@ export const runManualAutoAssignment = async ({
       if (!lead) continue;
       // Skip locked leads
       const activeLock = await LeadLock.findOne({
-        where: { leadId, status: "locked" },
+        where: buildActiveLockWhere(leadId) as any,
         transaction: t,
         lock: t.LOCK.UPDATE,
       });
@@ -312,27 +371,30 @@ const computeWindow = ({
 
 export const assignByDateToTeamA = async ({
   window,
-  tz = "Asia/Karachi",
+  tz,
   customStart,
   customEnd,
   runId,
   triggeredByUserId,
 }: {
-  window: "today" | "yesterday" | "day_before_yesterday" | "custom";
+  window?: "today" | "yesterday" | "day_before_yesterday" | "custom";
   tz?: string;
   customStart?: string;
   customEnd?: string;
   runId?: string;
   triggeredByUserId?: number;
 }) => {
-  const { start, end, zone } = computeWindow({ window, tz, customStart, customEnd });
+  const cfg = await getOrCreateSettings();
+  const effectiveWindow = window || ((cfg as any).assignWindowDefault as any) || "yesterday";
+  const effectiveTz = tz || ((cfg as any).timezone as string) || "Asia/Karachi";
+  const { start, end, zone } = computeWindow({ window: effectiveWindow, tz: effectiveTz, customStart, customEnd });
   const batch = await LeadAssignmentBatch.create({
     runId: runId || `assign-${DateTime.fromJSDate(start).toFormat("yyyyLLdd")}`,
     triggerType: "manual",
     status: "running",
     startedAt: new Date(),
     triggeredByUserId: triggeredByUserId || null,
-    metadata: { window, tz: zone, start, end },
+    metadata: { window: effectiveWindow, tz: zone, start, end },
   } as any);
 
   let newAssignedCount = 0;
@@ -426,7 +488,16 @@ export const rebalanceTeam = async ({ teamId }: { teamId: number }) => {
       return { rebalanced: 0 };
     }
     const lockedRows = await LeadLock.findAll({
-      where: { leadId: { [Op.in]: leadIds }, status: "locked" },
+      where: {
+        leadId: { [Op.in]: leadIds },
+        status: "locked",
+        [Op.or]: [{ lockUntil: null }, { lockUntil: { [Op.gt]: new Date() } }],
+      },
+      where: {
+        leadId: { [Op.in]: leadIds },
+        status: "locked",
+        [Op.or]: [{ lockUntil: null }, { lockUntil: { [Op.gt]: new Date() } }],
+      },
       attributes: ["leadId"],
       transaction: t,
     });
@@ -458,8 +529,12 @@ export const rebalanceTeam = async ({ teamId }: { teamId: number }) => {
 export const rotateByTenure = async ({ tenureHours = 24 }: { tenureHours?: number }) => {
   const t = await db.transaction();
   try {
+    const cfg = await getOrCreateSettings();
+    const effectiveTenureHours = Number.isFinite(Number(tenureHours))
+      ? Number(tenureHours)
+      : Number((cfg as any).tenureHours || 24);
     const order = await getRotationOrderTeamIds();
-    const cutoff = new Date(Date.now() - tenureHours * 60 * 60 * 1000);
+    const cutoff = new Date(Date.now() - effectiveTenureHours * 60 * 60 * 1000);
     const toRotate = await LeadRotationState.findAll({
       where: { enteredTeamAt: { [Op.lte]: cutoff } },
       transaction: t,
@@ -474,7 +549,7 @@ export const rotateByTenure = async ({ tenureHours = 24 }: { tenureHours?: numbe
       const nextMembers = await getActiveMemberUserIds(nextTeamId);
       if (nextMembers.length === 0) continue;
       const lock = await LeadLock.findOne({
-        where: { leadId, status: "locked" },
+        where: buildActiveLockWhere(leadId) as any,
         transaction: t,
         lock: t.LOCK.UPDATE,
       });

@@ -7,10 +7,15 @@ export interface TeamRotationConfigAttributes {
   rotationOrder: number[]; // array of Team IDs in order A->E
   tenureHours?: number | null; // default rotation window in hours
   timezone?: string | null; // e.g., "Asia/Karachi"
+  rebalanceHours?: number | null; // default rebalance cadence in hours
+  assignWindowDefault?: "today" | "yesterday" | "day_before_yesterday" | "custom" | null;
 }
 
 export interface TeamRotationConfigCreationAttributes
-  extends Optional<TeamRotationConfigAttributes, "id" | "enabled" | "tenureHours" | "timezone"> {}
+  extends Optional<
+    TeamRotationConfigAttributes,
+    "id" | "enabled" | "tenureHours" | "timezone" | "rebalanceHours" | "assignWindowDefault"
+  > {}
 
 export class TeamRotationConfig
   extends Model<TeamRotationConfigAttributes, TeamRotationConfigCreationAttributes>
@@ -19,6 +24,10 @@ export class TeamRotationConfig
   public id!: number;
   public enabled!: boolean;
   public rotationOrder!: number[];
+  public tenureHours?: number | null;
+  public timezone?: string | null;
+  public rebalanceHours?: number | null;
+  public assignWindowDefault?: "today" | "yesterday" | "day_before_yesterday" | "custom" | null;
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
@@ -48,6 +57,15 @@ TeamRotationConfig.init(
     timezone: {
       type: DataTypes.STRING(64),
       allowNull: true,
+    },
+    rebalanceHours: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+    assignWindowDefault: {
+      type: DataTypes.ENUM("today", "yesterday", "day_before_yesterday", "custom"),
+      allowNull: true,
+      defaultValue: "yesterday",
     },
   },
   {

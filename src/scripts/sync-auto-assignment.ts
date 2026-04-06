@@ -34,6 +34,10 @@ const run = async () => {
       await TeamRotationConfig.create({
         enabled: true,
         rotationOrder,
+        tenureHours: 24,
+        rebalanceHours: 24,
+        timezone: "Asia/Karachi",
+        assignWindowDefault: "yesterday",
       } as any);
       console.log("🌱 Seeded default team rotation order from existing teams.");
     } else {

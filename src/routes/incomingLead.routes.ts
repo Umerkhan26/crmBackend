@@ -50,5 +50,10 @@ router.post(
   checkPermission(PERMISSIONS.INCOMING_LEAD_PROMOTE),
   IncomingLeadController.bulkPromoteIncomingLeadsController,
 );
+router.delete(
+  "/incoming-leads/reset/all",
+  checkPermission(PERMISSIONS.INCOMING_LEAD_WRITE),
+  IncomingLeadController.resetIncomingLeadsController,
+);
 
 export default router;

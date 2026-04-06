@@ -126,4 +126,8 @@ export const PERMISSIONS = {
   INCOMING_LEAD_READ: "incomingLead:read",
   INCOMING_LEAD_WRITE: "incomingLead:write",
   INCOMING_LEAD_PROMOTE: "incomingLead:promote",
+
+  // Auto-assignment settings permissions (new)
+  AUTO_ASSIGNMENT_SETTINGS_READ: "autoAssignmentSettings:read",
+  AUTO_ASSIGNMENT_SETTINGS_WRITE: "autoAssignmentSettings:write",
 };

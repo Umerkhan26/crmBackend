@@ -30,7 +30,7 @@ export const runManualAutoAssignmentController = async (req: Request, res: Respo
     if (!runId) return res.status(400).json({ success: false, message: "runId is required" });
     const result = await runManualAutoAssignment({
       runId,
-      tenureHours: Number.isFinite(Number(tenureHours)) ? Number(tenureHours) : 1,
+      tenureHours: Number.isFinite(Number(tenureHours)) ? Number(tenureHours) : undefined,
       triggeredByUserId: req.user?.id,
     });
     return res.status(200).json({ success: true, message: "Auto-assignment run completed", data: result });
@@ -42,10 +42,10 @@ export const runManualAutoAssignmentController = async (req: Request, res: Respo
 
 export const assignByDateToTeamAController = async (req: Request, res: Response): Promise<any> => {
   try {
-    const { window = "yesterday", tz = "Asia/Karachi", customStart, customEnd, runId } = req.body || {};
+    const { window, tz, customStart, customEnd, runId } = req.body || {};
     const data = await assignByDateToTeamA({
-      window,
-      tz,
+      ...(window !== undefined && window !== "" ? { window } : {}),
+      ...(tz !== undefined && String(tz).trim() !== "" ? { tz } : {}),
       customStart,
       customEnd,
       runId,
@@ -79,7 +79,10 @@ export const rotateByTenureController = async (req: Request, res: Response): Pro
   try {
     const body = req.body || {};
     const raw = body.tenureHours;
-    const tenureHours = Number.isFinite(Number(raw)) && Number(raw) >= 0 ? Number(raw) : 24;
+    const tenureHours =
+      raw !== undefined && raw !== null && String(raw).trim() !== "" && Number.isFinite(Number(raw)) && Number(raw) >= 0
+        ? Number(raw)
+        : undefined;
     const labelRunId = body.labelRunId ?? body.runId;
     const data = await rotateByTenure({
       tenureHours,

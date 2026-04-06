@@ -1,6 +1,7 @@
 
 import { Sequelize } from "sequelize";
 import dotenv from "dotenv";
+import { patchMissingSchemaColumns } from "./src/utils/patchSchemaColumns";
 
 dotenv.config();
 
@@ -19,6 +20,8 @@ export const connectDB = async () => {
   try {
     await db.authenticate();
     console.log("✅ Database connected successfully");
+
+    await patchMissingSchemaColumns(db);
 
     // Sync database with error handling for missing constraints
     try {

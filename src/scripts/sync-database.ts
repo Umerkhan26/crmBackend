@@ -5,11 +5,14 @@
 
 import db from "../../db";
 import "../models/index";
+import { patchMissingSchemaColumns } from "../utils/patchSchemaColumns";
 
 const runSync = async () => {
   try {
     await db.authenticate();
     console.log("Database connection established.");
+
+    await patchMissingSchemaColumns();
 
     // sync() creates missing tables only; alter: true can hit MySQL index limit
     await db.sync();

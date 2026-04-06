@@ -522,7 +522,15 @@ export const assignByDateToTeamA = async ({
   }
 };
 
-export const rebalanceTeam = async ({ teamId }: { teamId: number }) => {
+export const rebalanceTeam = async ({
+  teamId,
+  triggeredByUserId,
+  labelRunId,
+}: {
+  teamId: number;
+  triggeredByUserId?: number;
+  labelRunId?: string;
+}) => {
   if (!Number.isFinite(teamId) || teamId < 1) {
     throw new Error("Invalid team ID: use a positive team id from GET /teams (or your teams table).");
   }
@@ -540,14 +548,30 @@ export const rebalanceTeam = async ({ teamId }: { teamId: number }) => {
     throw new Error(`Team not found (id=${teamId}).${hint}`);
   }
 
+  const members = await getActiveMemberUserIds(teamId);
+  if (members.length === 0) {
+    throw new Error(
+      `No active members in team ${teamId}. Add active team_members for this team before rebalancing.`,
+    );
+  }
+
+  const hint = labelRunId?.trim() || `team${teamId}`;
+  const batch = await LeadAssignmentBatch.create({
+    runId: makeAuditBatchRunId("rebal", hint),
+    triggerType: "manual",
+    status: "running",
+    startedAt: new Date(),
+    triggeredByUserId: triggeredByUserId || null,
+    metadata: {
+      operation: "rebalance-team",
+      teamId,
+      teamCode: (teamExists as any).get?.("code") ?? (teamExists as any).code,
+      ...(labelRunId?.trim() ? { labelRunId: labelRunId.trim() } : {}),
+    } as any,
+  } as any);
+
   const t = await db.transaction();
   try {
-    const members = await getActiveMemberUserIds(teamId);
-    if (members.length === 0) {
-      throw new Error(
-        `No active members in team ${teamId}. Add active team_members for this team before rebalancing.`,
-      );
-    }
     const states = await LeadAssignmentState.findAll({
       where: { teamId },
       transaction: t,
@@ -556,11 +580,22 @@ export const rebalanceTeam = async ({ teamId }: { teamId: number }) => {
     const leadIds = states.map((s: any) => s.leadId as number);
     if (leadIds.length === 0) {
       await t.commit();
-      return {
-        rebalanced: 0,
-        /** Rows in lead_assignment_state for this team (0 = no pipeline-tracked leads on this team yet). */
+      const meta = {
+        ...(((batch as any).get("metadata") as object) || {}),
         trackedForTeam: 0,
         skippedLocked: 0,
+      };
+      await batch.update({
+        status: "completed",
+        finishedAt: new Date(),
+        rebalancedCount: 0,
+        metadata: meta as any,
+      } as any);
+      return {
+        rebalanced: 0,
+        trackedForTeam: 0,
+        skippedLocked: 0,
+        batchId: (batch as any).id,
       };
     }
     const lockedRows = await LeadLock.findAll({
@@ -591,19 +626,54 @@ export const rebalanceTeam = async ({ teamId }: { teamId: number }) => {
       count++;
     }
     await t.commit();
-    return { rebalanced: count, trackedForTeam: leadIds.length, skippedLocked };
+    const metaDone = {
+      ...(((batch as any).get("metadata") as object) || {}),
+      trackedForTeam: leadIds.length,
+      skippedLocked,
+    };
+    await batch.update({
+      status: "completed",
+      finishedAt: new Date(),
+      rebalancedCount: count,
+      metadata: metaDone as any,
+    } as any);
+    return { rebalanced: count, trackedForTeam: leadIds.length, skippedLocked, batchId: (batch as any).id };
   } catch (e: any) {
     await t.rollback();
+    await batch.update({ status: "failed", finishedAt: new Date(), errorMessage: e.message } as any);
     throw e;
   }
 };
 
 /** tenureHours 0 → cutoff is “now”, so every rotation row with enteredTeamAt ≤ now is eligible (typical testing). */
-export const rotateByTenure = async ({ tenureHours = 24 }: { tenureHours?: number }) => {
+export const rotateByTenure = async ({
+  tenureHours = 24,
+  triggeredByUserId,
+  labelRunId,
+}: {
+  tenureHours?: number;
+  triggeredByUserId?: number;
+  labelRunId?: string;
+}) => {
+  const th = Number.isFinite(Number(tenureHours)) && Number(tenureHours) >= 0 ? Number(tenureHours) : 24;
+  const hint = labelRunId?.trim() || `h${String(th).replace(/\./g, "p")}`;
+  const batch = await LeadAssignmentBatch.create({
+    runId: makeAuditBatchRunId("rot", hint),
+    triggerType: "manual",
+    status: "running",
+    startedAt: new Date(),
+    triggeredByUserId: triggeredByUserId || null,
+    metadata: {
+      operation: "rotate",
+      tenureHours: th,
+      ...(labelRunId?.trim() ? { labelRunId: labelRunId.trim() } : {}),
+    } as any,
+  } as any);
+
   const t = await db.transaction();
   try {
     const order = await getRotationOrderTeamIds();
-    const cutoff = new Date(Date.now() - tenureHours * 60 * 60 * 1000);
+    const cutoff = new Date(Date.now() - th * 60 * 60 * 1000);
     const rotationRowsTotal = await LeadRotationState.count({ transaction: t });
     const toRotate = await LeadRotationState.findAll({
       where: { enteredTeamAt: { [Op.lte]: cutoff } },
@@ -660,9 +730,8 @@ export const rotateByTenure = async ({ tenureHours = 24 }: { tenureHours?: numbe
       rotated++;
     }
     await t.commit();
-    return {
-      rotated,
-      tenureHours,
+    const metaDone = {
+      ...(((batch as any).get("metadata") as object) || {}),
       cutoffAt: cutoff.toISOString(),
       rotationRowsTotal,
       pastTenureCount,
@@ -671,8 +740,27 @@ export const rotateByTenure = async ({ tenureHours = 24 }: { tenureHours?: numbe
       skippedLocked,
       skippedLeadMissing,
     };
+    await batch.update({
+      status: "completed",
+      finishedAt: new Date(),
+      rotatedCount: rotated,
+      metadata: metaDone as any,
+    } as any);
+    return {
+      rotated,
+      tenureHours: th,
+      cutoffAt: cutoff.toISOString(),
+      rotationRowsTotal,
+      pastTenureCount,
+      skippedNoNext,
+      skippedNoMembers,
+      skippedLocked,
+      skippedLeadMissing,
+      batchId: (batch as any).id,
+    };
   } catch (e: any) {
     await t.rollback();
+    await batch.update({ status: "failed", finishedAt: new Date(), errorMessage: e.message } as any);
     throw e;
   }
 };

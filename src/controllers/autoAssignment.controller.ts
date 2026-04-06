@@ -62,18 +62,30 @@ export const rebalanceTeamController = async (req: Request, res: Response): Prom
   try {
     const teamId = parseInt(req.params.teamId);
     if (isNaN(teamId)) return res.status(400).json({ success: false, message: "Invalid team ID" });
-    const data = await rebalanceTeam({ teamId });
+    const labelRunId = (req.body || {}).labelRunId ?? (req.body || {}).runId;
+    const data = await rebalanceTeam({
+      teamId,
+      triggeredByUserId: req.user?.id,
+      labelRunId: typeof labelRunId === "string" ? labelRunId : undefined,
+    });
     return res.status(200).json({ success: true, message: "Team rebalanced", data });
   } catch (error: any) {
-    return res.status(500).json({ success: false, message: error.message || "Rebalance error" });
+    const { status, message } = formatAssignmentError(error);
+    return res.status(status).json({ success: false, message });
   }
 };
 
 export const rotateByTenureController = async (req: Request, res: Response): Promise<any> => {
   try {
-    const raw = (req.body || {}).tenureHours;
+    const body = req.body || {};
+    const raw = body.tenureHours;
     const tenureHours = Number.isFinite(Number(raw)) && Number(raw) >= 0 ? Number(raw) : 24;
-    const data = await rotateByTenure({ tenureHours });
+    const labelRunId = body.labelRunId ?? body.runId;
+    const data = await rotateByTenure({
+      tenureHours,
+      triggeredByUserId: req.user?.id,
+      labelRunId: typeof labelRunId === "string" ? labelRunId : undefined,
+    });
     return res.status(200).json({ success: true, message: "Rotation completed", data });
   } catch (error: any) {
     const { status, message } = formatAssignmentError(error);

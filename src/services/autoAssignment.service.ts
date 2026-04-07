@@ -63,9 +63,8 @@ const chooseAssigneesEqualSplit = (leadIds: Id[], userIds: Id[]): Map<Id, Id> =>
  * We create user slots by quota, then assign leads to slots by priority tiers:
  * 0) user != current AND user not seen in current cycle
  * 1) user not seen in current cycle
- * 2) user != current
- * 3) any user (fallback)
- * This maximizes uniqueness globally under quota/lock constraints.
+ * Strict mode: no seen-user fallback in same cycle.
+ * If no unique candidate exists, lead is left unchanged for this shuffle.
  */
 const buildRebalanceTeamAssigneePlan = (
   movableLeadIds: Id[],
@@ -111,10 +110,6 @@ const buildRebalanceTeamAssigneePlan = (
     const current = currentRaw != null && Number.isFinite(Number(currentRaw)) ? Number(currentRaw) : null;
     let seen = (leadIdToSeenUserIds.get(leadId) || []).filter((x) => memberIds.includes(x));
     let step = Number(leadIdToCycleStep.get(leadId) || 0);
-    if (step >= m) {
-      seen = [];
-      step = 0;
-    }
     stateByLead.set(leadId, { current, seen, step });
   }
 
@@ -178,8 +173,8 @@ const buildRebalanceTeamAssigneePlan = (
     return leadToSlot;
   };
 
-  // Tiered global assignment: lock in highest-quality matches first.
-  for (let tier = 0; tier <= 3; tier++) {
+  // Tiered global assignment: strict unique tiers only.
+  for (let tier = 0; tier <= 1; tier++) {
     const leadsLeft = sortedLeads.filter((l) => leadSet.has(l));
     const slotsLeft = slots.filter((s) => slotSet.has(s.slotId));
     if (leadsLeft.length === 0 || slotsLeft.length === 0) break;
@@ -198,12 +193,7 @@ const buildRebalanceTeamAssigneePlan = (
     }
   }
 
-  // Final defensive fill (should rarely be needed): assign remaining leads to any remaining slot.
-  const remainingLeads = sortedLeads.filter((l) => leadSet.has(l));
-  const remainingSlots = slots.filter((s) => slotSet.has(s.slotId));
-  for (let i = 0; i < remainingLeads.length && i < remainingSlots.length; i++) {
-    assignments.set(remainingLeads[i], remainingSlots[i].userId);
-  }
+  // No fallback fill in strict mode: unmatched leads remain unchanged this shuffle.
 
   // Compute next cycle memory.
   for (const leadId of sortedLeads) {
@@ -212,14 +202,8 @@ const buildRebalanceTeamAssigneePlan = (
     const st = stateByLead.get(leadId)!;
     const updatedSeen = st.seen.includes(chosen) ? st.seen : [...st.seen, chosen];
     const updatedStep = st.step + 1;
-    if (updatedStep >= m) {
-      // Cycle completed for this lead; next round starts fresh.
-      nextSeen.set(leadId, []);
-      nextCycleStep.set(leadId, 0);
-    } else {
-      nextSeen.set(leadId, updatedSeen.length > m ? updatedSeen.slice(updatedSeen.length - m) : updatedSeen);
-      nextCycleStep.set(leadId, updatedStep);
-    }
+    nextSeen.set(leadId, updatedSeen.length > m ? updatedSeen.slice(updatedSeen.length - m) : updatedSeen);
+    nextCycleStep.set(leadId, updatedStep);
   }
 
   return { assignments, nextSeen, nextCycleStep };
@@ -604,7 +588,8 @@ export const runManualAutoAssignment = async ({
         leadIdToCycleStep,
         quotas,
       );
-      for (const leadId of movable) {
+      const matchedLeadIds = [...plan.assignments.keys()];
+      for (const leadId of matchedLeadIds) {
         const assigneeId = plan.assignments.get(leadId)!;
         const lead = await Lead.findByPk(leadId, { transaction: t, lock: t.LOCK.UPDATE });
         if (!lead) continue;
@@ -909,8 +894,10 @@ export const rebalanceTeam = async ({
       leadIdToSeenUserIds,
       leadIdToCycleStep,
     );
+    const matchedLeadIds = [...plan.assignments.keys()];
+    const skippedUniqueConstraint = movable.length - matchedLeadIds.length;
     let count = 0;
-    for (const leadId of movable) {
+    for (const leadId of matchedLeadIds) {
       const assigneeId = plan.assignments.get(leadId)!;
       const lead = await Lead.findByPk(leadId, { transaction: t, lock: t.LOCK.UPDATE });
       if (!lead) continue;
@@ -935,6 +922,7 @@ export const rebalanceTeam = async ({
       ...(((batch as any).get("metadata") as object) || {}),
       trackedForTeam: leadIds.length,
       skippedLocked,
+      skippedUniqueConstraint,
     };
     await batch.update({
       status: "completed",
@@ -942,7 +930,13 @@ export const rebalanceTeam = async ({
       rebalancedCount: count,
       metadata: metaDone as any,
     } as any);
-    return { rebalanced: count, trackedForTeam: leadIds.length, skippedLocked, batchId: (batch as any).id };
+    return {
+      rebalanced: count,
+      trackedForTeam: leadIds.length,
+      skippedLocked,
+      skippedUniqueConstraint,
+      batchId: (batch as any).id,
+    };
   } catch (e: any) {
     await t.rollback();
     await batch.update({ status: "failed", finishedAt: new Date(), errorMessage: e.message } as any);

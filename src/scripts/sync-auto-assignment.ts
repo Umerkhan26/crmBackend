@@ -18,10 +18,12 @@ const run = async () => {
 
     // Ensure dependent tables
     await Team.sync();
-    await LeadLock.sync();
+    // Use alter for iterative development fields (e.g., lockUntil)
+    await LeadLock.sync({ alter: true });
     await LeadAssignmentBatch.sync();
     await LeadRotationState.sync();
-    await LeadAssignmentState.sync();
+    // Use alter for iterative development fields (e.g., seenUserIds, cycleStep)
+    await LeadAssignmentState.sync({ alter: true });
     await TeamRotationConfig.sync();
 
     console.log("✅ Tables synced: teams, lead_locks, lead_assignment_batches, lead_rotation_state, lead_assignment_state, team_rotation_config");

@@ -59,43 +59,61 @@ const chooseAssigneesEqualSplit = (leadIds: Id[], userIds: Id[]): Map<Id, Id> =>
 };
 
 /**
- * Rebalance: exact equal quotas per active member (remainder to first members in array order).
- * For each lead, prefer a member with remaining quota whose id !== current assignee; otherwise
- * any member with quota (single-member team or no alternative left).
+ * Rebalance with per-lead cycle memory:
+ * 1) keep equal quotas
+ * 2) avoid current assignee
+ * 3) prefer members not yet seen in current cycle for that lead
+ * 4) fallback when constraints force repeats
  */
 const buildRebalanceTeamAssigneePlan = (
   movableLeadIds: Id[],
   memberIds: Id[],
   leadIdToCurrentAssignee: Map<Id, Id | null | undefined>,
-): Map<Id, Id> => {
-  const plan = new Map<Id, Id>();
-  if (movableLeadIds.length === 0 || memberIds.length === 0) return plan;
+  leadIdToSeenUserIds: Map<Id, Id[]>,
+  leadIdToCycleStep: Map<Id, number>,
+): {
+  assignments: Map<Id, Id>;
+  nextSeen: Map<Id, Id[]>;
+  nextCycleStep: Map<Id, number>;
+} => {
+  const assignments = new Map<Id, Id>();
+  const nextSeen = new Map<Id, Id[]>();
+  const nextCycleStep = new Map<Id, number>();
+  if (movableLeadIds.length === 0 || memberIds.length === 0) return { assignments, nextSeen, nextCycleStep };
 
   const m = memberIds.length;
   const n = movableLeadIds.length;
   const base = Math.floor(n / m);
   const rem = n % m;
   const quotaLeft = new Map<Id, number>();
-  memberIds.forEach((uid, i) => {
-    quotaLeft.set(uid, base + (i < rem ? 1 : 0));
-  });
+  memberIds.forEach((uid, i) => quotaLeft.set(uid, base + (i < rem ? 1 : 0)));
 
   const sortedLeads = [...movableLeadIds].sort((a, b) => a - b);
 
   for (const leadId of sortedLeads) {
     const currentRaw = leadIdToCurrentAssignee.get(leadId);
-    const current =
-      currentRaw != null && Number.isFinite(Number(currentRaw)) ? Number(currentRaw) : null;
+    const current = currentRaw != null && Number.isFinite(Number(currentRaw)) ? Number(currentRaw) : null;
+
+    let seen = (leadIdToSeenUserIds.get(leadId) || []).filter((x) => memberIds.includes(x));
+    let step = Number(leadIdToCycleStep.get(leadId) || 0);
+    if (step >= m) {
+      seen = [];
+      step = 0;
+    }
 
     const withQuota = memberIds.filter((uid) => (quotaLeft.get(uid) ?? 0) > 0);
     let chosen: Id;
     if (withQuota.length === 0) {
       chosen = memberIds[0];
-    } else if (withQuota.length === 1) {
-      chosen = withQuota[0];
     } else {
-      const prefer = withQuota.filter((uid) => uid !== current);
-      const pool = prefer.length > 0 ? prefer : withQuota;
+      const notCurrent = withQuota.filter((uid) => uid !== current);
+      const preferNeverSeen = notCurrent.filter((uid) => !seen.includes(uid));
+      const pool =
+        preferNeverSeen.length > 0
+          ? preferNeverSeen
+          : notCurrent.length > 0
+            ? notCurrent
+            : withQuota;
       chosen = [...pool].sort((a, b) => {
         const diff = (quotaLeft.get(b) ?? 0) - (quotaLeft.get(a) ?? 0);
         if (diff !== 0) return diff;
@@ -103,11 +121,16 @@ const buildRebalanceTeamAssigneePlan = (
       })[0];
     }
 
-    plan.set(leadId, chosen);
+    assignments.set(leadId, chosen);
     quotaLeft.set(chosen, (quotaLeft.get(chosen) ?? 0) - 1);
+
+    const updatedSeen = seen.includes(chosen) ? seen : [...seen, chosen];
+    const updatedStep = step + 1;
+    nextSeen.set(leadId, updatedSeen.length > m ? updatedSeen.slice(updatedSeen.length - m) : updatedSeen);
+    nextCycleStep.set(leadId, updatedStep >= m ? 0 : updatedStep);
   }
 
-  return plan;
+  return { assignments, nextSeen, nextCycleStep };
 };
 
 const getRotationOrderTeamIds = async (): Promise<number[]> => {
@@ -303,6 +326,8 @@ export const runManualAutoAssignment = async ({
             teamId: teamA.id,
             currentAssigneeUserId: assigneeId,
             lastAssignedAt: new Date(),
+            seenUserIds: [assigneeId],
+            cycleStep: 1,
           } as any,
           { transaction: t },
         );
@@ -360,6 +385,8 @@ export const runManualAutoAssignment = async ({
           teamId: nextTeamId,
           currentAssigneeUserId: assignee,
           lastAssignedAt: new Date(),
+          seenUserIds: [assignee],
+          cycleStep: 1,
         } as any,
         { transaction: t },
       );
@@ -381,7 +408,11 @@ export const runManualAutoAssignment = async ({
       if (leadIds.length === 0) continue;
       // Exclude locked
       const lockedRows = await LeadLock.findAll({
-        where: { leadId: { [Op.in]: leadIds }, status: "locked" },
+        where: {
+          leadId: { [Op.in]: leadIds },
+          status: "locked",
+          [Op.or]: [{ lockUntil: null }, { lockUntil: { [Op.gt]: new Date() } }],
+        },
         attributes: ["leadId"],
         transaction: t,
       });
@@ -408,6 +439,8 @@ export const runManualAutoAssignment = async ({
             teamId,
             currentAssigneeUserId: assigneeId,
             lastAssignedAt: new Date(),
+            seenUserIds: [assigneeId],
+            cycleStep: 1,
           } as any,
           { transaction: t },
         );
@@ -563,6 +596,8 @@ export const assignByDateToTeamA = async ({
           teamId: teamA.id,
           currentAssigneeUserId: assigneeId,
           lastAssignedAt: new Date(),
+          seenUserIds: [assigneeId],
+          cycleStep: 1,
         } as any,
         { transaction: t },
       );
@@ -673,20 +708,40 @@ export const rebalanceTeam = async ({
     const movable = leadIds.filter((id) => !lockedSet.has(id));
     const skippedLocked = leadIds.length - movable.length;
     const leadIdToCurrentAssignee = new Map<Id, Id | null | undefined>();
+    const leadIdToSeenUserIds = new Map<Id, Id[]>();
+    const leadIdToCycleStep = new Map<Id, number>();
     for (const s of states) {
       leadIdToCurrentAssignee.set((s as any).leadId as number, (s as any).currentAssigneeUserId as Id | null);
+      const seen = Array.isArray((s as any).seenUserIds)
+        ? ((s as any).seenUserIds as any[]).map((x) => Number(x)).filter((x) => Number.isFinite(x))
+        : [];
+      leadIdToSeenUserIds.set((s as any).leadId as number, seen);
+      leadIdToCycleStep.set((s as any).leadId as number, Number((s as any).cycleStep || 0));
     }
-    const plan = buildRebalanceTeamAssigneePlan(movable, members, leadIdToCurrentAssignee);
+    const plan = buildRebalanceTeamAssigneePlan(
+      movable,
+      members,
+      leadIdToCurrentAssignee,
+      leadIdToSeenUserIds,
+      leadIdToCycleStep,
+    );
     let count = 0;
     for (const leadId of movable) {
-      const assigneeId = plan.get(leadId)!;
+      const assigneeId = plan.assignments.get(leadId)!;
       const lead = await Lead.findByPk(leadId, { transaction: t, lock: t.LOCK.UPDATE });
       if (!lead) continue;
       const assignedAt = new Date().toISOString();
       const assignees = [{ userId: assigneeId, status: "pending", assignedAt }];
       await lead.update({ assignees } as any, { transaction: t });
       await LeadAssignmentState.upsert(
-        { leadId, teamId, currentAssigneeUserId: assigneeId, lastAssignedAt: new Date() } as any,
+        {
+          leadId,
+          teamId,
+          currentAssigneeUserId: assigneeId,
+          lastAssignedAt: new Date(),
+          seenUserIds: plan.nextSeen.get(leadId) || [assigneeId],
+          cycleStep: plan.nextCycleStep.get(leadId) || 0,
+        } as any,
         { transaction: t },
       );
       count++;
@@ -794,6 +849,8 @@ export const rotateByTenure = async ({
           teamId: nextTeamId,
           currentAssigneeUserId: assignee,
           lastAssignedAt: new Date(),
+          seenUserIds: [assignee],
+          cycleStep: 1,
         } as any,
         { transaction: t },
       );

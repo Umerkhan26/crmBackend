@@ -4,11 +4,11 @@ import { checkPermission } from "../middleware/checkPermission";
 import { PERMISSIONS } from "../constants/permissions";
 import {
   assignByDateToTeamAController,
+  deepResetByRunOrWindowController,
   rebalanceTeamController,
   rotateByTenureController,
   runManualAutoAssignmentController,
 } from "../controllers/autoAssignment.controller";
-import { deepResetByRunOrWindowController } from "../controllers/autoAssignment.controller";
 import {
   getAutoAssignmentSettingsController,
   updateAutoAssignmentSettingsController,

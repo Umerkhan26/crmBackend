@@ -1,5 +1,11 @@
 import { Request, Response } from "express";
-import { assignByDateToTeamA, rebalanceTeam, rotateByTenure, runManualAutoAssignment } from "../services/autoAssignment.service";
+import {
+  assignByDateToTeamA,
+  deepResetByRunOrWindow,
+  rebalanceTeam,
+  rotateByTenure,
+  runManualAutoAssignment,
+} from "../services/autoAssignment.service";
 
 const formatAssignmentError = (error: any): { status: number; message: string } => {
   if (!error) return { status: 500, message: "Unknown error" };
@@ -90,6 +96,22 @@ export const rotateByTenureController = async (req: Request, res: Response): Pro
       labelRunId: typeof labelRunId === "string" ? labelRunId : undefined,
     });
     return res.status(200).json({ success: true, message: "Rotation completed", data });
+  } catch (error: any) {
+    const { status, message } = formatAssignmentError(error);
+    return res.status(status).json({ success: false, message });
+  }
+};
+
+/** POST body: { runId?: string } or { start: ISO, end: ISO } — testing cleanup for promoted staging batch / window */
+export const deepResetByRunOrWindowController = async (req: Request, res: Response): Promise<any> => {
+  try {
+    const { runId, start, end } = req.body || {};
+    const data = await deepResetByRunOrWindow({
+      runId: typeof runId === "string" && runId.trim() ? runId.trim() : undefined,
+      start: typeof start === "string" && start.trim() ? start.trim() : undefined,
+      end: typeof end === "string" && end.trim() ? end.trim() : undefined,
+    });
+    return res.status(200).json({ success: true, message: "Deep reset completed", data });
   } catch (error: any) {
     const { status, message } = formatAssignmentError(error);
     return res.status(status).json({ success: false, message });

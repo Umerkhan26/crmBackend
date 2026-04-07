@@ -59,11 +59,13 @@ const chooseAssigneesEqualSplit = (leadIds: Id[], userIds: Id[]): Map<Id, Id> =>
 };
 
 /**
- * Rebalance with per-lead cycle memory:
- * 1) keep equal quotas
- * 2) avoid current assignee
- * 3) prefer members not yet seen in current cycle for that lead
- * 4) fallback when constraints force repeats
+ * Rebalance with per-lead cycle memory using global slot matching.
+ * We create user slots by quota, then assign leads to slots by priority tiers:
+ * 0) user != current AND user not seen in current cycle
+ * 1) user not seen in current cycle
+ * 2) user != current
+ * 3) any user (fallback)
+ * This maximizes uniqueness globally under quota/lock constraints.
  */
 const buildRebalanceTeamAssigneePlan = (
   movableLeadIds: Id[],
@@ -90,44 +92,129 @@ const buildRebalanceTeamAssigneePlan = (
 
   const sortedLeads = [...movableLeadIds].sort((a, b) => a - b);
 
+  // Build per-lead normalized state for current cycle
+  const stateByLead = new Map<
+    Id,
+    {
+      current: Id | null;
+      seen: Id[];
+      step: number;
+    }
+  >();
   for (const leadId of sortedLeads) {
     const currentRaw = leadIdToCurrentAssignee.get(leadId);
     const current = currentRaw != null && Number.isFinite(Number(currentRaw)) ? Number(currentRaw) : null;
-
     let seen = (leadIdToSeenUserIds.get(leadId) || []).filter((x) => memberIds.includes(x));
     let step = Number(leadIdToCycleStep.get(leadId) || 0);
     if (step >= m) {
       seen = [];
       step = 0;
     }
+    stateByLead.set(leadId, { current, seen, step });
+  }
 
-    const withQuota = memberIds.filter((uid) => (quotaLeft.get(uid) ?? 0) > 0);
-    let chosen: Id;
-    if (withQuota.length === 0) {
-      chosen = memberIds[0];
-    } else {
-      const notCurrent = withQuota.filter((uid) => uid !== current);
-      const preferNeverSeen = notCurrent.filter((uid) => !seen.includes(uid));
-      const pool =
-        preferNeverSeen.length > 0
-          ? preferNeverSeen
-          : notCurrent.length > 0
-            ? notCurrent
-            : withQuota;
-      chosen = [...pool].sort((a, b) => {
-        const diff = (quotaLeft.get(b) ?? 0) - (quotaLeft.get(a) ?? 0);
-        if (diff !== 0) return diff;
-        return a - b;
-      })[0];
+  // Expand member quotas into concrete slots.
+  const slots: Array<{ slotId: number; userId: Id }> = [];
+  let slotSeq = 0;
+  for (const uid of memberIds) {
+    const q = quotaLeft.get(uid) ?? 0;
+    for (let i = 0; i < q; i++) {
+      slots.push({ slotId: slotSeq++, userId: uid });
     }
+  }
 
-    assignments.set(leadId, chosen);
-    quotaLeft.set(chosen, (quotaLeft.get(chosen) ?? 0) - 1);
+  const leadSet = new Set(sortedLeads);
+  const slotSet = new Set(slots.map((s) => s.slotId));
 
-    const updatedSeen = seen.includes(chosen) ? seen : [...seen, chosen];
-    const updatedStep = step + 1;
-    nextSeen.set(leadId, updatedSeen.length > m ? updatedSeen.slice(updatedSeen.length - m) : updatedSeen);
-    nextCycleStep.set(leadId, updatedStep >= m ? 0 : updatedStep);
+  const edgeTier = (leadId: Id, userId: Id): number => {
+    const st = stateByLead.get(leadId)!;
+    const notCurrent = st.current == null ? true : userId !== st.current;
+    const neverSeen = !st.seen.includes(userId);
+    if (notCurrent && neverSeen) return 0;
+    if (neverSeen) return 1;
+    if (notCurrent) return 2;
+    return 3;
+  };
+
+  // Basic Kuhn matching on lead->slot for a tier predicate.
+  const tierMatch = (
+    candidateLeads: Id[],
+    candidateSlots: Array<{ slotId: number; userId: Id }>,
+    allowEdge: (leadId: Id, slot: { slotId: number; userId: Id }) => boolean,
+  ): Map<Id, number> => {
+    const adj = new Map<Id, number[]>();
+    for (const leadId of candidateLeads) {
+      const edges = candidateSlots
+        .filter((s) => allowEdge(leadId, s))
+        .map((s) => s.slotId);
+      adj.set(leadId, edges);
+    }
+    const slotToLead = new Map<number, Id>();
+    const dfs = (leadId: Id, seenSlots: Set<number>): boolean => {
+      const neighbors = adj.get(leadId) || [];
+      for (const slotId of neighbors) {
+        if (seenSlots.has(slotId)) continue;
+        seenSlots.add(slotId);
+        const prevLead = slotToLead.get(slotId);
+        if (prevLead === undefined || dfs(prevLead, seenSlots)) {
+          slotToLead.set(slotId, leadId);
+          return true;
+        }
+      }
+      return false;
+    };
+    for (const leadId of candidateLeads) {
+      dfs(leadId, new Set<number>());
+    }
+    const leadToSlot = new Map<Id, number>();
+    for (const [slotId, leadId] of slotToLead.entries()) {
+      leadToSlot.set(leadId, slotId);
+    }
+    return leadToSlot;
+  };
+
+  // Tiered global assignment: lock in highest-quality matches first.
+  for (let tier = 0; tier <= 3; tier++) {
+    const leadsLeft = sortedLeads.filter((l) => leadSet.has(l));
+    const slotsLeft = slots.filter((s) => slotSet.has(s.slotId));
+    if (leadsLeft.length === 0 || slotsLeft.length === 0) break;
+    const matched = tierMatch(
+      leadsLeft,
+      slotsLeft,
+      (leadId, slot) => edgeTier(leadId, slot.userId) <= tier,
+    );
+    for (const [leadId, slotId] of matched.entries()) {
+      if (!leadSet.has(leadId) || !slotSet.has(slotId)) continue;
+      const slot = slots.find((s) => s.slotId === slotId);
+      if (!slot) continue;
+      assignments.set(leadId, slot.userId);
+      leadSet.delete(leadId);
+      slotSet.delete(slotId);
+    }
+  }
+
+  // Final defensive fill (should rarely be needed): assign remaining leads to any remaining slot.
+  const remainingLeads = sortedLeads.filter((l) => leadSet.has(l));
+  const remainingSlots = slots.filter((s) => slotSet.has(s.slotId));
+  for (let i = 0; i < remainingLeads.length && i < remainingSlots.length; i++) {
+    assignments.set(remainingLeads[i], remainingSlots[i].userId);
+  }
+
+  // Compute next cycle memory.
+  for (const leadId of sortedLeads) {
+    const chosen = assignments.get(leadId);
+    if (chosen === undefined) continue;
+    const st = stateByLead.get(leadId)!;
+    const updatedSeen = st.seen.includes(chosen) ? st.seen : [...st.seen, chosen];
+    const updatedStep = st.step + 1;
+    if (updatedStep >= m) {
+      // Cycle completed for this lead; next round starts fresh.
+      nextSeen.set(leadId, []);
+      nextCycleStep.set(leadId, 0);
+    } else {
+      nextSeen.set(leadId, updatedSeen.length > m ? updatedSeen.slice(updatedSeen.length - m) : updatedSeen);
+      nextCycleStep.set(leadId, updatedStep);
+    }
   }
 
   return { assignments, nextSeen, nextCycleStep };

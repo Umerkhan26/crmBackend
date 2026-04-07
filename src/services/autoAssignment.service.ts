@@ -73,6 +73,7 @@ const buildRebalanceTeamAssigneePlan = (
   leadIdToCurrentAssignee: Map<Id, Id | null | undefined>,
   leadIdToSeenUserIds: Map<Id, Id[]>,
   leadIdToCycleStep: Map<Id, number>,
+  memberQuotaOverride?: Map<Id, number>,
 ): {
   assignments: Map<Id, Id>;
   nextSeen: Map<Id, Id[]>;
@@ -85,10 +86,14 @@ const buildRebalanceTeamAssigneePlan = (
 
   const m = memberIds.length;
   const n = movableLeadIds.length;
-  const base = Math.floor(n / m);
-  const rem = n % m;
   const quotaLeft = new Map<Id, number>();
-  memberIds.forEach((uid, i) => quotaLeft.set(uid, base + (i < rem ? 1 : 0)));
+  if (memberQuotaOverride) {
+    memberIds.forEach((uid) => quotaLeft.set(uid, Math.max(0, Number(memberQuotaOverride.get(uid) || 0))));
+  } else {
+    const base = Math.floor(n / m);
+    const rem = n % m;
+    memberIds.forEach((uid, i) => quotaLeft.set(uid, base + (i < rem ? 1 : 0)));
+  }
 
   const sortedLeads = [...movableLeadIds].sort((a, b) => a - b);
 
@@ -218,6 +223,64 @@ const buildRebalanceTeamAssigneePlan = (
   }
 
   return { assignments, nextSeen, nextCycleStep };
+};
+
+const computeMovableQuotasWithLocks = ({
+  memberIds,
+  totalLeadCount,
+  movableLeadCount,
+  lockedOwnerCount,
+}: {
+  memberIds: Id[];
+  totalLeadCount: number;
+  movableLeadCount: number;
+  lockedOwnerCount: Map<Id, number>;
+}): Map<Id, number> => {
+  const quotas = new Map<Id, number>();
+  if (memberIds.length === 0) return quotas;
+  const m = memberIds.length;
+  const base = Math.floor(totalLeadCount / m);
+  const rem = totalLeadCount % m;
+  const desired = new Map<Id, number>();
+  memberIds.forEach((uid, i) => desired.set(uid, base + (i < rem ? 1 : 0)));
+
+  // Start with desired minus fixed locked count.
+  memberIds.forEach((uid) => {
+    const fixed = lockedOwnerCount.get(uid) || 0;
+    const d = desired.get(uid) || 0;
+    quotas.set(uid, Math.max(0, d - fixed));
+  });
+
+  let sum = memberIds.reduce((acc, uid) => acc + (quotas.get(uid) || 0), 0);
+
+  // If too low, distribute remaining slots to currently least-loaded members.
+  while (sum < movableLeadCount) {
+    const pick = [...memberIds].sort((a, b) => {
+      const loadA = (lockedOwnerCount.get(a) || 0) + (quotas.get(a) || 0);
+      const loadB = (lockedOwnerCount.get(b) || 0) + (quotas.get(b) || 0);
+      if (loadA !== loadB) return loadA - loadB;
+      return a - b;
+    })[0];
+    quotas.set(pick, (quotas.get(pick) || 0) + 1);
+    sum++;
+  }
+
+  // If too high, remove from most-loaded movable quotas first.
+  while (sum > movableLeadCount) {
+    const pick = [...memberIds]
+      .filter((uid) => (quotas.get(uid) || 0) > 0)
+      .sort((a, b) => {
+        const qA = quotas.get(a) || 0;
+        const qB = quotas.get(b) || 0;
+        if (qA !== qB) return qB - qA;
+        return b - a;
+      })[0];
+    if (pick === undefined) break;
+    quotas.set(pick, (quotas.get(pick) || 0) - 1);
+    sum--;
+  }
+
+  return quotas;
 };
 
 const getRotationOrderTeamIds = async (): Promise<number[]> => {
@@ -506,9 +569,43 @@ export const runManualAutoAssignment = async ({
       const lockedSet = new Set<number>(lockedRows.map((r: any) => r.leadId as number));
       const movable = leadIds.filter((id) => !lockedSet.has(id));
       if (movable.length === 0) continue;
-      const plan = chooseAssigneesEqualSplit(movable, members);
+      const stateByLead = new Map<number, any>();
+      for (const s of stateRows as any[]) stateByLead.set(Number(s.leadId), s);
+      const lockedOwnerCount = new Map<Id, number>();
+      for (const leadId of leadIds) {
+        if (!lockedSet.has(leadId)) continue;
+        const owner = Number(stateByLead.get(leadId)?.currentAssigneeUserId);
+        if (Number.isFinite(owner) && members.includes(owner)) {
+          lockedOwnerCount.set(owner, (lockedOwnerCount.get(owner) || 0) + 1);
+        }
+      }
+      const quotas = computeMovableQuotasWithLocks({
+        memberIds: members,
+        totalLeadCount: leadIds.length,
+        movableLeadCount: movable.length,
+        lockedOwnerCount,
+      });
+      const leadIdToCurrentAssignee = new Map<Id, Id | null | undefined>();
+      const leadIdToSeenUserIds = new Map<Id, Id[]>();
+      const leadIdToCycleStep = new Map<Id, number>();
+      for (const s of stateRows as any[]) {
+        leadIdToCurrentAssignee.set(Number(s.leadId), (s.currentAssigneeUserId as any) ?? null);
+        const seen = Array.isArray(s.seenUserIds)
+          ? (s.seenUserIds as any[]).map((x) => Number(x)).filter((x) => Number.isFinite(x))
+          : [];
+        leadIdToSeenUserIds.set(Number(s.leadId), seen);
+        leadIdToCycleStep.set(Number(s.leadId), Number(s.cycleStep || 0));
+      }
+      const plan = buildRebalanceTeamAssigneePlan(
+        movable,
+        members,
+        leadIdToCurrentAssignee,
+        leadIdToSeenUserIds,
+        leadIdToCycleStep,
+        quotas,
+      );
       for (const leadId of movable) {
-        const assigneeId = plan.get(leadId)!;
+        const assigneeId = plan.assignments.get(leadId)!;
         const lead = await Lead.findByPk(leadId, { transaction: t, lock: t.LOCK.UPDATE });
         if (!lead) continue;
         const assignedAt = new Date().toISOString();
@@ -526,8 +623,8 @@ export const runManualAutoAssignment = async ({
             teamId,
             currentAssigneeUserId: assigneeId,
             lastAssignedAt: new Date(),
-            seenUserIds: [assigneeId],
-            cycleStep: 1,
+            seenUserIds: plan.nextSeen.get(leadId) || [assigneeId],
+            cycleStep: plan.nextCycleStep.get(leadId) || 0,
           } as any,
           { transaction: t },
         );

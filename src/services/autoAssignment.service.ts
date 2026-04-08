@@ -252,6 +252,9 @@ const buildRebalanceTeamAssigneePlan = (
           const inSeenA = stL.seen.includes(a.userId) ? 1 : 0;
           const inSeenB = stL.seen.includes(b.userId) ? 1 : 0;
           if (inSeenA !== inSeenB) return inSeenA - inSeenB;
+          const qA = quotaLeft.get(a.userId) ?? 0;
+          const qB = quotaLeft.get(b.userId) ?? 0;
+          if (qA !== qB) return qB - qA;
           const da = holdBurden.get(a.userId) ?? 0;
           const db = holdBurden.get(b.userId) ?? 0;
           if (da !== db) return da - db;
@@ -274,7 +277,13 @@ const buildRebalanceTeamAssigneePlan = (
       }
       return false;
     };
-    for (const leadId of candidateLeads) {
+    const orderedLeads = [...candidateLeads].sort((a, b) => {
+      const lenA = (adj.get(a) || []).length;
+      const lenB = (adj.get(b) || []).length;
+      if (lenA !== lenB) return lenA - lenB; // constrained leads first
+      return a - b;
+    });
+    for (const leadId of orderedLeads) {
       dfs(leadId, new Set<number>());
     }
     const leadToSlot = new Map<Id, number>();
@@ -339,9 +348,10 @@ const computeMovableQuotasWithLocks = ({
   const quotas = new Map<Id, number>();
   if (memberIds.length === 0) return quotas;
 
-  // Coverage-first flexible quotas: allow temporary 3+ leads/member when locks constrain pairing.
-  const opportunity = new Map<Id, number>();
-  memberIds.forEach((uid) => opportunity.set(uid, 0));
+  // Coverage-completion mode:
+  // allocate movable quotas by unresolved-pair demand (who still needs more unique lead pairs).
+  const demand = new Map<Id, number>();
+  memberIds.forEach((uid) => demand.set(uid, 0));
   for (const leadId of movableLeadIds) {
     const seen = leadIdToSeenUserIds.get(leadId) || [];
     const currentRaw = leadIdToCurrentAssignee.get(leadId);
@@ -349,20 +359,21 @@ const computeMovableQuotasWithLocks = ({
     for (const uid of memberIds) {
       if (uid === current) continue;
       if (seen.includes(uid)) continue;
-      opportunity.set(uid, (opportunity.get(uid) || 0) + 1);
+      demand.set(uid, (demand.get(uid) || 0) + 1);
     }
   }
 
   memberIds.forEach((uid) => quotas.set(uid, 0));
   let remaining = movableLeadCount;
+  // Assign every movable slot to the member who can complete most missing pairs.
   while (remaining > 0) {
     const pick = [...memberIds].sort((a, b) => {
-      const oppA = opportunity.get(a) || 0;
-      const oppB = opportunity.get(b) || 0;
-      if (oppA !== oppB) return oppB - oppA; // prioritize member with more unseen opportunities
+      const dA = demand.get(a) || 0;
+      const dB = demand.get(b) || 0;
+      if (dA !== dB) return dB - dA; // prioritize higher unresolved demand
       const loadA = (lockedOwnerCount.get(a) || 0) + (quotas.get(a) || 0);
       const loadB = (lockedOwnerCount.get(b) || 0) + (quotas.get(b) || 0);
-      if (loadA !== loadB) return loadA - loadB; // keep fairness as tie-break
+      if (loadA !== loadB) return loadA - loadB; // fairness as secondary tie-break
       return a - b;
     })[0];
     quotas.set(pick, (quotas.get(pick) || 0) + 1);

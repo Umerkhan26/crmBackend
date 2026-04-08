@@ -3,7 +3,10 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "start": "nodemon"
+    "start": "nodemon",
+    "sync:auto-assignment": "npx ts-node src/scripts/sync-auto-assignment.ts",
+    "sync:database": "npx ts-node src/scripts/sync-database.ts",
+    "patch:schema-columns": "npx ts-node src/scripts/patch-missing-schema-columns.ts"
   },
   "keywords": [],
   "author": "",

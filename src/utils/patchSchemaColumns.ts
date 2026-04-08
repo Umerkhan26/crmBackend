@@ -42,12 +42,22 @@ export const patchMissingSchemaColumns = async (sequelize: Sequelize) => {
       "lead_locks.lockUntil",
       'ALTER TABLE "lead_locks" ADD COLUMN IF NOT EXISTS "lockUntil" TIMESTAMP WITH TIME ZONE;',
     );
+    await tryQuery(
+      sequelize,
+      "lead_assignment_state.seenUserIds",
+      'ALTER TABLE "lead_assignment_state" ADD COLUMN IF NOT EXISTS "seenUserIds" JSONB DEFAULT \'[]\'::jsonb;',
+    );
+    await tryQuery(
+      sequelize,
+      "lead_assignment_state.cycleStep",
+      'ALTER TABLE "lead_assignment_state" ADD COLUMN IF NOT EXISTS "cycleStep" INTEGER NOT NULL DEFAULT 0;',
+    );
     return;
   }
 
   if (dialect === "sqlite") {
     console.warn(
-      "⚠️ sqlite: add rebalanceHours / assignWindowDefault / lockUntil manually if you see unknown column errors.",
+      "⚠️ sqlite: add rebalanceHours / assignWindowDefault / lockUntil / seenUserIds / cycleStep manually if you see unknown column errors.",
     );
     return;
   }
@@ -66,5 +76,15 @@ export const patchMissingSchemaColumns = async (sequelize: Sequelize) => {
     sequelize,
     "lead_locks.lockUntil",
     "ALTER TABLE `lead_locks` ADD COLUMN `lockUntil` DATETIME NULL",
+  );
+  await tryQuery(
+    sequelize,
+    "lead_assignment_state.seenUserIds",
+    "ALTER TABLE `lead_assignment_state` ADD COLUMN `seenUserIds` JSON NULL",
+  );
+  await tryQuery(
+    sequelize,
+    "lead_assignment_state.cycleStep",
+    "ALTER TABLE `lead_assignment_state` ADD COLUMN `cycleStep` INT NOT NULL DEFAULT 0",
   );
 };

@@ -14,6 +14,68 @@ import { normalizeLeadDataInput } from "../utils/normalizeLeadData";
 
 type Id = number;
 
+/**
+ * Read `lead_assignment_state.seenUserIds` from Sequelize / MySQL JSON.
+ * mysql2 often returns JSON columns as strings (e.g. "[40]"); using only Array.isArray
+ * drops history and every rebalance sees an empty seen list (wrong repeats / cycleStep-only growth).
+ */
+const normalizeSeenUserIdsFromDb = (raw: unknown): Id[] => {
+  if (raw == null) return [];
+  if (Array.isArray(raw)) {
+    return raw.map((x) => Number(x)).filter((x) => Number.isFinite(x));
+  }
+  if (typeof raw === "string") {
+    const t = raw.trim();
+    if (!t) return [];
+    try {
+      const parsed = JSON.parse(t);
+      if (Array.isArray(parsed)) {
+        return parsed.map((x) => Number(x)).filter((x) => Number.isFinite(x));
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  return [];
+};
+
+/** Same user can appear twice in JSON; rotation must treat them as one “had this lead”. */
+const dedupeSeenUserIdsPreserveOrder = (ids: Id[]): Id[] => {
+  const seen = new Set<Id>();
+  const out: Id[] = [];
+  for (const x of ids) {
+    if (seen.has(x)) continue;
+    seen.add(x);
+    out.push(x);
+  }
+  return out;
+};
+
+/** Source of truth for who holds the lead on the `leads` row (may differ from assignment_state). */
+const parseFirstAssigneeUserIdFromLead = (assignees: unknown): Id | null => {
+  if (assignees == null) return null;
+  let arr: unknown[] = [];
+  if (typeof assignees === "string") {
+    const t = assignees.trim();
+    if (!t) return null;
+    try {
+      const p = JSON.parse(t);
+      arr = Array.isArray(p) ? p : [];
+    } catch {
+      return null;
+    }
+  } else if (Array.isArray(assignees)) {
+    arr = assignees;
+  } else {
+    return null;
+  }
+  const first = arr[0] as { userId?: unknown; user_id?: unknown } | undefined;
+  if (first == null || typeof first !== "object") return null;
+  const uid = first.userId ?? first.user_id;
+  const n = Number(uid);
+  return Number.isFinite(n) ? n : null;
+};
+
 /** DB requires unique `lead_assignment_batches.runId` — never reuse import batch ids here. */
 const makeAuditBatchRunId = (prefix: string, hint?: string): string => {
   const ts = Date.now().toString(36);
@@ -47,12 +109,18 @@ const getActiveMemberUserIds = async (teamId: Id): Promise<number[]> => {
   return members.map((m: any) => m.userId);
 };
 
-const chooseAssigneesEqualSplit = (leadIds: Id[], userIds: Id[]): Map<Id, Id> => {
+/** Round-robin split; `rotateOffset` avoids always giving the first incoming lead to `userIds[0]`. */
+const chooseAssigneesEqualSplit = (
+  leadIds: Id[],
+  userIds: Id[],
+  rotateOffset: number = 0,
+): Map<Id, Id> => {
   const map = new Map<Id, Id>();
   if (userIds.length === 0) return map;
-  let idx = 0;
+  const m = userIds.length;
+  let idx = ((rotateOffset % m) + m) % m;
   for (const leadId of leadIds) {
-    map.set(leadId, userIds[idx % userIds.length]);
+    map.set(leadId, userIds[idx % m]);
     idx++;
   }
   return map;
@@ -60,11 +128,10 @@ const chooseAssigneesEqualSplit = (leadIds: Id[], userIds: Id[]): Map<Id, Id> =>
 
 /**
  * Rebalance with per-lead cycle memory using global slot matching.
- * We create user slots by quota, then assign leads to slots by priority tiers:
- * 0) user != current AND user not seen in current cycle
- * 1) user not seen in current cycle
- * Strict mode: no seen-user fallback in same cycle.
- * If no unique candidate exists, lead is left unchanged for this shuffle.
+ * `seen` is `seenUserIds` trimmed to active members, plus `currentAssigneeUserId` if missing. When
+ * every member has held the lead it resets to `[current]`. Use lock-aware movable quotas when
+ * `memberQuotaOverride` is passed. Slots are built round-robin (not all of user A then all of B);
+ * neighbor order prefers users who appear in fewer `seen` lists so “fresh” agents get priority.
  */
 const buildRebalanceTeamAssigneePlan = (
   movableLeadIds: Id[],
@@ -108,33 +175,67 @@ const buildRebalanceTeamAssigneePlan = (
   for (const leadId of sortedLeads) {
     const currentRaw = leadIdToCurrentAssignee.get(leadId);
     const current = currentRaw != null && Number.isFinite(Number(currentRaw)) ? Number(currentRaw) : null;
-    let seen = (leadIdToSeenUserIds.get(leadId) || []).filter((x) => memberIds.includes(x));
+    let seen = dedupeSeenUserIdsPreserveOrder(
+      (leadIdToSeenUserIds.get(leadId) || []).filter((x) => memberIds.includes(x)),
+    );
+    // Tier 1 allows any user not in `seen`, including the current holder. If `seenUserIds` ever
+    // omits `currentAssigneeUserId`, the same user keeps the lead every shuffle (e.g. lead 5 →
+    // Atiq again). The holder always counts as having had this lead for rotation.
+    if (current != null && memberIds.includes(current) && !seen.includes(current)) {
+      seen = [...seen, current];
+    }
+    // Every active member has held this lead — new rotation cycle (same idea as seen trim).
+    if (memberIds.length > 0 && memberIds.every((uid) => seen.includes(uid))) {
+      seen = current != null ? [current] : [];
+    }
     let step = Number(leadIdToCycleStep.get(leadId) || 0);
     stateByLead.set(leadId, { current, seen, step });
   }
 
-  // Expand member quotas into concrete slots.
+  const edgeTier = (leadId: Id, userId: Id): number => {
+    const st = stateByLead.get(leadId)!;
+    const notCurrent = st.current == null ? true : userId !== st.current;
+    const neverInSeen = !st.seen.includes(userId);
+    if (notCurrent && neverInSeen) return 0;
+    if (neverInSeen) return 1;
+    if (notCurrent) return 2;
+    return 3;
+  };
+
+  // How often each user appears in `seen` across movable leads (prefer giving a lead to someone
+  // who has held fewer leads this cycle when several users are eligible — e.g. Hassan never had 5).
+  const holdBurden = new Map<Id, number>();
+  for (const uid of memberIds) {
+    let c = 0;
+    for (const lid of sortedLeads) {
+      if (stateByLead.get(lid)!.seen.includes(uid)) c++;
+    }
+    holdBurden.set(uid, c);
+  }
+
+  // Round-robin slot order (A,B,C,A,B) instead of (A,A,B,B,C) so matching does not exhaust the
+  // first member’s slots before trying others.
   const slots: Array<{ slotId: number; userId: Id }> = [];
   let slotSeq = 0;
+  const remainingQ = new Map<Id, number>();
   for (const uid of memberIds) {
-    const q = quotaLeft.get(uid) ?? 0;
-    for (let i = 0; i < q; i++) {
-      slots.push({ slotId: slotSeq++, userId: uid });
+    remainingQ.set(uid, Math.max(0, quotaLeft.get(uid) ?? 0));
+  }
+  for (;;) {
+    let any = false;
+    for (const uid of memberIds) {
+      const r = remainingQ.get(uid) ?? 0;
+      if (r > 0) {
+        slots.push({ slotId: slotSeq++, userId: uid });
+        remainingQ.set(uid, r - 1);
+        any = true;
+      }
     }
+    if (!any) break;
   }
 
   const leadSet = new Set(sortedLeads);
   const slotSet = new Set(slots.map((s) => s.slotId));
-
-  const edgeTier = (leadId: Id, userId: Id): number => {
-    const st = stateByLead.get(leadId)!;
-    const notCurrent = st.current == null ? true : userId !== st.current;
-    const neverSeen = !st.seen.includes(userId);
-    if (notCurrent && neverSeen) return 0;
-    if (neverSeen) return 1;
-    if (notCurrent) return 2;
-    return 3;
-  };
 
   // Basic Kuhn matching on lead->slot for a tier predicate.
   const tierMatch = (
@@ -144,8 +245,18 @@ const buildRebalanceTeamAssigneePlan = (
   ): Map<Id, number> => {
     const adj = new Map<Id, number[]>();
     for (const leadId of candidateLeads) {
+      const stL = stateByLead.get(leadId)!;
       const edges = candidateSlots
         .filter((s) => allowEdge(leadId, s))
+        .sort((a, b) => {
+          const inSeenA = stL.seen.includes(a.userId) ? 1 : 0;
+          const inSeenB = stL.seen.includes(b.userId) ? 1 : 0;
+          if (inSeenA !== inSeenB) return inSeenA - inSeenB;
+          const da = holdBurden.get(a.userId) ?? 0;
+          const db = holdBurden.get(b.userId) ?? 0;
+          if (da !== db) return da - db;
+          return a.userId - b.userId;
+        })
         .map((s) => s.slotId);
       adj.set(leadId, edges);
     }
@@ -173,7 +284,8 @@ const buildRebalanceTeamAssigneePlan = (
     return leadToSlot;
   };
 
-  // Tiered global assignment: strict unique tiers only.
+  // Tier 0 = rotate to someone not in `seen` and not current. Tier 1 = any `seen`-fresh user; with
+  // `current` merged into `seen`, the holder cannot keep a movable lead via tier 1 alone.
   for (let tier = 0; tier <= 1; tier++) {
     const leadsLeft = sortedLeads.filter((l) => leadSet.has(l));
     const slotsLeft = slots.filter((s) => slotSet.has(s.slotId));
@@ -193,8 +305,6 @@ const buildRebalanceTeamAssigneePlan = (
     }
   }
 
-  // No fallback fill in strict mode: unmatched leads remain unchanged this shuffle.
-
   // Compute next cycle memory.
   for (const leadId of sortedLeads) {
     const chosen = assignments.get(leadId);
@@ -202,7 +312,9 @@ const buildRebalanceTeamAssigneePlan = (
     const st = stateByLead.get(leadId)!;
     const updatedSeen = st.seen.includes(chosen) ? st.seen : [...st.seen, chosen];
     const updatedStep = st.step + 1;
-    nextSeen.set(leadId, updatedSeen.length > m ? updatedSeen.slice(updatedSeen.length - m) : updatedSeen);
+    // Do not slice to last `m` assignees: that drops older holders from history while they may
+    // still be `current`, so tier 1 treats them as “new” and they keep the lead again.
+    nextSeen.set(leadId, updatedSeen);
     nextCycleStep.set(leadId, updatedStep);
   }
 
@@ -439,8 +551,8 @@ export const runManualAutoAssignment = async ({
         );
       }
 
-      // Equal split among Team A
-      const assignment = chooseAssigneesEqualSplit(leadIds, teamAMembers);
+      // Equal split among Team A (rotate so the first DB user is not always the first assignee)
+      const assignment = chooseAssigneesEqualSplit(leadIds, teamAMembers, leadIds[0] ?? 0);
       for (const leadId of leadIds) {
         const assigneeId = assignment.get(leadId)!;
         const lead = await Lead.findByPk(leadId, { transaction: t, lock: t.LOCK.UPDATE });
@@ -555,10 +667,22 @@ export const runManualAutoAssignment = async ({
       if (movable.length === 0) continue;
       const stateByLead = new Map<number, any>();
       for (const s of stateRows as any[]) stateByLead.set(Number(s.leadId), s);
+      const leadRowsForAssignee = await Lead.findAll({
+        where: { id: { [Op.in]: leadIds } },
+        attributes: ["id", "assignees"],
+        transaction: t,
+      });
+      const assigneeFromLead = new Map<Id, Id>();
+      for (const row of leadRowsForAssignee as any[]) {
+        const uid = parseFirstAssigneeUserIdFromLead(row.assignees);
+        if (uid != null && members.includes(uid)) assigneeFromLead.set(Number(row.id), uid);
+      }
       const lockedOwnerCount = new Map<Id, number>();
       for (const leadId of leadIds) {
         if (!lockedSet.has(leadId)) continue;
-        const owner = Number(stateByLead.get(leadId)?.currentAssigneeUserId);
+        const owner =
+          assigneeFromLead.get(leadId) ??
+          Number(stateByLead.get(leadId)?.currentAssigneeUserId);
         if (Number.isFinite(owner) && members.includes(owner)) {
           lockedOwnerCount.set(owner, (lockedOwnerCount.get(owner) || 0) + 1);
         }
@@ -573,12 +697,11 @@ export const runManualAutoAssignment = async ({
       const leadIdToSeenUserIds = new Map<Id, Id[]>();
       const leadIdToCycleStep = new Map<Id, number>();
       for (const s of stateRows as any[]) {
-        leadIdToCurrentAssignee.set(Number(s.leadId), (s.currentAssigneeUserId as any) ?? null);
-        const seen = Array.isArray(s.seenUserIds)
-          ? (s.seenUserIds as any[]).map((x) => Number(x)).filter((x) => Number.isFinite(x))
-          : [];
-        leadIdToSeenUserIds.set(Number(s.leadId), seen);
-        leadIdToCycleStep.set(Number(s.leadId), Number(s.cycleStep || 0));
+        const lid = Number(s.leadId);
+        leadIdToCurrentAssignee.set(lid, assigneeFromLead.get(lid) ?? (s.currentAssigneeUserId as any) ?? null);
+        const seen = normalizeSeenUserIdsFromDb(s.seenUserIds);
+        leadIdToSeenUserIds.set(lid, seen);
+        leadIdToCycleStep.set(lid, Number(s.cycleStep || 0));
       }
       const plan = buildRebalanceTeamAssigneePlan(
         movable,
@@ -751,7 +874,7 @@ export const assignByDateToTeamA = async ({
         { transaction: t },
       );
     }
-    const plan = chooseAssigneesEqualSplit(leadIds, members);
+    const plan = chooseAssigneesEqualSplit(leadIds, members, leadIds[0] ?? 0);
     for (const leadId of leadIds) {
       const assigneeId = plan.get(leadId)!;
       const lead = await Lead.findByPk(leadId, { transaction: t, lock: t.LOCK.UPDATE });
@@ -876,16 +999,43 @@ export const rebalanceTeam = async ({
     const lockedSet = new Set<number>(lockedRows.map((r: any) => r.leadId as number));
     const movable = leadIds.filter((id) => !lockedSet.has(id));
     const skippedLocked = leadIds.length - movable.length;
+    const assignmentStateByLead = new Map<number, any>();
+    for (const s of states as any[]) assignmentStateByLead.set(Number(s.leadId), s);
+    const leadRowsForAssignee = await Lead.findAll({
+      where: { id: { [Op.in]: leadIds } },
+      attributes: ["id", "assignees"],
+      transaction: t,
+    });
+    const assigneeFromLead = new Map<Id, Id>();
+    for (const row of leadRowsForAssignee as any[]) {
+      const uid = parseFirstAssigneeUserIdFromLead(row.assignees);
+      if (uid != null && members.includes(uid)) assigneeFromLead.set(Number(row.id), uid);
+    }
+    const lockedOwnerCount = new Map<Id, number>();
+    for (const lid of leadIds) {
+      if (!lockedSet.has(lid)) continue;
+      const owner =
+        assigneeFromLead.get(lid) ??
+        Number(assignmentStateByLead.get(lid)?.currentAssigneeUserId);
+      if (Number.isFinite(owner) && members.includes(owner)) {
+        lockedOwnerCount.set(owner, (lockedOwnerCount.get(owner) || 0) + 1);
+      }
+    }
+    const quotas = computeMovableQuotasWithLocks({
+      memberIds: members,
+      totalLeadCount: leadIds.length,
+      movableLeadCount: movable.length,
+      lockedOwnerCount,
+    });
     const leadIdToCurrentAssignee = new Map<Id, Id | null | undefined>();
     const leadIdToSeenUserIds = new Map<Id, Id[]>();
     const leadIdToCycleStep = new Map<Id, number>();
     for (const s of states) {
-      leadIdToCurrentAssignee.set((s as any).leadId as number, (s as any).currentAssigneeUserId as Id | null);
-      const seen = Array.isArray((s as any).seenUserIds)
-        ? ((s as any).seenUserIds as any[]).map((x) => Number(x)).filter((x) => Number.isFinite(x))
-        : [];
-      leadIdToSeenUserIds.set((s as any).leadId as number, seen);
-      leadIdToCycleStep.set((s as any).leadId as number, Number((s as any).cycleStep || 0));
+      const lid = (s as any).leadId as number;
+      leadIdToCurrentAssignee.set(lid, assigneeFromLead.get(lid) ?? ((s as any).currentAssigneeUserId as Id | null));
+      const seen = normalizeSeenUserIdsFromDb((s as any).seenUserIds);
+      leadIdToSeenUserIds.set(lid, seen);
+      leadIdToCycleStep.set(lid, Number((s as any).cycleStep || 0));
     }
     const plan = buildRebalanceTeamAssigneePlan(
       movable,
@@ -893,6 +1043,7 @@ export const rebalanceTeam = async ({
       leadIdToCurrentAssignee,
       leadIdToSeenUserIds,
       leadIdToCycleStep,
+      quotas,
     );
     const matchedLeadIds = [...plan.assignments.keys()];
     const skippedUniqueConstraint = movable.length - matchedLeadIds.length;

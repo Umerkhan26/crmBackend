@@ -7,6 +7,7 @@ import LeadLock from "../models/leadLock.model";
 import TeamRotationConfig from "../models/teamRotationConfig.model";
 import LeadRotationState from "../models/leadRotationState.model";
 import LeadAssignmentState from "../models/leadAssignmentState.model";
+import LeadMemberHistory from "../models/leadMemberHistory.model";
 import IncomingLead from "../models/incomingLead.model";
 import LeadAssignmentBatch from "../models/leadAssignmentBatch.model";
 import { DateTime } from "luxon";
@@ -74,6 +75,43 @@ const parseFirstAssigneeUserIdFromLead = (assignees: unknown): Id | null => {
   const uid = first.userId ?? first.user_id;
   const n = Number(uid);
   return Number.isFinite(n) ? n : null;
+};
+
+const getCycleNo = (stateRow: any): number => {
+  const n = Number(stateRow?.cycleNo ?? 1);
+  return Number.isFinite(n) && n >= 1 ? n : 1;
+};
+
+const recordLeadHistory = async ({
+  leadId,
+  teamId,
+  userId,
+  cycleNo,
+  source,
+  transaction,
+  isLockedAssignment = false,
+}: {
+  leadId: number;
+  teamId: number;
+  userId: number;
+  cycleNo: number;
+  source: "assign" | "rebalance" | "rotate";
+  transaction: any;
+  isLockedAssignment?: boolean;
+}) => {
+  await LeadMemberHistory.findOrCreate({
+    where: { leadId, teamId, userId, cycleNo },
+    defaults: {
+      leadId,
+      teamId,
+      userId,
+      cycleNo,
+      assignedAt: new Date(),
+      source,
+      isLockedAssignment,
+    } as any,
+    transaction,
+  } as any);
 };
 
 /** DB requires unique `lead_assignment_batches.runId` — never reuse import batch ids here. */
@@ -578,9 +616,18 @@ export const runManualAutoAssignment = async ({
             lastAssignedAt: new Date(),
             seenUserIds: [assigneeId],
             cycleStep: 1,
+            cycleNo: 1,
           } as any,
           { transaction: t },
         );
+        await recordLeadHistory({
+          leadId,
+          teamId: teamA.id,
+          userId: assigneeId,
+          cycleNo: 1,
+          source: "assign",
+          transaction: t,
+        });
         await LeadRotationState.upsert(
           {
             leadId,
@@ -637,9 +684,18 @@ export const runManualAutoAssignment = async ({
           lastAssignedAt: new Date(),
           seenUserIds: [assignee],
           cycleStep: 1,
+          cycleNo: 1,
         } as any,
         { transaction: t },
       );
+      await recordLeadHistory({
+        leadId,
+        teamId: nextTeamId,
+        userId: assignee,
+        cycleNo: 1,
+        source: "rotate",
+        transaction: t,
+      });
       rotatedCount++;
     }
 
@@ -694,12 +750,14 @@ export const runManualAutoAssignment = async ({
       const leadIdToCurrentAssignee = new Map<Id, Id | null | undefined>();
       const leadIdToSeenUserIds = new Map<Id, Id[]>();
       const leadIdToCycleStep = new Map<Id, number>();
+      const leadIdToCycleNo = new Map<Id, number>();
       for (const s of stateRows as any[]) {
         const lid = Number(s.leadId);
         leadIdToCurrentAssignee.set(lid, assigneeFromLead.get(lid) ?? (s.currentAssigneeUserId as any) ?? null);
         const seen = normalizeSeenUserIdsFromDb(s.seenUserIds);
         leadIdToSeenUserIds.set(lid, seen);
         leadIdToCycleStep.set(lid, Number(s.cycleStep || 0));
+        leadIdToCycleNo.set(lid, getCycleNo(s));
       }
       const quotas = computeMovableQuotasWithLocks({
         memberIds: members,
@@ -739,9 +797,18 @@ export const runManualAutoAssignment = async ({
             lastAssignedAt: new Date(),
             seenUserIds: plan.nextSeen.get(leadId) || [assigneeId],
             cycleStep: plan.nextCycleStep.get(leadId) || 0,
+            cycleNo: leadIdToCycleNo.get(leadId) || 1,
           } as any,
           { transaction: t },
         );
+        await recordLeadHistory({
+          leadId,
+          teamId,
+          userId: assigneeId,
+          cycleNo: leadIdToCycleNo.get(leadId) || 1,
+          source: "rebalance",
+          transaction: t,
+        });
         rebalancedCount++;
       }
     }
@@ -896,9 +963,18 @@ export const assignByDateToTeamA = async ({
           lastAssignedAt: new Date(),
           seenUserIds: [assigneeId],
           cycleStep: 1,
+          cycleNo: 1,
         } as any,
         { transaction: t },
       );
+      await recordLeadHistory({
+        leadId,
+        teamId: teamA.id,
+        userId: assigneeId,
+        cycleNo: 1,
+        source: "assign",
+        transaction: t,
+      });
       await LeadRotationState.upsert(
         { leadId, teamId: teamA.id, enteredTeamAt: new Date() } as any,
         { transaction: t },
@@ -1030,12 +1106,14 @@ export const rebalanceTeam = async ({
     const leadIdToCurrentAssignee = new Map<Id, Id | null | undefined>();
     const leadIdToSeenUserIds = new Map<Id, Id[]>();
     const leadIdToCycleStep = new Map<Id, number>();
+    const leadIdToCycleNo = new Map<Id, number>();
     for (const s of states) {
       const lid = (s as any).leadId as number;
       leadIdToCurrentAssignee.set(lid, assigneeFromLead.get(lid) ?? ((s as any).currentAssigneeUserId as Id | null));
       const seen = normalizeSeenUserIdsFromDb((s as any).seenUserIds);
       leadIdToSeenUserIds.set(lid, seen);
       leadIdToCycleStep.set(lid, Number((s as any).cycleStep || 0));
+      leadIdToCycleNo.set(lid, getCycleNo(s));
     }
     const quotas = computeMovableQuotasWithLocks({
       memberIds: members,
@@ -1071,9 +1149,18 @@ export const rebalanceTeam = async ({
           lastAssignedAt: new Date(),
           seenUserIds: plan.nextSeen.get(leadId) || [assigneeId],
           cycleStep: plan.nextCycleStep.get(leadId) || 0,
+          cycleNo: leadIdToCycleNo.get(leadId) || 1,
         } as any,
         { transaction: t },
       );
+      await recordLeadHistory({
+        leadId,
+        teamId,
+        userId: assigneeId,
+        cycleNo: leadIdToCycleNo.get(leadId) || 1,
+        source: "rebalance",
+        transaction: t,
+      });
       count++;
     }
     await t.commit();
@@ -1188,9 +1275,18 @@ export const rotateByTenure = async ({
           lastAssignedAt: new Date(),
           seenUserIds: [assignee],
           cycleStep: 1,
+          cycleNo: 1,
         } as any,
         { transaction: t },
       );
+      await recordLeadHistory({
+        leadId,
+        teamId: nextTeamId,
+        userId: assignee,
+        cycleNo: 1,
+        source: "rotate",
+        transaction: t,
+      });
       rotated++;
     }
     await t.commit();
@@ -1240,7 +1336,7 @@ export const deepResetByRunOrWindow = async ({
 }): Promise<{
   incomingDeleted: number;
   leadsDeleted: number;
-  stateDeleted: { assignment: number; rotation: number; locks: number };
+  stateDeleted: { assignment: number; rotation: number; locks: number; history: number };
 }> => {
   if (!runId && (!start || !end)) {
     throw new Error("Provide runId or start+end ISO timestamps to reset.");
@@ -1262,7 +1358,7 @@ export const deepResetByRunOrWindow = async ({
     return {
       incomingDeleted: 0,
       leadsDeleted: 0,
-      stateDeleted: { assignment: 0, rotation: 0, locks: 0 },
+      stateDeleted: { assignment: 0, rotation: 0, locks: 0, history: 0 },
     };
   }
   const leadIds = incomingRows
@@ -1274,12 +1370,14 @@ export const deepResetByRunOrWindow = async ({
     let locksDel = 0;
     let assignDel = 0;
     let rotDel = 0;
+    let histDel = 0;
     let leadsDel = 0;
 
     if (leadIds.length > 0) {
       locksDel = await LeadLock.destroy({ where: { leadId: { [Op.in]: leadIds } }, transaction: t } as any);
       assignDel = await LeadAssignmentState.destroy({ where: { leadId: { [Op.in]: leadIds } }, transaction: t } as any);
       rotDel = await LeadRotationState.destroy({ where: { leadId: { [Op.in]: leadIds } }, transaction: t } as any);
+      histDel = await LeadMemberHistory.destroy({ where: { leadId: { [Op.in]: leadIds } }, transaction: t } as any);
       leadsDel = await Lead.destroy({ where: { id: { [Op.in]: leadIds } }, transaction: t } as any);
     }
 
@@ -1289,7 +1387,7 @@ export const deepResetByRunOrWindow = async ({
     return {
       incomingDeleted: incomingDel,
       leadsDeleted: leadsDel,
-      stateDeleted: { assignment: assignDel, rotation: rotDel, locks: locksDel },
+      stateDeleted: { assignment: assignDel, rotation: rotDel, locks: locksDel, history: histDel },
     };
   } catch (e) {
     await t.rollback();

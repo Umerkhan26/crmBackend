@@ -34,4 +34,5 @@ import "./teamRotationConfig.model";
 import "./leadRotationState.model";
 import "./leadAssignmentState.model";
 import "./incomingLead.model";
+import "./leadMemberHistory.model";
 associateModels();

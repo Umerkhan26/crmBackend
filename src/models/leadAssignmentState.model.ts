@@ -9,12 +9,14 @@ export interface LeadAssignmentStateAttributes {
   lastAssignedAt: Date | null;
   seenUserIds?: number[] | null; // rebalance cycle memory for this lead/team
   cycleStep?: number; // increments on each rebalance assignment within team
+  cycleNo?: number; // strong cycle marker used with lead_member_history uniqueness
 }
 
 export interface LeadAssignmentStateCreationAttributes
   extends Optional<
     LeadAssignmentStateAttributes,
     "id" | "teamId" | "currentAssigneeUserId" | "lastAssignedAt" | "seenUserIds" | "cycleStep"
+    | "cycleNo"
   > {}
 
 export class LeadAssignmentState
@@ -28,6 +30,7 @@ export class LeadAssignmentState
   public lastAssignedAt!: Date | null;
   public seenUserIds?: number[] | null;
   public cycleStep?: number;
+  public cycleNo?: number;
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
@@ -72,6 +75,11 @@ LeadAssignmentState.init(
       type: DataTypes.INTEGER,
       allowNull: false,
       defaultValue: 0,
+    },
+    cycleNo: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 1,
     },
   },
   {

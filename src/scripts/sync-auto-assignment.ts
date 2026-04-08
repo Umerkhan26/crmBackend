@@ -10,6 +10,7 @@ import LeadRotationState from "../models/leadRotationState.model";
 import LeadAssignmentState from "../models/leadAssignmentState.model";
 import LeadLock from "../models/leadLock.model";
 import LeadAssignmentBatch from "../models/leadAssignmentBatch.model";
+import LeadMemberHistory from "../models/leadMemberHistory.model";
 
 const run = async () => {
   try {
@@ -24,9 +25,10 @@ const run = async () => {
     await LeadRotationState.sync();
     // Use alter for iterative development fields (e.g., seenUserIds, cycleStep)
     await LeadAssignmentState.sync({ alter: true });
+    await LeadMemberHistory.sync({ alter: true });
     await TeamRotationConfig.sync();
 
-    console.log("✅ Tables synced: teams, lead_locks, lead_assignment_batches, lead_rotation_state, lead_assignment_state, team_rotation_config");
+    console.log("✅ Tables synced: teams, lead_locks, lead_assignment_batches, lead_rotation_state, lead_assignment_state, lead_member_history, team_rotation_config");
 
     const teams = await Team.findAll({
       order: [["sortOrder", "ASC"], ["id", "ASC"]],

@@ -323,57 +323,50 @@ const buildRebalanceTeamAssigneePlan = (
 
 const computeMovableQuotasWithLocks = ({
   memberIds,
-  totalLeadCount,
   movableLeadCount,
+  movableLeadIds,
+  leadIdToCurrentAssignee,
+  leadIdToSeenUserIds,
   lockedOwnerCount,
 }: {
   memberIds: Id[];
-  totalLeadCount: number;
   movableLeadCount: number;
+  movableLeadIds: Id[];
+  leadIdToCurrentAssignee: Map<Id, Id | null | undefined>;
+  leadIdToSeenUserIds: Map<Id, Id[]>;
   lockedOwnerCount: Map<Id, number>;
 }): Map<Id, number> => {
   const quotas = new Map<Id, number>();
   if (memberIds.length === 0) return quotas;
-  const m = memberIds.length;
-  const base = Math.floor(totalLeadCount / m);
-  const rem = totalLeadCount % m;
-  const desired = new Map<Id, number>();
-  memberIds.forEach((uid, i) => desired.set(uid, base + (i < rem ? 1 : 0)));
 
-  // Start with desired minus fixed locked count.
-  memberIds.forEach((uid) => {
-    const fixed = lockedOwnerCount.get(uid) || 0;
-    const d = desired.get(uid) || 0;
-    quotas.set(uid, Math.max(0, d - fixed));
-  });
+  // Coverage-first flexible quotas: allow temporary 3+ leads/member when locks constrain pairing.
+  const opportunity = new Map<Id, number>();
+  memberIds.forEach((uid) => opportunity.set(uid, 0));
+  for (const leadId of movableLeadIds) {
+    const seen = leadIdToSeenUserIds.get(leadId) || [];
+    const currentRaw = leadIdToCurrentAssignee.get(leadId);
+    const current = currentRaw != null && Number.isFinite(Number(currentRaw)) ? Number(currentRaw) : null;
+    for (const uid of memberIds) {
+      if (uid === current) continue;
+      if (seen.includes(uid)) continue;
+      opportunity.set(uid, (opportunity.get(uid) || 0) + 1);
+    }
+  }
 
-  let sum = memberIds.reduce((acc, uid) => acc + (quotas.get(uid) || 0), 0);
-
-  // If too low, distribute remaining slots to currently least-loaded members.
-  while (sum < movableLeadCount) {
+  memberIds.forEach((uid) => quotas.set(uid, 0));
+  let remaining = movableLeadCount;
+  while (remaining > 0) {
     const pick = [...memberIds].sort((a, b) => {
+      const oppA = opportunity.get(a) || 0;
+      const oppB = opportunity.get(b) || 0;
+      if (oppA !== oppB) return oppB - oppA; // prioritize member with more unseen opportunities
       const loadA = (lockedOwnerCount.get(a) || 0) + (quotas.get(a) || 0);
       const loadB = (lockedOwnerCount.get(b) || 0) + (quotas.get(b) || 0);
-      if (loadA !== loadB) return loadA - loadB;
+      if (loadA !== loadB) return loadA - loadB; // keep fairness as tie-break
       return a - b;
     })[0];
     quotas.set(pick, (quotas.get(pick) || 0) + 1);
-    sum++;
-  }
-
-  // If too high, remove from most-loaded movable quotas first.
-  while (sum > movableLeadCount) {
-    const pick = [...memberIds]
-      .filter((uid) => (quotas.get(uid) || 0) > 0)
-      .sort((a, b) => {
-        const qA = quotas.get(a) || 0;
-        const qB = quotas.get(b) || 0;
-        if (qA !== qB) return qB - qA;
-        return b - a;
-      })[0];
-    if (pick === undefined) break;
-    quotas.set(pick, (quotas.get(pick) || 0) - 1);
-    sum--;
+    remaining--;
   }
 
   return quotas;
@@ -687,12 +680,6 @@ export const runManualAutoAssignment = async ({
           lockedOwnerCount.set(owner, (lockedOwnerCount.get(owner) || 0) + 1);
         }
       }
-      const quotas = computeMovableQuotasWithLocks({
-        memberIds: members,
-        totalLeadCount: leadIds.length,
-        movableLeadCount: movable.length,
-        lockedOwnerCount,
-      });
       const leadIdToCurrentAssignee = new Map<Id, Id | null | undefined>();
       const leadIdToSeenUserIds = new Map<Id, Id[]>();
       const leadIdToCycleStep = new Map<Id, number>();
@@ -703,6 +690,14 @@ export const runManualAutoAssignment = async ({
         leadIdToSeenUserIds.set(lid, seen);
         leadIdToCycleStep.set(lid, Number(s.cycleStep || 0));
       }
+      const quotas = computeMovableQuotasWithLocks({
+        memberIds: members,
+        movableLeadCount: movable.length,
+        movableLeadIds: movable,
+        leadIdToCurrentAssignee,
+        leadIdToSeenUserIds,
+        lockedOwnerCount,
+      });
       const plan = buildRebalanceTeamAssigneePlan(
         movable,
         members,
@@ -1021,12 +1016,6 @@ export const rebalanceTeam = async ({
         lockedOwnerCount.set(owner, (lockedOwnerCount.get(owner) || 0) + 1);
       }
     }
-    const quotas = computeMovableQuotasWithLocks({
-      memberIds: members,
-      totalLeadCount: leadIds.length,
-      movableLeadCount: movable.length,
-      lockedOwnerCount,
-    });
     const leadIdToCurrentAssignee = new Map<Id, Id | null | undefined>();
     const leadIdToSeenUserIds = new Map<Id, Id[]>();
     const leadIdToCycleStep = new Map<Id, number>();
@@ -1037,6 +1026,14 @@ export const rebalanceTeam = async ({
       leadIdToSeenUserIds.set(lid, seen);
       leadIdToCycleStep.set(lid, Number((s as any).cycleStep || 0));
     }
+    const quotas = computeMovableQuotasWithLocks({
+      memberIds: members,
+      movableLeadCount: movable.length,
+      movableLeadIds: movable,
+      leadIdToCurrentAssignee,
+      leadIdToSeenUserIds,
+      lockedOwnerCount,
+    });
     const plan = buildRebalanceTeamAssigneePlan(
       movable,
       members,

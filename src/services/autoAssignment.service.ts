@@ -164,6 +164,48 @@ const chooseAssigneesEqualSplit = (
   return map;
 };
 
+type RotationLeadState = {
+  current: Id | null;
+  seen: Id[];
+  step: number;
+};
+
+const edgeTierFromState = (st: RotationLeadState, userId: Id): number => {
+  const notCurrent = st.current == null ? true : userId !== st.current;
+  const neverInSeen = !st.seen.includes(userId);
+  if (notCurrent && neverInSeen) return 0;
+  if (neverInSeen) return 1;
+  if (notCurrent) return 2;
+  return 3;
+};
+
+/** Same normalization as rebalance matching (`seen`, cycle reset, merge current). */
+const buildRotationStateByLead = (
+  sortedLeadIds: Id[],
+  memberIds: Id[],
+  leadIdToCurrentAssignee: Map<Id, Id | null | undefined>,
+  leadIdToSeenUserIds: Map<Id, Id[]>,
+  leadIdToCycleStep: Map<Id, number>,
+): Map<Id, RotationLeadState> => {
+  const stateByLead = new Map<Id, RotationLeadState>();
+  for (const leadId of sortedLeadIds) {
+    const currentRaw = leadIdToCurrentAssignee.get(leadId);
+    const current = currentRaw != null && Number.isFinite(Number(currentRaw)) ? Number(currentRaw) : null;
+    let seen = dedupeSeenUserIdsPreserveOrder(
+      (leadIdToSeenUserIds.get(leadId) || []).filter((x) => memberIds.includes(x)),
+    );
+    if (current != null && memberIds.includes(current) && !seen.includes(current)) {
+      seen = [...seen, current];
+    }
+    if (memberIds.length > 0 && memberIds.every((uid) => seen.includes(uid))) {
+      seen = current != null ? [current] : [];
+    }
+    const step = Number(leadIdToCycleStep.get(leadId) || 0);
+    stateByLead.set(leadId, { current, seen, step });
+  }
+  return stateByLead;
+};
+
 /**
  * Rebalance with per-lead cycle memory using global slot matching.
  * `seen` is `seenUserIds` trimmed to active members, plus `currentAssigneeUserId` if missing. When
@@ -201,44 +243,15 @@ const buildRebalanceTeamAssigneePlan = (
 
   const sortedLeads = [...movableLeadIds].sort((a, b) => a - b);
 
-  // Build per-lead normalized state for current cycle
-  const stateByLead = new Map<
-    Id,
-    {
-      current: Id | null;
-      seen: Id[];
-      step: number;
-    }
-  >();
-  for (const leadId of sortedLeads) {
-    const currentRaw = leadIdToCurrentAssignee.get(leadId);
-    const current = currentRaw != null && Number.isFinite(Number(currentRaw)) ? Number(currentRaw) : null;
-    let seen = dedupeSeenUserIdsPreserveOrder(
-      (leadIdToSeenUserIds.get(leadId) || []).filter((x) => memberIds.includes(x)),
-    );
-    // Tier 1 allows any user not in `seen`, including the current holder. If `seenUserIds` ever
-    // omits `currentAssigneeUserId`, the same user keeps the lead every shuffle (e.g. lead 5 →
-    // Atiq again). The holder always counts as having had this lead for rotation.
-    if (current != null && memberIds.includes(current) && !seen.includes(current)) {
-      seen = [...seen, current];
-    }
-    // Every active member has held this lead — new rotation cycle (same idea as seen trim).
-    if (memberIds.length > 0 && memberIds.every((uid) => seen.includes(uid))) {
-      seen = current != null ? [current] : [];
-    }
-    let step = Number(leadIdToCycleStep.get(leadId) || 0);
-    stateByLead.set(leadId, { current, seen, step });
-  }
+  const stateByLead = buildRotationStateByLead(
+    sortedLeads,
+    memberIds,
+    leadIdToCurrentAssignee,
+    leadIdToSeenUserIds,
+    leadIdToCycleStep,
+  );
 
-  const edgeTier = (leadId: Id, userId: Id): number => {
-    const st = stateByLead.get(leadId)!;
-    const notCurrent = st.current == null ? true : userId !== st.current;
-    const neverInSeen = !st.seen.includes(userId);
-    if (notCurrent && neverInSeen) return 0;
-    if (neverInSeen) return 1;
-    if (notCurrent) return 2;
-    return 3;
-  };
+  const edgeTier = (leadId: Id, userId: Id): number => edgeTierFromState(stateByLead.get(leadId)!, userId);
 
   // How often each user appears in `seen` across movable leads (prefer giving a lead to someone
   // who has held fewer leads this cycle when several users are eligible — e.g. Hassan never had 5).
@@ -374,6 +387,7 @@ const computeMovableQuotasWithLocks = ({
   movableLeadIds,
   leadIdToCurrentAssignee,
   leadIdToSeenUserIds,
+  leadIdToCycleStep,
   lockedOwnerCount,
 }: {
   memberIds: Id[];
@@ -381,37 +395,59 @@ const computeMovableQuotasWithLocks = ({
   movableLeadIds: Id[];
   leadIdToCurrentAssignee: Map<Id, Id | null | undefined>;
   leadIdToSeenUserIds: Map<Id, Id[]>;
+  leadIdToCycleStep: Map<Id, number>;
   lockedOwnerCount: Map<Id, number>;
 }): Map<Id, number> => {
   const quotas = new Map<Id, number>();
   if (memberIds.length === 0) return quotas;
 
-  // Coverage-completion mode:
-  // allocate movable quotas by unresolved-pair demand (who still needs more unique lead pairs).
+  const sortedLeads = [...movableLeadIds].sort((a, b) => a - b);
+  const stateByLead = buildRotationStateByLead(
+    sortedLeads,
+    memberIds,
+    leadIdToCurrentAssignee,
+    leadIdToSeenUserIds,
+    leadIdToCycleStep,
+  );
+
   const demand = new Map<Id, number>();
-  memberIds.forEach((uid) => demand.set(uid, 0));
+  /** Leads where exactly one member is eligible at tier ≤1 (must have a slot on that user). */
+  const exclusiveNeed = new Map<Id, number>();
+  memberIds.forEach((uid) => {
+    demand.set(uid, 0);
+    exclusiveNeed.set(uid, 0);
+  });
   for (const leadId of movableLeadIds) {
-    const seen = leadIdToSeenUserIds.get(leadId) || [];
-    const currentRaw = leadIdToCurrentAssignee.get(leadId);
-    const current = currentRaw != null && Number.isFinite(Number(currentRaw)) ? Number(currentRaw) : null;
-    for (const uid of memberIds) {
-      if (uid === current) continue;
-      if (seen.includes(uid)) continue;
+    const st = stateByLead.get(leadId)!;
+    const elig = memberIds.filter((uid) => edgeTierFromState(st, uid) <= 1);
+    for (const uid of elig) {
       demand.set(uid, (demand.get(uid) || 0) + 1);
+    }
+    if (elig.length === 1) {
+      const u = elig[0];
+      exclusiveNeed.set(u, (exclusiveNeed.get(u) || 0) + 1);
     }
   }
 
   memberIds.forEach((uid) => quotas.set(uid, 0));
   let remaining = movableLeadCount;
-  // Assign every movable slot to the member who can complete most missing pairs.
+  const withDemand = memberIds.filter((uid) => (demand.get(uid) || 0) > 0);
+  for (const uid of withDemand) {
+    if (remaining <= 0) break;
+    quotas.set(uid, (quotas.get(uid) || 0) + 1);
+    remaining--;
+  }
   while (remaining > 0) {
     const pick = [...memberIds].sort((a, b) => {
-      const dA = demand.get(a) || 0;
-      const dB = demand.get(b) || 0;
-      if (dA !== dB) return dB - dA; // prioritize higher unresolved demand
+      const exGapA = (exclusiveNeed.get(a) || 0) - (quotas.get(a) || 0);
+      const exGapB = (exclusiveNeed.get(b) || 0) - (quotas.get(b) || 0);
+      if (exGapA !== exGapB) return exGapB - exGapA;
+      const gA = (demand.get(a) || 0) - (quotas.get(a) || 0);
+      const gB = (demand.get(b) || 0) - (quotas.get(b) || 0);
+      if (gA !== gB) return gB - gA;
       const loadA = (lockedOwnerCount.get(a) || 0) + (quotas.get(a) || 0);
       const loadB = (lockedOwnerCount.get(b) || 0) + (quotas.get(b) || 0);
-      if (loadA !== loadB) return loadA - loadB; // fairness as secondary tie-break
+      if (loadA !== loadB) return loadA - loadB;
       return a - b;
     })[0];
     quotas.set(pick, (quotas.get(pick) || 0) + 1);
@@ -765,6 +801,7 @@ export const runManualAutoAssignment = async ({
         movableLeadIds: movable,
         leadIdToCurrentAssignee,
         leadIdToSeenUserIds,
+        leadIdToCycleStep,
         lockedOwnerCount,
       });
       const plan = buildRebalanceTeamAssigneePlan(
@@ -891,6 +928,14 @@ export const assignByDateToTeamA = async ({
   const effectiveWindow = window || ((cfg as any).assignWindowDefault as any) || "yesterday";
   const effectiveTz = tz || ((cfg as any).timezone as string) || "Asia/Karachi";
   const { start, end, zone } = computeWindow({ window: effectiveWindow, tz: effectiveTz, customStart, customEnd });
+  console.log("[auto-assignment:assign-by-date] start", {
+    window: effectiveWindow,
+    tz: zone,
+    start: start.toISOString?.() ?? start,
+    end: end.toISOString?.() ?? end,
+    runId: runId?.trim() || null,
+    triggeredByUserId: triggeredByUserId ?? null,
+  });
   const hint = runId?.trim() || DateTime.fromJSDate(start).toFormat("yyyyLLdd");
   const batch = await LeadAssignmentBatch.create({
     runId: makeAuditBatchRunId("asg", hint),
@@ -924,10 +969,21 @@ export const assignByDateToTeamA = async ({
       lock: t.LOCK.UPDATE,
     });
     if (rows.length === 0) {
+      console.log("[auto-assignment:assign-by-date] no incoming rows matched window", {
+        batchId: (batch as any).id,
+        teamAId: teamA.id,
+      });
       await t.commit();
       await batch.update({ status: "completed", finishedAt: new Date(), newAssignedCount: 0 } as any);
       return { batchId: (batch as any).id, newAssignedCount: 0 };
     }
+    console.log("[auto-assignment:assign-by-date] promoting incoming rows", {
+      batchId: (batch as any).id,
+      teamAId: teamA.id,
+      incomingCount: rows.length,
+      activeMemberCount: members.length,
+      memberUserIds: members,
+    });
     const leadIds: number[] = [];
     for (const rec of rows) {
       const payload: any = rec.get("payload") || {};
@@ -985,8 +1041,19 @@ export const assignByDateToTeamA = async ({
     await batch.update(
       { status: "completed", finishedAt: new Date(), newAssignedCount } as any,
     );
+    console.log("[auto-assignment:assign-by-date] done", {
+      batchId: (batch as any).id,
+      teamAId: teamA.id,
+      newAssignedCount,
+      leadIds,
+      assigneePlan: Object.fromEntries(plan),
+    });
     return { batchId: (batch as any).id, newAssignedCount };
   } catch (e: any) {
+    console.error("[auto-assignment:assign-by-date] failed", {
+      message: e?.message,
+      batchId: (batch as any)?.id,
+    });
     await t.rollback();
     await batch.update({ status: "failed", finishedAt: new Date(), errorMessage: e.message } as any);
     throw e;
@@ -1041,6 +1108,13 @@ export const rebalanceTeam = async ({
     } as any,
   } as any);
 
+  console.log("[auto-assignment:rebalance-team] start", {
+    teamId,
+    labelRunId: labelRunId?.trim() || null,
+    triggeredByUserId: triggeredByUserId ?? null,
+    batchId: (batch as any).id,
+  });
+
   const t = await db.transaction();
   try {
     const states = await LeadAssignmentState.findAll({
@@ -1050,6 +1124,7 @@ export const rebalanceTeam = async ({
     });
     const leadIds = states.map((s: any) => s.leadId as number);
     if (leadIds.length === 0) {
+      console.log("[auto-assignment:rebalance-team] no assignment state for team", { teamId, batchId: (batch as any).id });
       await t.commit();
       const meta = {
         ...(((batch as any).get("metadata") as object) || {}),
@@ -1121,6 +1196,7 @@ export const rebalanceTeam = async ({
       movableLeadIds: movable,
       leadIdToCurrentAssignee,
       leadIdToSeenUserIds,
+      leadIdToCycleStep,
       lockedOwnerCount,
     });
     const plan = buildRebalanceTeamAssigneePlan(
@@ -1132,7 +1208,23 @@ export const rebalanceTeam = async ({
       quotas,
     );
     const matchedLeadIds = [...plan.assignments.keys()];
+    const unmatchedMovableLeadIds = movable.filter((id) => !plan.assignments.has(id));
     const skippedUniqueConstraint = movable.length - matchedLeadIds.length;
+    console.log("[auto-assignment:rebalance-team] plan", {
+      teamId,
+      batchId: (batch as any).id,
+      trackedForTeam: leadIds.length,
+      skippedLocked,
+      movableCount: movable.length,
+      movableLeadIds: movable,
+      lockedLeadIds: [...lockedSet],
+      matchedCount: matchedLeadIds.length,
+      matchedLeadIds,
+      unmatchedMovableLeadIds,
+      skippedUniqueConstraint,
+      quotas: Object.fromEntries(quotas),
+      assignments: Object.fromEntries(plan.assignments),
+    });
     let count = 0;
     for (const leadId of matchedLeadIds) {
       const assigneeId = plan.assignments.get(leadId)!;
@@ -1176,6 +1268,14 @@ export const rebalanceTeam = async ({
       rebalancedCount: count,
       metadata: metaDone as any,
     } as any);
+    console.log("[auto-assignment:rebalance-team] done", {
+      teamId,
+      batchId: (batch as any).id,
+      rebalanced: count,
+      trackedForTeam: leadIds.length,
+      skippedLocked,
+      skippedUniqueConstraint,
+    });
     return {
       rebalanced: count,
       trackedForTeam: leadIds.length,
@@ -1184,6 +1284,11 @@ export const rebalanceTeam = async ({
       batchId: (batch as any).id,
     };
   } catch (e: any) {
+    console.error("[auto-assignment:rebalance-team] failed", {
+      teamId,
+      message: e?.message,
+      batchId: (batch as any)?.id,
+    });
     await t.rollback();
     await batch.update({ status: "failed", finishedAt: new Date(), errorMessage: e.message } as any);
     throw e;

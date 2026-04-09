@@ -507,7 +507,7 @@ const getOrCreateSettings = async () => {
       enabled: true,
       rotationOrder,
       tenureHours: 24,
-      rebalanceHours: 24,
+      rebalanceDays: 1,
       timezone: "Asia/Karachi",
       assignWindowDefault: "yesterday",
     } as any);
@@ -517,21 +517,26 @@ const getOrCreateSettings = async () => {
 
 export const getAutoAssignmentSettings = async () => {
   const cfg = await getOrCreateSettings();
-  return cfg.toJSON();
+  const j = cfg.toJSON() as unknown as Record<string, unknown>;
+  const rd = Number(j.rebalanceDays);
+  if (!Number.isFinite(rd) || rd <= 0) {
+    j.rebalanceDays = 1;
+  }
+  return j;
 };
 
 export const updateAutoAssignmentSettings = async ({
   enabled,
   rotationOrder,
   tenureHours,
-  rebalanceHours,
+  rebalanceDays,
   timezone,
   assignWindowDefault,
 }: {
   enabled?: boolean;
   rotationOrder?: number[];
   tenureHours?: number;
-  rebalanceHours?: number;
+  rebalanceDays?: number;
   timezone?: string;
   assignWindowDefault?: "today" | "yesterday" | "day_before_yesterday" | "custom";
 }) => {
@@ -540,7 +545,13 @@ export const updateAutoAssignmentSettings = async ({
   if (enabled !== undefined) payload.enabled = enabled;
   if (rotationOrder !== undefined) payload.rotationOrder = rotationOrder;
   if (tenureHours !== undefined) payload.tenureHours = tenureHours;
-  if (rebalanceHours !== undefined) payload.rebalanceHours = rebalanceHours;
+  if (rebalanceDays !== undefined) {
+    const n = Number(rebalanceDays);
+    if (!Number.isFinite(n) || n <= 0) {
+      throw new Error("rebalanceDays must be a positive number");
+    }
+    payload.rebalanceDays = Math.floor(n);
+  }
   if (timezone !== undefined) payload.timezone = timezone;
   if (assignWindowDefault !== undefined) payload.assignWindowDefault = assignWindowDefault;
   await cfg.update(payload);

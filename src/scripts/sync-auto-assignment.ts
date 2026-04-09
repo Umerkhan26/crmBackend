@@ -26,7 +26,7 @@ const run = async () => {
     // Use alter for iterative development fields (e.g., seenUserIds, cycleStep)
     await LeadAssignmentState.sync({ alter: true });
     await LeadMemberHistory.sync({ alter: true });
-    await TeamRotationConfig.sync();
+    await TeamRotationConfig.sync({ alter: true });
 
     console.log("✅ Tables synced: teams, lead_locks, lead_assignment_batches, lead_rotation_state, lead_assignment_state, lead_member_history, team_rotation_config");
 
@@ -51,7 +51,7 @@ const run = async () => {
         enabled: true,
         rotationOrder,
         tenureHours: 24,
-        rebalanceHours: 24,
+        rebalanceDays: 1,
         timezone: "Asia/Karachi",
         assignWindowDefault: "yesterday",
       } as any);

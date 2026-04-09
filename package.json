@@ -5,6 +5,8 @@
   "scripts": {
     "start": "nodemon",
     "sync:auto-assignment": "npx ts-node src/scripts/sync-auto-assignment.ts",
+    "cron:rebalance-rotate": "npx ts-node src/scripts/cron-rebalance-rotate.ts",
+    "cron:assign-last-24h": "npx ts-node src/scripts/cron-assign-last-24h.ts",
     "sync:database": "npx ts-node src/scripts/sync-database.ts",
     "patch:schema-columns": "npx ts-node src/scripts/patch-missing-schema-columns.ts"
   },

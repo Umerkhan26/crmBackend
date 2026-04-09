@@ -1,20 +1,27 @@
 import { DataTypes, Model, Optional } from "sequelize";
 import db from "../../db";
 
+/** Persisted by cron workers: last rebalance run + per-team shuffle counts (rotation when count > active members). */
+export type TeamRotationSchedulerMeta = {
+  lastRebalanceRunAt?: string;
+  shuffleCountByTeamId?: Record<string, number>;
+};
+
 export interface TeamRotationConfigAttributes {
   id: number;
   enabled: boolean;
   rotationOrder: number[]; // array of Team IDs in order A->E
   tenureHours?: number | null; // default rotation window in hours
   timezone?: string | null; // e.g., "Asia/Karachi"
-  rebalanceHours?: number | null; // default rebalance cadence in hours
+  rebalanceDays?: number | null; // cadence between rebalance runs (cron checks DB; use days)
   assignWindowDefault?: "today" | "yesterday" | "day_before_yesterday" | "custom" | null;
+  schedulerMeta?: TeamRotationSchedulerMeta | null;
 }
 
 export interface TeamRotationConfigCreationAttributes
   extends Optional<
     TeamRotationConfigAttributes,
-    "id" | "enabled" | "tenureHours" | "timezone" | "rebalanceHours" | "assignWindowDefault"
+    "id" | "enabled" | "tenureHours" | "timezone" | "rebalanceDays" | "assignWindowDefault" | "schedulerMeta"
   > {}
 
 export class TeamRotationConfig
@@ -26,8 +33,9 @@ export class TeamRotationConfig
   public rotationOrder!: number[];
   public tenureHours?: number | null;
   public timezone?: string | null;
-  public rebalanceHours?: number | null;
+  public rebalanceDays?: number | null;
   public assignWindowDefault?: "today" | "yesterday" | "day_before_yesterday" | "custom" | null;
+  public schedulerMeta?: TeamRotationSchedulerMeta | null;
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
@@ -58,7 +66,7 @@ TeamRotationConfig.init(
       type: DataTypes.STRING(64),
       allowNull: true,
     },
-    rebalanceHours: {
+    rebalanceDays: {
       type: DataTypes.INTEGER,
       allowNull: true,
     },
@@ -66,6 +74,10 @@ TeamRotationConfig.init(
       type: DataTypes.ENUM("today", "yesterday", "day_before_yesterday", "custom"),
       allowNull: true,
       defaultValue: "yesterday",
+    },
+    schedulerMeta: {
+      type: DataTypes.JSON,
+      allowNull: true,
     },
   },
   {

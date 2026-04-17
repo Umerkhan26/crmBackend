@@ -6,6 +6,11 @@ export interface LeadRotationStateAttributes {
   leadId: number;
   teamId: number;
   enteredTeamAt: Date;
+  isPipelineCompleted?: boolean;
+  pipelineCompletedAt?: Date | null;
+  isExceptionalRelease?: boolean;
+  exceptionalReleaseAt?: Date | null;
+  exceptionalReleaseReason?: string | null;
 }
 
 export interface LeadRotationStateCreationAttributes
@@ -19,6 +24,11 @@ export class LeadRotationState
   public leadId!: number;
   public teamId!: number;
   public enteredTeamAt!: Date;
+  public isPipelineCompleted?: boolean;
+  public pipelineCompletedAt?: Date | null;
+  public isExceptionalRelease?: boolean;
+  public exceptionalReleaseAt?: Date | null;
+  public exceptionalReleaseReason?: string | null;
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
@@ -49,6 +59,28 @@ LeadRotationState.init(
       allowNull: false,
       defaultValue: DataTypes.NOW,
     },
+    isPipelineCompleted: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
+    pipelineCompletedAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
+    isExceptionalRelease: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
+    exceptionalReleaseAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
+    exceptionalReleaseReason: {
+      type: DataTypes.STRING(128),
+      allowNull: true,
+    },
   },
   {
     sequelize: db,
@@ -58,6 +90,8 @@ LeadRotationState.init(
       { fields: ["leadId"], unique: true },
       { fields: ["teamId"] },
       { fields: ["enteredTeamAt"] },
+      { fields: ["isPipelineCompleted"] },
+      { fields: ["isExceptionalRelease"] },
     ],
   },
 );

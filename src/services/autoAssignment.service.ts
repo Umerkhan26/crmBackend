@@ -1338,10 +1338,17 @@ export const rotateByTenure = async ({
       ? Number(tenureHours)
       : Number((cfg as any).tenureHours || 24);
     const order = await getRotationOrderTeamIds();
+    const teamA = await getTeamByCodeA();
     const cutoff = new Date(Date.now() - effectiveTenureHours * 60 * 60 * 1000);
     const rotationRowsTotal = await LeadRotationState.count({ transaction: t });
     const toRotate = await LeadRotationState.findAll({
-      where: { enteredTeamAt: { [Op.lte]: cutoff } },
+      where: {
+        enteredTeamAt: { [Op.lte]: cutoff },
+        [Op.and]: [
+          { [Op.or]: [{ isPipelineCompleted: false }, { isPipelineCompleted: null }] },
+          { [Op.or]: [{ isExceptionalRelease: false }, { isExceptionalRelease: null }] },
+        ],
+      } as any,
       transaction: t,
       lock: t.LOCK.UPDATE,
     });
@@ -1351,12 +1358,49 @@ export const rotateByTenure = async ({
     let skippedNoMembers = 0;
     let skippedLocked = 0;
     let skippedLeadMissing = 0;
+    let completedAtFinalTeam = 0;
+    let exceptionalReleasedByExpiredTeamALock = 0;
     for (const rs of toRotate) {
       const leadId = (rs as any).leadId as number;
       const currentTeamId = (rs as any).teamId as number;
+
+      // Exception case: lead was locked in Team A and lock window ended -> expose in final endpoint immediately.
+      if (currentTeamId === teamA.id) {
+        const expiredTeamALock = await LeadLock.findOne({
+          where: {
+            leadId,
+            status: "locked",
+            lockUntil: { [Op.lte]: new Date() },
+          } as any,
+          order: [["lockUntil", "DESC"]],
+          transaction: t,
+          lock: t.LOCK.UPDATE,
+        });
+        if (expiredTeamALock) {
+          await rs.update(
+            {
+              isExceptionalRelease: true,
+              exceptionalReleaseAt: new Date(),
+              exceptionalReleaseReason: "lock_expired_team_a",
+            } as any,
+            { transaction: t },
+          );
+          exceptionalReleasedByExpiredTeamALock++;
+          continue;
+        }
+      }
+
       const nextTeamId = getNextTeamId(order, currentTeamId);
       if (!nextTeamId) {
         skippedNoNext++;
+        await rs.update(
+          {
+            isPipelineCompleted: true,
+            pipelineCompletedAt: new Date(),
+          } as any,
+          { transaction: t },
+        );
+        completedAtFinalTeam++;
         continue;
       }
       const nextMembers = await getActiveMemberUserIds(nextTeamId);
@@ -1382,7 +1426,18 @@ export const rotateByTenure = async ({
       const assignedAt = new Date().toISOString();
       const assignees = [{ userId: assignee, status: "pending", assignedAt }];
       await lead.update({ assignees } as any, { transaction: t });
-      await rs.update({ teamId: nextTeamId, enteredTeamAt: new Date() } as any, { transaction: t });
+      await rs.update(
+        {
+          teamId: nextTeamId,
+          enteredTeamAt: new Date(),
+          isPipelineCompleted: false,
+          pipelineCompletedAt: null,
+          isExceptionalRelease: false,
+          exceptionalReleaseAt: null,
+          exceptionalReleaseReason: null,
+        } as any,
+        { transaction: t },
+      );
       await LeadAssignmentState.upsert(
         {
           leadId,
@@ -1415,6 +1470,8 @@ export const rotateByTenure = async ({
       skippedNoMembers,
       skippedLocked,
       skippedLeadMissing,
+      completedAtFinalTeam,
+      exceptionalReleasedByExpiredTeamALock,
     };
     await batch.update({
       status: "completed",
@@ -1432,6 +1489,8 @@ export const rotateByTenure = async ({
       skippedNoMembers,
       skippedLocked,
       skippedLeadMissing,
+      completedAtFinalTeam,
+      exceptionalReleasedByExpiredTeamALock,
       batchId: (batch as any).id,
     };
   } catch (e: any) {

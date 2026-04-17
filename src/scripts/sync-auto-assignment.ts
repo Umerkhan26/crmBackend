@@ -22,7 +22,7 @@ const run = async () => {
     // Use alter for iterative development fields (e.g., lockUntil)
     await LeadLock.sync({ alter: true });
     await LeadAssignmentBatch.sync();
-    await LeadRotationState.sync();
+    await LeadRotationState.sync({ alter: true });
     // Use alter for iterative development fields (e.g., seenUserIds, cycleStep)
     await LeadAssignmentState.sync({ alter: true });
     await LeadMemberHistory.sync({ alter: true });

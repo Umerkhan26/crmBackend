@@ -433,26 +433,25 @@ export const getLeadsByCampaign = async ({
       whereCondition.createdBy = createdBy;
     }
 
-    // Business rule: campaign endpoint should show leads only after full pipeline exit
-    // (Team E completion) OR Team A lock-expiry exceptional release.
+    // Pipeline rule (onlyExited): new auto-assignment leads have a `lead_rotation_state` row —
+    // hide them until full pipeline exit (Team E) or Team A lock-expiry exceptional release.
+    // Leads with no rotation row are legacy and keep the old behavior (always visible here).
     if (onlyExited) {
-      const exitRows = await LeadRotationState.findAll({
+      const inPipelineRows = await LeadRotationState.findAll({
         attributes: ["leadId"],
         where: {
-          [Op.or]: [{ isPipelineCompleted: true }, { isExceptionalRelease: true }],
+          [Op.and]: [
+            { [Op.or]: [{ isPipelineCompleted: false }, { isPipelineCompleted: null }] },
+            { [Op.or]: [{ isExceptionalRelease: false }, { isExceptionalRelease: null }] },
+          ],
         } as any,
       });
-      const exitedLeadIds = Array.from(new Set(exitRows.map((r: any) => Number(r.leadId)).filter((x) => Number.isFinite(x))));
-      if (exitedLeadIds.length === 0) {
-        return {
-          totalItems: 0,
-          rows: [],
-          currentPage: page,
-          totalPages: 0,
-          pageSize: limit,
-        };
+      const inPipelineLeadIds = Array.from(
+        new Set(inPipelineRows.map((r: any) => Number(r.leadId)).filter((x) => Number.isFinite(x))),
+      );
+      if (inPipelineLeadIds.length > 0) {
+        whereCondition.id = { [Op.notIn]: inPipelineLeadIds };
       }
-      whereCondition.id = { [Op.in]: exitedLeadIds };
     }
 
     // Step 4: Fetch ALL leads for the campaign (NO pagination)

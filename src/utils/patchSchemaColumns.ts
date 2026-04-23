@@ -89,6 +89,31 @@ export const patchMissingSchemaColumns = async (sequelize: Sequelize) => {
       "lead_assignment_state.cycleStep",
       'ALTER TABLE "lead_assignment_state" ADD COLUMN IF NOT EXISTS "cycleStep" INTEGER NOT NULL DEFAULT 0;',
     );
+    await tryQuery(
+      sequelize,
+      "lead_rotation_state.isPipelineCompleted",
+      'ALTER TABLE "lead_rotation_state" ADD COLUMN IF NOT EXISTS "isPipelineCompleted" BOOLEAN NOT NULL DEFAULT FALSE;',
+    );
+    await tryQuery(
+      sequelize,
+      "lead_rotation_state.pipelineCompletedAt",
+      'ALTER TABLE "lead_rotation_state" ADD COLUMN IF NOT EXISTS "pipelineCompletedAt" TIMESTAMP WITH TIME ZONE;',
+    );
+    await tryQuery(
+      sequelize,
+      "lead_rotation_state.isExceptionalRelease",
+      'ALTER TABLE "lead_rotation_state" ADD COLUMN IF NOT EXISTS "isExceptionalRelease" BOOLEAN NOT NULL DEFAULT FALSE;',
+    );
+    await tryQuery(
+      sequelize,
+      "lead_rotation_state.exceptionalReleaseAt",
+      'ALTER TABLE "lead_rotation_state" ADD COLUMN IF NOT EXISTS "exceptionalReleaseAt" TIMESTAMP WITH TIME ZONE;',
+    );
+    await tryQuery(
+      sequelize,
+      "lead_rotation_state.exceptionalReleaseReason",
+      'ALTER TABLE "lead_rotation_state" ADD COLUMN IF NOT EXISTS "exceptionalReleaseReason" VARCHAR(128);',
+    );
     await tryBackfillRebalanceDaysFromHoursPostgres(sequelize);
     return;
   }
@@ -134,6 +159,31 @@ export const patchMissingSchemaColumns = async (sequelize: Sequelize) => {
     sequelize,
     "lead_assignment_state.cycleStep",
     "ALTER TABLE `lead_assignment_state` ADD COLUMN `cycleStep` INT NOT NULL DEFAULT 0",
+  );
+  await tryQuery(
+    sequelize,
+    "lead_rotation_state.isPipelineCompleted",
+    "ALTER TABLE `lead_rotation_state` ADD COLUMN `isPipelineCompleted` TINYINT(1) NOT NULL DEFAULT 0",
+  );
+  await tryQuery(
+    sequelize,
+    "lead_rotation_state.pipelineCompletedAt",
+    "ALTER TABLE `lead_rotation_state` ADD COLUMN `pipelineCompletedAt` DATETIME NULL",
+  );
+  await tryQuery(
+    sequelize,
+    "lead_rotation_state.isExceptionalRelease",
+    "ALTER TABLE `lead_rotation_state` ADD COLUMN `isExceptionalRelease` TINYINT(1) NOT NULL DEFAULT 0",
+  );
+  await tryQuery(
+    sequelize,
+    "lead_rotation_state.exceptionalReleaseAt",
+    "ALTER TABLE `lead_rotation_state` ADD COLUMN `exceptionalReleaseAt` DATETIME NULL",
+  );
+  await tryQuery(
+    sequelize,
+    "lead_rotation_state.exceptionalReleaseReason",
+    "ALTER TABLE `lead_rotation_state` ADD COLUMN `exceptionalReleaseReason` VARCHAR(128) NULL",
   );
   await tryBackfillRebalanceDaysFromHoursMysql(sequelize);
 };

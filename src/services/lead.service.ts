@@ -26,6 +26,7 @@ import Note from "../models/note.model";
 import LeadActivity from "../models/leadActivity.model";
 import Role from "../models/role.model";
 import { Permission } from "../models/permission.model";
+import LeadRotationState from "../models/leadRotationState.model";
 
 interface PaginationParams {
   page?: number;
@@ -351,6 +352,7 @@ interface GetLeadsByCampaignParams {
   limit?: number;
   search?: string;
   filterType?: FilterType;
+  onlyExited?: boolean;
 }
 export interface EnrichedAssignee {
   id: number;
@@ -372,6 +374,7 @@ export const getLeadsByCampaign = async ({
   userId, // Add userId parameter to filter by creator
   isAdmin = false, // Add isAdmin flag to determine if user should see all leads
   createdBy, // Add createdBy parameter to filter by specific creator (for admin)
+  onlyExited = true,
 }: GetLeadsByCampaignParams & {
   conditions?: any[];
   startDate?: string;
@@ -380,6 +383,7 @@ export const getLeadsByCampaign = async ({
   userId?: number;
   isAdmin?: boolean;
   createdBy?: number; // Filter by specific creator (admin only)
+  onlyExited?: boolean;
 }): Promise<any> => {
   try {
     // Step 1: Build dynamic filter for JSON fields
@@ -427,6 +431,27 @@ export const getLeadsByCampaign = async ({
     } else if (isAdmin && createdBy) {
       // Admin filtering by specific creator
       whereCondition.createdBy = createdBy;
+    }
+
+    // Pipeline rule (onlyExited): new auto-assignment leads have a `lead_rotation_state` row —
+    // hide them until full pipeline exit (Team E) or Team A lock-expiry exceptional release.
+    // Leads with no rotation row are legacy and keep the old behavior (always visible here).
+    if (onlyExited) {
+      const inPipelineRows = await LeadRotationState.findAll({
+        attributes: ["leadId"],
+        where: {
+          [Op.and]: [
+            { [Op.or]: [{ isPipelineCompleted: false }, { isPipelineCompleted: null }] },
+            { [Op.or]: [{ isExceptionalRelease: false }, { isExceptionalRelease: null }] },
+          ],
+        } as any,
+      });
+      const inPipelineLeadIds = Array.from(
+        new Set(inPipelineRows.map((r: any) => Number(r.leadId)).filter((x) => Number.isFinite(x))),
+      );
+      if (inPipelineLeadIds.length > 0) {
+        whereCondition.id = { [Op.notIn]: inPipelineLeadIds };
+      }
     }
 
     // Step 4: Fetch ALL leads for the campaign (NO pagination)

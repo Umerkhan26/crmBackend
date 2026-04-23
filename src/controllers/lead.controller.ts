@@ -176,6 +176,10 @@ export const getLeadsByCampaign = async (
     const filterType = req.query.filterType
       ? (req.query.filterType as FilterType)
       : undefined;
+    const onlyExited =
+      req.query.onlyExited === undefined
+        ? true
+        : String(req.query.onlyExited).toLowerCase() !== "false";
 
     // Dynamic JSON filters
     let conditions: any[] = [];
@@ -206,6 +210,7 @@ export const getLeadsByCampaign = async (
       userId, // Pass userId to filter by creator
       isAdmin, // Pass isAdmin flag
       createdBy, // Add createdBy filter for admin users
+      onlyExited,
     });
 
     if (!leads || !leads.rows || leads.rows.length === 0) {

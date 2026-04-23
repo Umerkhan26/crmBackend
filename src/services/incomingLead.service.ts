@@ -30,6 +30,98 @@ export const createIncomingLead = async ({
   return rec.toJSON();
 };
 
+type BulkIncomingRowInput = {
+  campaignName?: string;
+  leadData: any;
+  externalId?: string;
+  dedupeKey?: string;
+};
+
+type PreparedIncomingRow = {
+  rowNum: number;
+  attrs: {
+    runId: string;
+    payload: any;
+    campaignName: string | null;
+    externalId: string | null;
+    dedupeKey: string | null;
+    status: "pending";
+  };
+};
+
+/**
+ * Insert many staging rows in one request (chunked DB writes), same semantics as repeated createIncomingLead.
+ */
+export const bulkCreateIncomingLeads = async ({
+  runId,
+  defaultCampaignName,
+  rows,
+}: {
+  runId: string;
+  defaultCampaignName?: string;
+  rows: BulkIncomingRowInput[];
+}) => {
+  if (!runId?.trim()) throw new Error("runId is required");
+  if (!rows?.length) return { imported: 0, skipped: [] as { row: number; reason: string }[] };
+
+  const trimmedRun = runId.trim();
+  const defaultCamp = defaultCampaignName?.trim() || null;
+
+  const prepared: PreparedIncomingRow[] = [];
+  const skipped: { row: number; reason: string }[] = [];
+
+  for (let i = 0; i < rows.length; i++) {
+    const rowNum = i + 2;
+    const row = rows[i];
+    try {
+      if (!row.leadData || typeof row.leadData !== "object") {
+        throw new Error("Missing or invalid leadData");
+      }
+      const campaignName =
+        row.campaignName?.trim() || defaultCamp || null;
+      prepared.push({
+        rowNum,
+        attrs: {
+          runId: trimmedRun,
+          payload: row.leadData,
+          campaignName,
+          externalId: row.externalId?.trim() || null,
+          dedupeKey: row.dedupeKey?.trim() || null,
+          status: "pending",
+        },
+      });
+    } catch (e: any) {
+      skipped.push({ row: rowNum, reason: e.message || "Invalid row" });
+    }
+  }
+
+  let imported = 0;
+  const chunkSize = 200;
+
+  for (let i = 0; i < prepared.length; i += chunkSize) {
+    const slice = prepared.slice(i, i + chunkSize);
+    const chunkAttrs = slice.map((p) => p.attrs);
+    try {
+      await IncomingLead.bulkCreate(chunkAttrs as any[], { validate: true });
+      imported += slice.length;
+    } catch {
+      for (const p of slice) {
+        try {
+          await IncomingLead.create(p.attrs as any);
+          imported += 1;
+        } catch (e: any) {
+          skipped.push({
+            row: p.rowNum,
+            reason: e.message || "Database error",
+          });
+        }
+      }
+    }
+  }
+
+  return { imported, skipped };
+};
+
 export const getIncomingLeads = async ({
   page = 1,
   limit = 20,
@@ -104,6 +196,37 @@ export const deleteIncomingLead = async (id: number) => {
   if (!rec) throw new Error("Incoming lead not found");
   await rec.destroy();
   return "Incoming lead deleted";
+};
+
+const BULK_DELETE_MAX_IDS = 1000;
+
+/** Delete many staging rows in one query. When campaignName is set, only rows for that campaign are removed. */
+export const bulkDeleteIncomingLeads = async ({
+  ids,
+  campaignName,
+}: {
+  ids: number[];
+  campaignName?: string;
+}) => {
+  const cleanIds = [
+    ...new Set(
+      ids
+        .map((id) => Number(id))
+        .filter((n) => Number.isInteger(n) && n > 0),
+    ),
+  ];
+  if (!cleanIds.length) return { deletedCount: 0 };
+  if (cleanIds.length > BULK_DELETE_MAX_IDS) {
+    throw new Error(`At most ${BULK_DELETE_MAX_IDS} rows per bulk delete request`);
+  }
+
+  const where: any = { id: { [Op.in]: cleanIds } };
+  if (campaignName?.trim()) {
+    where.campaignName = campaignName.trim();
+  }
+
+  const deletedCount = await IncomingLead.destroy({ where });
+  return { deletedCount };
 };
 
 export const validateIncomingLead = async (id: number, dedupeKey?: string) => {

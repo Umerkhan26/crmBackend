@@ -12,7 +12,7 @@ const runSync = async () => {
     await db.authenticate();
     console.log("Database connection established.");
 
-    await patchMissingSchemaColumns();
+    await patchMissingSchemaColumns(db);
 
     // sync() creates missing tables only; alter: true can hit MySQL index limit
     await db.sync();

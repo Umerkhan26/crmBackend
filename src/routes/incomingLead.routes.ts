@@ -13,6 +13,16 @@ router.post(
   checkPermission(PERMISSIONS.INCOMING_LEAD_WRITE),
   IncomingLeadController.createIncomingLeadController,
 );
+router.post(
+  "/incoming-leads/bulk",
+  checkPermission(PERMISSIONS.INCOMING_LEAD_WRITE),
+  IncomingLeadController.bulkCreateIncomingLeadsController,
+);
+router.post(
+  "/incoming-leads/bulk-delete",
+  checkPermission(PERMISSIONS.INCOMING_LEAD_WRITE),
+  IncomingLeadController.bulkDeleteIncomingLeadsController,
+);
 router.get(
   "/incoming-leads",
   checkPermission(PERMISSIONS.INCOMING_LEAD_READ),

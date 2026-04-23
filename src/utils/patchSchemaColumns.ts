@@ -71,6 +71,11 @@ export const patchMissingSchemaColumns = async (sequelize: Sequelize) => {
     );
     await tryQuery(
       sequelize,
+      "team_rotation_config.schedulerMeta",
+      'ALTER TABLE "team_rotation_config" ADD COLUMN IF NOT EXISTS "schedulerMeta" JSONB;',
+    );
+    await tryQuery(
+      sequelize,
       "lead_locks.lockUntil",
       'ALTER TABLE "lead_locks" ADD COLUMN IF NOT EXISTS "lockUntil" TIMESTAMP WITH TIME ZONE;',
     );
@@ -90,7 +95,7 @@ export const patchMissingSchemaColumns = async (sequelize: Sequelize) => {
 
   if (dialect === "sqlite") {
     console.warn(
-      "⚠️ sqlite: add rebalanceDays / rebalanceHours / assignWindowDefault / lockUntil / seenUserIds / cycleStep manually if you see unknown column errors.",
+      "⚠️ sqlite: add rebalanceDays / rebalanceHours / assignWindowDefault / schedulerMeta / lockUntil / seenUserIds / cycleStep manually if you see unknown column errors.",
     );
     return;
   }
@@ -109,6 +114,11 @@ export const patchMissingSchemaColumns = async (sequelize: Sequelize) => {
     sequelize,
     "team_rotation_config.assignWindowDefault",
     "ALTER TABLE `team_rotation_config` ADD COLUMN `assignWindowDefault` ENUM('today','yesterday','day_before_yesterday','custom') NULL DEFAULT 'yesterday'",
+  );
+  await tryQuery(
+    sequelize,
+    "team_rotation_config.schedulerMeta",
+    "ALTER TABLE `team_rotation_config` ADD COLUMN `schedulerMeta` JSON NULL",
   );
   await tryQuery(
     sequelize,

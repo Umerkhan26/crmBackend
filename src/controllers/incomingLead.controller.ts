@@ -1,5 +1,7 @@
 import { Request, Response } from "express";
 import {
+  bulkCreateIncomingLeads,
+  bulkDeleteIncomingLeads,
   bulkPromoteIncomingLeads,
   createIncomingLead,
   deleteIncomingLead,
@@ -18,6 +20,63 @@ export const createIncomingLeadController = async (req: Request, res: Response):
     return res.status(201).json({ success: true, message: "Incoming lead created", data: created });
   } catch (error: any) {
     return res.status(400).json({ success: false, message: error.message || "Error creating incoming lead" });
+  }
+};
+
+export const bulkDeleteIncomingLeadsController = async (req: Request, res: Response): Promise<any> => {
+  try {
+    const { ids, campaignName } = req.body || {};
+    if (!Array.isArray(ids)) {
+      return res.status(400).json({ success: false, message: "ids must be an array" });
+    }
+    if (!campaignName?.trim()) {
+      return res
+        .status(400)
+        .json({ success: false, message: "campaignName is required to scope bulk delete" });
+    }
+    const { deletedCount } = await bulkDeleteIncomingLeads({
+      ids,
+      campaignName,
+    });
+    return res.status(200).json({
+      success: true,
+      message: "Bulk delete completed",
+      deletedCount,
+    });
+  } catch (error: any) {
+    return res.status(400).json({
+      success: false,
+      message: error.message || "Error bulk deleting incoming leads",
+    });
+  }
+};
+
+export const bulkCreateIncomingLeadsController = async (req: Request, res: Response): Promise<any> => {
+  try {
+    const { runId, campaignName, rows } = req.body || {};
+    if (!Array.isArray(rows)) {
+      return res.status(400).json({ success: false, message: "rows must be a non-empty array" });
+    }
+    if (!runId?.trim()) {
+      return res.status(400).json({ success: false, message: "runId is required" });
+    }
+    const { imported, skipped } = await bulkCreateIncomingLeads({
+      runId,
+      defaultCampaignName: campaignName,
+      rows,
+    });
+    return res.status(201).json({
+      success: true,
+      message: "Incoming leads imported",
+      imported,
+      skipped,
+      batchRunId: runId.trim(),
+    });
+  } catch (error: any) {
+    return res.status(400).json({
+      success: false,
+      message: error.message || "Error bulk creating incoming leads",
+    });
   }
 };
 

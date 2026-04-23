@@ -59,6 +59,12 @@ router.delete(
   checkPermission(PERMISSIONS.LEAD_DELETE),
   LeadController.deleteLead
 );
+router.post(
+  "/leads/bulk-delete",
+  verifyToken,
+  checkPermission(PERMISSIONS.LEAD_DELETE),
+  LeadController.bulkDeleteLeads,
+);
 
 router.post(
   "/assign/:leadId",

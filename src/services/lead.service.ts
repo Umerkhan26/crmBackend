@@ -653,6 +653,81 @@ export const deleteLead = async (
     throw new Error(`Error deleting lead: ${error.message}`);
   }
 };
+
+const BULK_DELETE_LEADS_MAX = 1000;
+
+export const bulkDeleteLeads = async (
+  leadIds: number[],
+  userId?: number,
+): Promise<{ deletedCount: number }> => {
+  const cleanIds = [
+    ...new Set(
+      (leadIds || [])
+        .map((id) => Number(id))
+        .filter((id) => Number.isInteger(id) && id > 0),
+    ),
+  ];
+
+  if (cleanIds.length === 0) {
+    return { deletedCount: 0 };
+  }
+
+  if (cleanIds.length > BULK_DELETE_LEADS_MAX) {
+    throw new Error(
+      `At most ${BULK_DELETE_LEADS_MAX} leads can be deleted per request`,
+    );
+  }
+
+  const rows = await Lead.findAll({
+    where: { id: { [Op.in]: cleanIds } },
+    attributes: ["id", "assignees"],
+  });
+
+  const deletableIds = rows
+    .filter((lead) => {
+      const raw = (lead as any).assignees;
+      if (raw == null) return true;
+      if (Array.isArray(raw)) return raw.length === 0;
+      if (typeof raw === "string") {
+        try {
+          const parsed = JSON.parse(raw);
+          return !Array.isArray(parsed) || parsed.length === 0;
+        } catch {
+          return true;
+        }
+      }
+      return false;
+    })
+    .map((lead) => Number((lead as any).id))
+    .filter((id) => Number.isInteger(id) && id > 0);
+
+  if (deletableIds.length === 0) {
+    return { deletedCount: 0 };
+  }
+
+  const deletedCount = await Lead.destroy({
+    where: { id: { [Op.in]: deletableIds } },
+  });
+
+  if (userId && deletedCount > 0) {
+    const user = await User.findByPk(userId);
+    const fullName = user
+      ? `${user.firstname || ""} ${user.lastname || ""}`.trim()
+      : undefined;
+    await logActivity(
+      userId,
+      "delete",
+      `Bulk deleted ${deletedCount} unassigned lead(s)`,
+      fullName || undefined,
+    );
+    await sendNotification(
+      userId,
+      `Bulk deleted ${deletedCount} unassigned lead(s)`,
+    );
+  }
+
+  return { deletedCount };
+};
 export const assignLeadToUsers = async (
   leadId: number,
   userIdsToAssign: number[],

@@ -269,6 +269,44 @@ export const deleteLead = async (req: Request, res: Response): Promise<any> => {
     return res.status(500).json({ message: error.message });
   }
 };
+
+export const bulkDeleteLeads = async (
+  req: Request,
+  res: Response,
+): Promise<any> => {
+  try {
+    const { leadIds } = req.body || {};
+    if (!Array.isArray(leadIds) || leadIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "leadIds must be a non-empty array",
+      });
+    }
+
+    const ids = leadIds
+      .map((id: string | number) => parseInt(String(id), 10))
+      .filter((id: number) => !isNaN(id));
+
+    if (ids.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "No valid lead IDs provided",
+      });
+    }
+
+    const { deletedCount } = await LeadService.bulkDeleteLeads(ids, req.user?.id);
+    return res.status(200).json({
+      success: true,
+      message: "Bulk lead delete completed",
+      deletedCount,
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      message: error.message || "An error occurred while bulk deleting leads.",
+    });
+  }
+};
 export const assignUserToLead = async (
   req: Request,
   res: Response,

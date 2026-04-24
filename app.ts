@@ -1,4 +1,4 @@
-import express, { Application, Request, Response, NextFunction } from "express";
+import express, { Application, ErrorRequestHandler, NextFunction, Request, Response } from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import path from "path";
@@ -10,7 +10,9 @@ dotenv.config();
 
 const app: Application = express();
 
-app.use(express.json());
+const requestBodyLimit = process.env.REQUEST_BODY_LIMIT || "50mb";
+app.use(express.json({ limit: requestBodyLimit }));
+app.use(express.urlencoded({ extended: true, limit: requestBodyLimit }));
 app.use(cors());
 app.use((req: Request, res: Response, next: NextFunction) => {
   const allowedOrigin = process.env.FRONT_END_URL || "http://localhost:3001";
@@ -62,5 +64,18 @@ export const loadRoutes = (app: Application) => {
     }
   });
 };
+
+const payloadTooLargeHandler: ErrorRequestHandler = (err, _req, res, next) => {
+  if (err?.type === "entity.too.large" || err?.status === 413) {
+    res.status(413).json({
+      success: false,
+      message: `Payload too large. Increase REQUEST_BODY_LIMIT (current: ${requestBodyLimit}).`,
+    });
+    return;
+  }
+  next(err);
+};
+
+app.use(payloadTooLargeHandler);
 
 export default app;

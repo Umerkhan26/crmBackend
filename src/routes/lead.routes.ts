@@ -124,6 +124,27 @@ router.put(
 );
 
 router.get(
+  "/hot-leads/manager/requests",
+  verifyToken,
+  checkPermission(PERMISSIONS.LEAD_GET_ALL),
+  LeadController.getManagerHotLeadRequests,
+);
+
+router.put(
+  "/hot-leads/manager/requests/:leadId/review",
+  verifyToken,
+  checkPermission(PERMISSIONS.LEAD_GET_ALL),
+  LeadController.reviewHotLeadRequest,
+);
+
+router.get(
+  "/hot-leads/my-requests",
+  verifyToken,
+  checkPermission(PERMISSIONS.ASSIGNED_LEAD_GET_BY_ASSIGNEE),
+  LeadController.getMyHotLeadRequests,
+);
+
+router.get(
   "/lead-get-by-campaign-and-assignee/:campaignName",
   verifyToken,
   checkPermission(PERMISSIONS.ASSIGNED_LEAD_GET_BY_CAMPAIGN_AND_ASSIGNEE),

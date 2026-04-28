@@ -27,6 +27,7 @@ import LeadActivity from "../models/leadActivity.model";
 import Role from "../models/role.model";
 import { Permission } from "../models/permission.model";
 import LeadRotationState from "../models/leadRotationState.model";
+import { getManagerBrandUserIds } from "../utils/brandUtils";
 
 interface PaginationParams {
   page?: number;
@@ -1805,6 +1806,7 @@ export const getLeadStatusSummary = async (assigneeId?: number) => {
       "to_call",
       "not_answered",
       "not_interested",
+      "hot_lead",
     ];
     const statusCounts: Record<string, number> = {};
     const leadsByStatus: Record<string, any[]> = {};
@@ -1847,6 +1849,7 @@ const ALLOWED_STATUSES: LeadStatus[] = [
   "to_call",
   "not_answered",
   "not_interested",
+  "hot_lead",
 ];
 
 export type LeadStatus =
@@ -1857,7 +1860,18 @@ export type LeadStatus =
   | "sold"
   | "not_answered"
   | "not_interested"
-  | "do_not_call";
+  | "do_not_call"
+  | "hot_lead";
+
+type HotLeadRequestStatus = "pending" | "approved" | "rejected";
+type AssigneeWithHotLeadMeta = AssigneeWithStatus & {
+  hotLeadRequestStatus?: HotLeadRequestStatus | null;
+  hotLeadPreviousStatus?: LeadStatus | null;
+  hotLeadRequestedAt?: string | null;
+  hotLeadReviewedAt?: string | null;
+  hotLeadReviewedBy?: number | null;
+  hotLeadRejectReason?: string | null;
+};
 
 // export const updateLeadStatusForUser = async (
 //   leadId: number,
@@ -1931,17 +1945,16 @@ export const updateLeadStatusForUser = async (
     throw new Error(`Lead with ID ${leadId} not found`);
   }
 
-  let parsedAssignees: AssigneeWithStatus[] = [];
-
+  let parsedAssignees: AssigneeWithHotLeadMeta[] = [];
   try {
     if (Array.isArray(lead.assignees)) {
-      parsedAssignees = lead.assignees;
+      parsedAssignees = lead.assignees as AssigneeWithHotLeadMeta[];
     } else if (typeof lead.assignees === "string") {
       parsedAssignees = JSON.parse(lead.assignees);
     } else if (lead.assignees && typeof lead.assignees === "object") {
-      parsedAssignees = lead.assignees as AssigneeWithStatus[];
+      parsedAssignees = lead.assignees as AssigneeWithHotLeadMeta[];
     }
-  } catch (err) {
+  } catch {
     parsedAssignees = [];
   }
 
@@ -1955,12 +1968,39 @@ export const updateLeadStatusForUser = async (
 
   const previousStatus = assignees[index].status;
 
-  const updatedAssignees = assignees.map((a, i) =>
-    i === index ? { ...a, status: newStatus } : a,
-  );
+  const nowIso = new Date().toISOString();
+  const updatedAssignees = assignees.map((a, i) => {
+    if (i !== index) return a;
+    if (newStatus === "hot_lead") {
+      const fallbackPreviousStatus: LeadStatus =
+        previousStatus === "hot_lead"
+          ? (a.hotLeadPreviousStatus as LeadStatus | undefined) || "pending"
+          : previousStatus;
+      return {
+        ...a,
+        status: "hot_lead",
+        hotLeadRequestStatus: "pending" as HotLeadRequestStatus,
+        hotLeadPreviousStatus: fallbackPreviousStatus,
+        hotLeadRequestedAt: nowIso,
+        hotLeadReviewedAt: null,
+        hotLeadReviewedBy: null,
+        hotLeadRejectReason: null,
+      };
+    }
+    return {
+      ...a,
+      status: newStatus,
+      hotLeadRequestStatus: null,
+      hotLeadPreviousStatus: null,
+      hotLeadRequestedAt: null,
+      hotLeadReviewedAt: null,
+      hotLeadReviewedBy: null,
+      hotLeadRejectReason: null,
+    };
+  });
 
   // Force change detection for JSON column
-  lead.set("assignees", updatedAssignees);
+  lead.set("assignees", updatedAssignees as any);
   lead.changed("assignees", true);
   await lead.save();
 
@@ -1975,6 +2015,209 @@ export const updateLeadStatusForUser = async (
   } catch (err) {}
 
   return { ...(lead.toJSON() as any) };
+};
+
+const extractAssignees = (lead: Lead): AssigneeWithHotLeadMeta[] => {
+  try {
+    if (Array.isArray(lead.assignees)) return lead.assignees as AssigneeWithHotLeadMeta[];
+    if (typeof lead.assignees === "string") return JSON.parse(lead.assignees);
+    if (lead.assignees && typeof lead.assignees === "object") {
+      return lead.assignees as AssigneeWithHotLeadMeta[];
+    }
+  } catch {
+    return [];
+  }
+  return [];
+};
+
+const saveAssignees = async (lead: Lead, assignees: AssigneeWithHotLeadMeta[]) => {
+  lead.set("assignees", assignees as any);
+  lead.changed("assignees", true);
+  await lead.save();
+};
+
+export const getManagerHotLeadRequests = async ({
+  managerId,
+  page = 1,
+  limit = 10,
+}: {
+  managerId: number;
+  page?: number;
+  limit?: number;
+}) => {
+  const managedUserIds = await getManagerBrandUserIds(managerId);
+  if (managedUserIds.length === 0) {
+    return { rows: [], totalItems: 0, totalPages: 0, currentPage: page, pageSize: limit };
+  }
+
+  const candidateLeads = await Lead.findAll({
+    where: literal(`JSON_CONTAINS(assignees, JSON_OBJECT('status', 'hot_lead'))`),
+    order: [["updatedAt", "DESC"]],
+  });
+
+  const rows: any[] = [];
+  for (const lead of candidateLeads) {
+    const assignees = extractAssignees(lead);
+    for (const assignee of assignees) {
+      if (!managedUserIds.includes(Number(assignee.userId))) continue;
+      if (assignee.status !== "hot_lead") continue;
+      if (assignee.hotLeadRequestStatus !== "pending") continue;
+      rows.push({
+        leadId: (lead as any).id,
+        campaignName: (lead as any).campaignName,
+        leadData: (lead as any).leadData,
+        userId: Number(assignee.userId),
+        status: assignee.status,
+        hotLeadRequestStatus: assignee.hotLeadRequestStatus,
+        hotLeadPreviousStatus: assignee.hotLeadPreviousStatus || null,
+        hotLeadRequestedAt: assignee.hotLeadRequestedAt || null,
+      });
+    }
+  }
+
+  const userIds = [...new Set(rows.map((r) => r.userId))];
+  const users = userIds.length
+    ? await User.findAll({
+        where: { id: { [Op.in]: userIds } },
+        attributes: ["id", "firstname", "lastname", "email"],
+      })
+    : [];
+  const userById = new Map<number, any>(users.map((u: any) => [u.id, u.toJSON()]));
+
+  const enriched = rows.map((r) => ({
+    ...r,
+    user: userById.get(r.userId) || null,
+  }));
+  const totalItems = enriched.length;
+  const totalPages = totalItems === 0 ? 0 : Math.ceil(totalItems / limit);
+  const start = (page - 1) * limit;
+  return {
+    rows: enriched.slice(start, start + limit),
+    totalItems,
+    totalPages,
+    currentPage: page,
+    pageSize: limit,
+  };
+};
+
+export const reviewHotLeadRequest = async ({
+  managerId,
+  leadId,
+  userId,
+  decision,
+  rejectReason,
+}: {
+  managerId: number;
+  leadId: number;
+  userId: number;
+  decision: "approved" | "rejected";
+  rejectReason?: string;
+}) => {
+  const managedUserIds = await getManagerBrandUserIds(managerId);
+  if (!managedUserIds.includes(userId)) {
+    throw new Error("You can only review hot leads for users under your management");
+  }
+
+  const lead = await Lead.findByPk(leadId);
+  if (!lead) throw new Error("Lead not found");
+  const assignees = extractAssignees(lead).map((a) => ({ ...a }));
+  const idx = assignees.findIndex((a) => Number(a.userId) === Number(userId));
+  if (idx === -1) throw new Error("User is not assigned to this lead");
+
+  const current = assignees[idx];
+  if (current.status !== "hot_lead" || current.hotLeadRequestStatus !== "pending") {
+    throw new Error("No pending hot lead request found for this user on this lead");
+  }
+
+  const nowIso = new Date().toISOString();
+  if (decision === "approved") {
+    assignees[idx] = {
+      ...current,
+      status: "hot_lead",
+      hotLeadRequestStatus: "approved",
+      hotLeadReviewedBy: managerId,
+      hotLeadReviewedAt: nowIso,
+      hotLeadRejectReason: null,
+    };
+  } else {
+    assignees[idx] = {
+      ...current,
+      status: (current.hotLeadPreviousStatus as LeadStatus | undefined) || "pending",
+      hotLeadRequestStatus: "rejected",
+      hotLeadReviewedBy: managerId,
+      hotLeadReviewedAt: nowIso,
+      hotLeadRejectReason: rejectReason?.trim() || null,
+    };
+  }
+
+  await saveAssignees(lead, assignees);
+
+  await logLeadActivity({
+    entityId: leadId,
+    entityType: "lead",
+    action: "hot_lead_reviewed",
+    performedBy: managerId,
+    details:
+      decision === "approved"
+        ? `Hot lead approved for user ${userId}`
+        : `Hot lead rejected for user ${userId}${rejectReason ? ` (reason: ${rejectReason})` : ""}`,
+  });
+
+  return { ...(lead.toJSON() as any), reviewedAssignee: assignees[idx] };
+};
+
+export const getMyHotLeadRequests = async ({
+  userId,
+  page = 1,
+  limit = 10,
+}: {
+  userId: number;
+  page?: number;
+  limit?: number;
+}) => {
+  const leads = await Lead.findAll({
+    where: literal(`JSON_CONTAINS(assignees, JSON_OBJECT('userId', ${Number(userId)}))`),
+    order: [["updatedAt", "DESC"]],
+  });
+
+  const rows: any[] = [];
+  let approvedCounter = 0;
+  for (const lead of leads) {
+    const assignees = extractAssignees(lead);
+    const mine = assignees.find((a) => Number(a.userId) === Number(userId));
+    if (!mine) continue;
+    const hasHotContext =
+      mine.status === "hot_lead" ||
+      mine.hotLeadRequestStatus === "approved" ||
+      mine.hotLeadRequestStatus === "rejected" ||
+      mine.hotLeadRequestStatus === "pending";
+    if (!hasHotContext) continue;
+    if (mine.hotLeadRequestStatus === "approved") approvedCounter++;
+    rows.push({
+      leadId: (lead as any).id,
+      campaignName: (lead as any).campaignName,
+      leadData: (lead as any).leadData,
+      status: mine.status,
+      hotLeadRequestStatus: mine.hotLeadRequestStatus || null,
+      hotLeadPreviousStatus: mine.hotLeadPreviousStatus || null,
+      hotLeadRequestedAt: mine.hotLeadRequestedAt || null,
+      hotLeadReviewedAt: mine.hotLeadReviewedAt || null,
+      hotLeadReviewedBy: mine.hotLeadReviewedBy || null,
+      hotLeadRejectReason: mine.hotLeadRejectReason || null,
+    });
+  }
+
+  const totalItems = rows.length;
+  const totalPages = totalItems === 0 ? 0 : Math.ceil(totalItems / limit);
+  const start = (page - 1) * limit;
+  return {
+    rows: rows.slice(start, start + limit),
+    totalItems,
+    totalPages,
+    currentPage: page,
+    pageSize: limit,
+    approvedHotLeadCount: approvedCounter,
+  };
 };
 
 export const getLeadsByCampaignAndAssignee = async (

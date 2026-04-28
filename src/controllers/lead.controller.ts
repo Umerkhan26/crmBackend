@@ -726,6 +726,7 @@ const ALLOWED_STATUSES: LeadStatus[] = [
   "to_call",
   "not_answered",
   "not_interested",
+  "hot_lead",
 ];
 export const updateLeadStatus = async (
   req: Request,
@@ -767,6 +768,94 @@ export const updateLeadStatus = async (
     return res.status(500).json({
       success: false,
       message: error.message || "An error occurred while updating lead status",
+    });
+  }
+};
+
+export const getManagerHotLeadRequests = async (
+  req: Request,
+  res: Response,
+): Promise<any> => {
+  try {
+    const managerId = req.user?.id;
+    if (!managerId) {
+      return res.status(401).json({ success: false, message: "User not authenticated" });
+    }
+    const page = parseInt(req.query.page as string, 10) || 1;
+    const limit = parseInt(req.query.limit as string, 10) || 10;
+    const result = await LeadService.getManagerHotLeadRequests({ managerId, page, limit });
+    return res.status(200).json({
+      success: true,
+      message: "Hot lead requests fetched successfully",
+      ...result,
+    });
+  } catch (error: any) {
+    const code = /under your management/i.test(error.message || "") ? 403 : 500;
+    return res.status(code).json({ success: false, message: error.message || "Failed to fetch hot lead requests" });
+  }
+};
+
+export const reviewHotLeadRequest = async (
+  req: Request,
+  res: Response,
+): Promise<any> => {
+  try {
+    const managerId = req.user?.id;
+    if (!managerId) {
+      return res.status(401).json({ success: false, message: "User not authenticated" });
+    }
+    const leadId = Number(req.params.leadId);
+    const userId = Number(req.body.userId);
+    const decision = req.body.decision as "approved" | "rejected";
+    const rejectReason = req.body.rejectReason as string | undefined;
+    if (!leadId || !userId || (decision !== "approved" && decision !== "rejected")) {
+      return res.status(400).json({
+        success: false,
+        message: "leadId, userId and valid decision (approved/rejected) are required",
+      });
+    }
+    const data = await LeadService.reviewHotLeadRequest({
+      managerId,
+      leadId,
+      userId,
+      decision,
+      rejectReason,
+    });
+    return res.status(200).json({
+      success: true,
+      message: `Hot lead request ${decision} successfully`,
+      lead: data,
+    });
+  } catch (error: any) {
+    const msg = error.message || "Failed to review hot lead request";
+    const code =
+      /not found/i.test(msg) ? 404 :
+      /under your management|no pending|not assigned/i.test(msg) ? 403 : 500;
+    return res.status(code).json({ success: false, message: msg });
+  }
+};
+
+export const getMyHotLeadRequests = async (
+  req: Request,
+  res: Response,
+): Promise<any> => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ success: false, message: "User not authenticated" });
+    }
+    const page = parseInt(req.query.page as string, 10) || 1;
+    const limit = parseInt(req.query.limit as string, 10) || 10;
+    const result = await LeadService.getMyHotLeadRequests({ userId, page, limit });
+    return res.status(200).json({
+      success: true,
+      message: "My hot lead requests fetched successfully",
+      ...result,
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to fetch your hot lead requests",
     });
   }
 };

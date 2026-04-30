@@ -144,9 +144,15 @@ export const getAllLeads = async ({
     // Base where condition
     const whereCondition: any = { ...filters };
 
-    // Optional campaign filter
+    // Optional campaign filter (exact, case-insensitive)
     if (campaign && campaign.trim() !== "") {
-      whereCondition.campaignName = { [Op.like]: `%${campaign.trim()}%` };
+      whereCondition[Op.and] = whereCondition[Op.and] || [];
+      whereCondition[Op.and].push(
+        Sequelize.where(
+          Sequelize.fn("LOWER", Sequelize.col("campaignName")),
+          campaign.trim().toLowerCase(),
+        ),
+      );
     }
 
     // Manager logic: Managers see all master leads + leads from their brand users
@@ -1043,9 +1049,12 @@ export const getAllLeadsWithAssignee = async ({
     // Campaign filter
     // ─────────────────────────────────────────
     if (campaign && campaign.trim() !== "") {
-      whereConditions[Op.and].push({
-        campaignName: { [Op.like]: `%${campaign.trim()}%` },
-      });
+      whereConditions[Op.and].push(
+        Sequelize.where(
+          Sequelize.fn("LOWER", Sequelize.col("campaignName")),
+          campaign.trim().toLowerCase(),
+        ),
+      );
     }
     // ─────────────────────────────────────────
     // Date filter
@@ -1226,9 +1235,12 @@ export const getUnassignedLeads = async ({
     };
     // STEP 2: Campaign filter
     if (campaign && campaign.trim() !== "") {
-      whereCondition[Op.and].push({
-        campaignName: { [Op.like]: `%${campaign.trim()}%` },
-      });
+      whereCondition[Op.and].push(
+        Sequelize.where(
+          Sequelize.fn("LOWER", Sequelize.col("campaignName")),
+          campaign.trim().toLowerCase(),
+        ),
+      );
     }
     // STEP 3: Date filter
     if (filterType) {
@@ -1481,11 +1493,16 @@ export const getLeadsByAssigneeId = async (
       ),
     };
 
-    // Add campaign filter if provided
-    if (campaignName) {
-      baseWhereClause[Op.and] = Sequelize.and(baseWhereClause[Op.and], {
-        campaignName: { [Op.like]: `%${campaignName}%` },
-      });
+    // Add campaign filter if provided (exact, case-insensitive match)
+    if (campaignName && campaignName.trim()) {
+      const normalizedCampaignName = campaignName.trim().toLowerCase();
+      baseWhereClause[Op.and] = Sequelize.and(
+        baseWhereClause[Op.and],
+        Sequelize.where(
+          Sequelize.fn("LOWER", Sequelize.col("campaignName")),
+          normalizedCampaignName,
+        ),
+      );
     }
 
     // STEP 1: Get all leads matching base filters
@@ -2290,9 +2307,12 @@ export const getAssignmentHistory = async ({
 
     // Campaign filter
     if (campaignName && campaignName.trim() !== "") {
-      whereCondition[Op.and].push({
-        campaignName: { [Op.like]: `%${campaignName.trim()}%` },
-      });
+      whereCondition[Op.and].push(
+        Sequelize.where(
+          Sequelize.fn("LOWER", Sequelize.col("campaignName")),
+          campaignName.trim().toLowerCase(),
+        ),
+      );
     }
 
     // Fetch all leads with assignments (no pagination yet, we'll paginate after grouping)

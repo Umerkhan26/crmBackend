@@ -504,6 +504,9 @@ export const getLeadsByAssigneeId = async (
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
     const campaignName = req.query.campaignName as string | undefined;
+    const campaignId = req.query.campaignId
+      ? parseInt(req.query.campaignId as string, 10)
+      : undefined;
     const search = req.query.search ? (req.query.search as string) : undefined;
 
     const conditions = req.query.conditions
@@ -522,6 +525,7 @@ export const getLeadsByAssigneeId = async (
       page,
       limit,
       campaignName,
+      campaignId,
       search,
       conditions,
     );

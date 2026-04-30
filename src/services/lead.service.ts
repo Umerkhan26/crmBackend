@@ -1480,10 +1480,17 @@ export const getLeadsByAssigneeId = async (
   page: number = 1,
   limit: number = 10,
   campaignName?: string,
+  campaignId?: number,
   search?: string,
   conditions: any[] = [],
 ) => {
   try {
+    const normalizeCampaignName = (value?: string) =>
+      String(value || "")
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, " ");
+
     const { offset } = getPagination({ page, limit });
 
     // Build the base query with JSON search for assignee
@@ -1493,9 +1500,21 @@ export const getLeadsByAssigneeId = async (
       ),
     };
 
+    // Resolve campaign filter from campaignId first (source of truth).
+    // Falls back to campaignName when ID is not provided.
+    let effectiveCampaignName = campaignName?.trim() || "";
+    if (campaignId && !isNaN(Number(campaignId))) {
+      const campaignRecord = await Campaign.findByPk(Number(campaignId), {
+        attributes: ["campaignName"],
+      });
+      if (campaignRecord?.campaignName) {
+        effectiveCampaignName = String(campaignRecord.campaignName).trim();
+      }
+    }
+
     // Add campaign filter if provided (exact, case-insensitive match)
-    if (campaignName && campaignName.trim()) {
-      const normalizedCampaignName = campaignName.trim().toLowerCase();
+    if (effectiveCampaignName) {
+      const normalizedCampaignName = effectiveCampaignName.toLowerCase();
       baseWhereClause[Op.and] = Sequelize.and(
         baseWhereClause[Op.and],
         Sequelize.where(
@@ -1506,7 +1525,7 @@ export const getLeadsByAssigneeId = async (
     }
 
     // STEP 1: Get all leads matching base filters
-    const allLeads = await Lead.findAll({
+    let allLeads = await Lead.findAll({
       where: baseWhereClause,
       attributes: [
         "id",
@@ -1518,6 +1537,19 @@ export const getLeadsByAssigneeId = async (
       ],
       order: [["createdAt", "DESC"]],
     });
+
+    // Defensive post-query guard: ensure no similarly named campaign leaks
+    // through due to DB collation or environment differences.
+    if (effectiveCampaignName) {
+      const normalizedRequestedCampaign = normalizeCampaignName(
+        effectiveCampaignName,
+      );
+      allLeads = allLeads.filter(
+        (lead: any) =>
+          normalizeCampaignName(lead?.campaignName) ===
+          normalizedRequestedCampaign,
+      );
+    }
 
     // STEP 2: Apply date filtering to ALL records (PST)
     const nowPST = DateTime.now().setZone("Asia/Karachi"); // Pakistan Time

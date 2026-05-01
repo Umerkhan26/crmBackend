@@ -46,7 +46,8 @@ export class Lead
   public get leadCode(): string {
     const initials = this.campaignName
       .split(" ")
-      .map((word) => word[0]?.toUpperCase() || "")
+      .map((word) => (word[0] || "").replace(/[^a-zA-Z0-9]/g, "").toUpperCase())
+      .filter(Boolean)
       .join("");
     return `${initials}${this.id}`;
   }
@@ -91,7 +92,10 @@ Lead.init(
         const lead = this as Lead;
         const initials = lead.campaignName
           .split(" ")
-          .map((word) => word[0]?.toUpperCase() || "")
+          .map((word) =>
+            (word[0] || "").replace(/[^a-zA-Z0-9]/g, "").toUpperCase(),
+          )
+          .filter(Boolean)
           .join("");
         return `${initials}${lead.id}`;
       },

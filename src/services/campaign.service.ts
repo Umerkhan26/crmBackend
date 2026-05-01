@@ -12,7 +12,7 @@ import User from "../models/user.model";
 import Role from "../models/role.model";
 import RolePermission from "../models/rolePermission.model";
 import Order from "../models/order.model";
-import { Op } from "sequelize";
+import { Op, Sequelize } from "sequelize";
 
 interface PaginationParams {
   page?: number;
@@ -77,6 +77,67 @@ export const createCampaign = async (
   } catch (error: any) {
     throw new Error(`Error creating campaign: ${error.message}`);
   }
+};
+
+/**
+ * Ensures each campaign has a getCampaignById permission row (Create Role, Assigned Leads, etc.).
+ * Safe to run repeatedly. Does not attach new permissions to roles — admins assign those in Create Role.
+ */
+export const ensureGetCampaignPermissionsForAllCampaigns = async (): Promise<{
+  created: number;
+  existing: number;
+}> => {
+  let created = 0;
+  let existing = 0;
+  const campaigns = await Campaign.findAll({
+    attributes: ["id", "campaignName"],
+  });
+  const fallbackUser =
+    (await User.findOne({
+      order: [["id", "ASC"]],
+      attributes: ["id"],
+    })) ?? null;
+  if (!fallbackUser?.id) {
+    throw new Error("No user in database to attach new campaign permissions");
+  }
+  const userId = fallbackUser.id;
+
+  for (const row of campaigns) {
+    const id = row.id;
+    const campaignName = String(row.campaignName || "").trim();
+    if (!campaignName) continue;
+    const resourceType = `campaign-${campaignName}`;
+    const scopedLower = resourceType.toLowerCase();
+
+    const already = await Permission.findOne({
+      where: {
+        name: "getCampaignById",
+        [Op.or]: [
+          { resourceId: id },
+          { resourceType },
+          Sequelize.where(
+            Sequelize.fn(
+              "LOWER",
+              Sequelize.fn("TRIM", Sequelize.col("resourceType")),
+            ),
+            scopedLower,
+          ),
+        ],
+      },
+    });
+    if (already) {
+      existing++;
+      continue;
+    }
+    await Permission.create({
+      name: "getCampaignById",
+      resourceType,
+      resourceId: id,
+      userId,
+    });
+    created++;
+  }
+  return { created, existing };
 };
 
 export const getAllCampaigns = async ({
@@ -199,11 +260,28 @@ export const deleteCampaign = async (
     const campaignName = campaign.campaignName;
     const resourceTypeId = `campaign-${id}`;
     const resourceTypeName = `campaign-${campaignName}`;
+    const scopedTypeLower = `campaign-${String(campaignName).trim()}`.toLowerCase();
+    // Remove getCampaignById rows for this campaign: exact resourceType / id,
+    // plus case-insensitive `campaign-<name>` so spelling variants do not leave orphans.
+    // (Do not match on bare campaign name — avoids touching similarly named campaigns.)
     const permissions = await Permission.findAll({
       where: {
-        [Op.or]: [
-          { resourceType: resourceTypeId },
-          { resourceType: resourceTypeName },
+        [Op.and]: [
+          { name: "getCampaignById" },
+          {
+            [Op.or]: [
+              { resourceType: resourceTypeId },
+              { resourceType: resourceTypeName },
+              { resourceId: id },
+              Sequelize.where(
+                Sequelize.fn(
+                  "LOWER",
+                  Sequelize.fn("TRIM", Sequelize.col("resourceType")),
+                ),
+                scopedTypeLower,
+              ),
+            ],
+          },
         ],
       },
     });

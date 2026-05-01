@@ -37,6 +37,18 @@ interface LeadQueryParams extends PaginationParams {
   filters?: Record<string, any>;
   search?: string;
 }
+
+/** Match leadCode getter: initials from first char of each word, alphanumeric only. */
+const buildLeadCodePrefixForSearch = (campaignName?: string) =>
+  String(campaignName || "")
+    .split(/\s+/)
+    .map((word) =>
+      String(word[0] || "")
+        .replace(/[^a-zA-Z0-9]/g, "")
+        .toLowerCase(),
+    )
+    .filter(Boolean)
+    .join("");
 /**
  * Check if a lead with the same phone number already exists
  */
@@ -1512,13 +1524,16 @@ export const getLeadsByAssigneeId = async (
       }
     }
 
-    // Add campaign filter if provided (exact, case-insensitive match)
+    // Add campaign filter if provided (trim + lower + collapse spaces, match DB trim)
     if (effectiveCampaignName) {
-      const normalizedCampaignName = effectiveCampaignName.toLowerCase();
+      const normalizedCampaignName = normalizeCampaignName(effectiveCampaignName);
       baseWhereClause[Op.and] = Sequelize.and(
         baseWhereClause[Op.and],
         Sequelize.where(
-          Sequelize.fn("LOWER", Sequelize.col("campaignName")),
+          Sequelize.fn(
+            "LOWER",
+            Sequelize.fn("TRIM", Sequelize.col("campaignName")),
+          ),
           normalizedCampaignName,
         ),
       );
@@ -1632,11 +1647,8 @@ export const getLeadsByAssigneeId = async (
       searchedLeads = filteredLeads.filter((lead: any) => {
         const leadDataStr = JSON.stringify(lead.leadData || {}).toLowerCase();
         const campaignNameStr = (lead.campaignName || "").toLowerCase();
-        const initials = (lead.campaignName || "")
-          .split(" ")
-          .map((word: string) => word[0]?.toLowerCase() || "")
-          .join("");
-        const leadCodeStr = `${initials}${lead.id}`.toLowerCase();
+        const leadCodeStr =
+          `${buildLeadCodePrefixForSearch(lead.campaignName)}${lead.id}`.toLowerCase();
 
         return (
           leadDataStr.includes(searchLower) ||

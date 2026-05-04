@@ -142,6 +142,8 @@ export const getAllLeads = async ({
   filterType,
   startDate,
   endDate,
+  assignmentState = "all",
+  contactState = "all",
   userId, // Add userId parameter to filter by creator
   isAdmin = false, // Add isAdmin flag
   isManager = false, // Add isManager flag
@@ -164,6 +166,18 @@ export const getAllLeads = async ({
           Sequelize.fn("LOWER", Sequelize.col("campaignName")),
           campaign.trim().toLowerCase(),
         ),
+      );
+    }
+
+    if (assignmentState === "assigned") {
+      whereCondition[Op.and] = whereCondition[Op.and] || [];
+      whereCondition[Op.and].push(
+        Sequelize.literal("(assignees IS NOT NULL AND JSON_LENGTH(assignees) > 0)"),
+      );
+    } else if (assignmentState === "unassigned") {
+      whereCondition[Op.and] = whereCondition[Op.and] || [];
+      whereCondition[Op.and].push(
+        Sequelize.literal("(assignees IS NULL OR JSON_LENGTH(assignees) = 0)"),
       );
     }
 
@@ -281,7 +295,7 @@ export const getAllLeads = async ({
     );
 
     // STEP 3: GLOBAL search (search anywhere in JSON + campaign + assignees + leadCode)
-    const filteredLeads = search
+    const searchFilteredLeads = search
       ? enrichedLeads.filter((lead) => {
           const searchLower = search.toLowerCase();
           const jsonStr = JSON.stringify(lead).toLowerCase();
@@ -294,6 +308,27 @@ export const getAllLeads = async ({
           );
         })
       : enrichedLeads;
+
+    const extractLeadPhone = (lead: any): string => {
+      const leadData =
+        lead?.leadData && typeof lead.leadData === "object" ? lead.leadData : {};
+      const raw =
+        leadData.phone_number ??
+        leadData.phone ??
+        leadData.number ??
+        leadData.contactNumber ??
+        leadData.contact_number ??
+        leadData.mobile ??
+        leadData.whatsapp;
+      return raw == null ? "" : String(raw).trim();
+    };
+
+    const filteredLeads =
+      contactState === "present"
+        ? searchFilteredLeads.filter((lead) => extractLeadPhone(lead) !== "")
+        : contactState === "missing"
+          ? searchFilteredLeads.filter((lead) => extractLeadPhone(lead) === "")
+          : searchFilteredLeads;
 
     // STEP 4: PAGINATION
     const total = filteredLeads.length;
@@ -1027,6 +1062,8 @@ export interface GetAllLeadsParams {
   filterType?: FilterType;
   startDate?: string;
   endDate?: string;
+  assignmentState?: "all" | "assigned" | "unassigned";
+  contactState?: "all" | "present" | "missing";
 }
 
 export const getAllLeadsWithAssignee = async ({
@@ -2028,6 +2065,7 @@ const ALLOWED_STATUSES: LeadStatus[] = [
   "not_answered",
   "not_interested",
   "hot_lead",
+  "lead_rejected",
 ];
 
 export type LeadStatus =
@@ -2039,7 +2077,8 @@ export type LeadStatus =
   | "not_answered"
   | "not_interested"
   | "do_not_call"
-  | "hot_lead";
+  | "hot_lead"
+  | "lead_rejected";
 
 type HotLeadRequestStatus = "pending" | "approved" | "rejected";
 type AssigneeWithHotLeadMeta = AssigneeWithStatus & {
@@ -2224,7 +2263,7 @@ export const getManagerHotLeadRequests = async ({
   managerId: number;
   page?: number;
   limit?: number;
-  /** When set (or campaignId resolves), only pending hot leads in that campaign. */
+  /** When set (or campaignId resolves), only reviewed hot lead requests in that campaign. */
   campaignName?: string;
   campaignId?: number;
 }) => {
@@ -2242,7 +2281,16 @@ export const getManagerHotLeadRequests = async ({
     : "";
 
   const leadWhereParts: any[] = [
-    literal(`JSON_CONTAINS(assignees, JSON_OBJECT('status', 'hot_lead'))`),
+    {
+      [Op.or]: [
+        literal(
+          `JSON_SEARCH(assignees, 'one', 'approved', NULL, '$[*].hotLeadRequestStatus') IS NOT NULL`,
+        ),
+        literal(
+          `JSON_SEARCH(assignees, 'one', 'rejected', NULL, '$[*].hotLeadRequestStatus') IS NOT NULL`,
+        ),
+      ],
+    },
   ];
   if (normalizedCampaign) {
     leadWhereParts.push(
@@ -2266,8 +2314,12 @@ export const getManagerHotLeadRequests = async ({
     const assignees = extractAssignees(lead);
     for (const assignee of assignees) {
       if (!managedUserIds.includes(Number(assignee.userId))) continue;
-      if (assignee.status !== "hot_lead") continue;
-      if (assignee.hotLeadRequestStatus !== "pending") continue;
+      if (
+        assignee.hotLeadRequestStatus !== "approved" &&
+        assignee.hotLeadRequestStatus !== "rejected"
+      ) {
+        continue;
+      }
       rows.push({
         leadId: (lead as any).id,
         leadCode: lead.leadCode,
@@ -2349,7 +2401,7 @@ export const reviewHotLeadRequest = async ({
   } else {
     assignees[idx] = {
       ...current,
-      status: (current.hotLeadPreviousStatus as LeadStatus | undefined) || "pending",
+      status: "lead_rejected",
       hotLeadRequestStatus: "rejected",
       hotLeadReviewedBy: managerId,
       hotLeadReviewedAt: nowIso,
@@ -2421,10 +2473,8 @@ export const getMyHotLeadRequests = async ({
     const mine = assignees.find((a) => Number(a.userId) === Number(userId));
     if (!mine) continue;
     const hasHotContext =
-      mine.status === "hot_lead" ||
       mine.hotLeadRequestStatus === "approved" ||
-      mine.hotLeadRequestStatus === "rejected" ||
-      mine.hotLeadRequestStatus === "pending";
+      mine.hotLeadRequestStatus === "rejected";
     if (!hasHotContext) continue;
     if (mine.hotLeadRequestStatus === "approved") approvedCounter++;
     rows.push({

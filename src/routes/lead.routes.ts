@@ -33,6 +33,12 @@ router.get(
   LeadController.getAllLeads
 );
 router.get(
+  "/admin/new-master-leads",
+  verifyToken,
+  checkPermission(PERMISSIONS.LEAD_GET_ALL),
+  LeadController.getAdminMasterLeads,
+);
+router.get(
   "/getleadByid/:id",
   verifyToken,
   LeadController.getLeadById);

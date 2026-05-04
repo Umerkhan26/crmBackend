@@ -105,6 +105,89 @@ export const getAllLeads = async (
   }
 };
 
+export const getAdminMasterLeads = async (
+  req: Request,
+  res: Response,
+): Promise<any> => {
+  try {
+    const userId = (req as any).user?.id;
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "User not authenticated",
+      });
+    }
+
+    const isAdmin = canViewAllLeads(req);
+    if (!isAdmin) {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied. Admin only endpoint.",
+      });
+    }
+
+    const page = parseInt(req.query.page as string, 10) || 1;
+    const limit = parseInt(req.query.limit as string, 10) || 10;
+    const search = (req.query.search as string) || "";
+    const campaign = req.query.campaign as string;
+    const filterType = req.query.filterType as FilterType;
+    const startDate = req.query.startDate as string;
+    const endDate = req.query.endDate as string;
+    const assignmentStateRaw = String(req.query.assignmentState || "all").toLowerCase();
+    const assignmentState =
+      assignmentStateRaw === "assigned" || assignmentStateRaw === "unassigned"
+        ? assignmentStateRaw
+        : "all";
+    const contactStateRaw = String(req.query.contactState || "all").toLowerCase();
+    const contactState =
+      contactStateRaw === "present" || contactStateRaw === "missing"
+        ? contactStateRaw
+        : "all";
+
+    const filters: any = {};
+    if (req.query.status) filters.status = req.query.status;
+    if (req.query.campaign_id) filters.campaign_id = Number(req.query.campaign_id);
+
+    let conditions: any[] = [];
+    if (req.query.conditions) {
+      try {
+        conditions = JSON.parse(req.query.conditions as string);
+      } catch {
+        conditions = [];
+      }
+    }
+
+    const leadsData = await LeadService.getAllLeads({
+      page,
+      limit,
+      search,
+      campaign,
+      filterType,
+      startDate,
+      endDate,
+      filters,
+      conditions,
+      assignmentState,
+      contactState,
+      isAdmin: true,
+      userId,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Admin master leads fetched successfully",
+      assignmentState,
+      contactState,
+      ...leadsData,
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      message: error.message || "An error occurred while fetching admin master leads",
+    });
+  }
+};
+
 export const getLeadById = async (
   req: Request,
   res: Response,
@@ -750,6 +833,7 @@ const ALLOWED_STATUSES: LeadStatus[] = [
   "not_answered",
   "not_interested",
   "hot_lead",
+  "lead_rejected",
 ];
 export const updateLeadStatus = async (
   req: Request,

@@ -11,7 +11,8 @@ export type LeadStatus =
   | "not_answered"
   | "not_interested"
   | "do_not_call"
-  | "hot_lead";
+  | "hot_lead"
+  | "lead_rejected";
 
 export interface AssigneeWithStatus {
   userId: number;
@@ -113,6 +114,7 @@ const ALLOWED_STATUSES: LeadStatus[] = [
   "not_interested",
   "do_not_call",
   "hot_lead",
+  "lead_rejected",
 ];
 
 Lead.beforeValidate((lead) => {

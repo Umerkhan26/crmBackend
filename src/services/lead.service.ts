@@ -1900,37 +1900,43 @@ export const getLeadStatusSummary = async (
     const leadsByStatus: Record<string, any[]> = {};
 
     const resolvePeriodRange = () => {
-      const now = new Date();
-      const start = new Date(now);
-      const end = new Date(now);
+      const zone = "Asia/Karachi";
+      const now = DateTime.now().setZone(zone);
 
       if (period === "custom" && startDate && endDate) {
-        const s = new Date(startDate);
-        const e = new Date(endDate);
-        if (!Number.isNaN(s.getTime()) && !Number.isNaN(e.getTime())) {
-          s.setHours(0, 0, 0, 0);
-          e.setHours(23, 59, 59, 999);
-          return { start: s, end: e };
+        const s = DateTime.fromISO(startDate, { zone });
+        const e = DateTime.fromISO(endDate, { zone });
+        if (s.isValid && e.isValid) {
+          return {
+            start: s.startOf("day").toJSDate(),
+            end: e.endOf("day").toJSDate(),
+          };
         }
       }
 
       if (period === "daily") {
-        start.setHours(0, 0, 0, 0);
-        end.setHours(23, 59, 59, 999);
-        return { start, end };
+        return {
+          start: now.startOf("day").toJSDate(),
+          end: now.endOf("day").toJSDate(),
+        };
       }
+
       if (period === "weekly") {
-        start.setDate(start.getDate() - 7);
-        start.setHours(0, 0, 0, 0);
-        end.setHours(23, 59, 59, 999);
-        return { start, end };
+        // Calendar week aligned to Sunday-Saturday in PKT.
+        const weekStart = now.minus({ days: now.weekday % 7 }).startOf("day");
+        return {
+          start: weekStart.toJSDate(),
+          end: weekStart.plus({ days: 6 }).endOf("day").toJSDate(),
+        };
       }
+
       if (period === "monthly") {
-        start.setMonth(start.getMonth() - 1);
-        start.setHours(0, 0, 0, 0);
-        end.setHours(23, 59, 59, 999);
-        return { start, end };
+        return {
+          start: now.startOf("month").toJSDate(),
+          end: now.endOf("month").toJSDate(),
+        };
       }
+
       return null;
     };
 
@@ -2964,6 +2970,17 @@ export const getLeadsWithWork = async ({
         l.*,
         COUNT(DISTINCT n.id) AS notesCount,
         COUNT(DISTINCT la.id) AS activitiesCount,
+        (
+          SELECT n2.content
+          FROM notes n2
+          WHERE n2.notebleId = l.id
+            AND n2.notebleType = 'lead'
+            ${createdAtFilter?.[Op.between] ? " AND n2.createdAt BETWEEN :start AND :end " : ""}
+            ${createdAtFilter?.[Op.gte] ? " AND n2.createdAt >= :start " : ""}
+            ${createdAtFilter?.[Op.lte] ? " AND n2.createdAt <= :end " : ""}
+          ORDER BY n2.createdAt DESC
+          LIMIT 1
+        ) AS latestNote,
         GREATEST(
           IFNULL(MAX(n.createdAt), '1970-01-01'),
           IFNULL(MAX(la.createdAt), '1970-01-01')
@@ -3005,6 +3022,7 @@ export const getLeadsWithWork = async ({
           notesCount,
           activitiesCount,
           totalWorkCount: notesCount + activitiesCount,
+          latestNote: row.latestNote || "",
           lastWorkDate: row.lastWorkDate && row.lastWorkDate !== "1970-01-01" ? row.lastWorkDate : null,
         },
       };
@@ -3193,6 +3211,7 @@ export const getAssignmentLeadsWithWork = async ({
                 notesCount,
                 activitiesCount,
                 totalWorkCount: notesCount + activitiesCount,
+                latestNote: lastNote?.content || "",
                 lastWorkDate: lastWorkDate ? lastWorkDate.toISOString() : null,
                 lastWorkedBy,
               });

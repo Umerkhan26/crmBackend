@@ -6,6 +6,7 @@ import { getPagination, getPagingData } from "../utils/paginate";
 import { Op, Sequelize } from "sequelize";
 import Note from "../models/note.model";
 import ActivityLog from "../models/activityLog.model";
+import { DateTime } from "luxon";
 interface ReportUser {
   user: any;
   totalActivities: number;
@@ -134,21 +135,20 @@ export const getLeadActivityReportByUser = async (
     const { startDate: _, endDate: __, ...cleanCustomFilter } = customFilter;
     customFilter = cleanCustomFilter;
   } else {
-    endDate = new Date();
+    const zone = "Asia/Karachi";
+    const now = DateTime.now().setZone(zone);
+
     if (period === "daily") {
-      startDate = new Date();
-      startDate.setHours(0, 0, 0, 0);
-      endDate.setHours(23, 59, 59, 999);
+      startDate = now.startOf("day").toJSDate();
+      endDate = now.endOf("day").toJSDate();
     } else if (period === "weekly") {
-      startDate = new Date();
-      startDate.setDate(startDate.getDate() - 7);
-      startDate.setHours(0, 0, 0, 0);
-      endDate.setHours(23, 59, 59, 999);
+      // Calendar week aligned to Sunday-Saturday in PKT.
+      const weekStart = now.minus({ days: now.weekday % 7 }).startOf("day");
+      startDate = weekStart.toJSDate();
+      endDate = weekStart.plus({ days: 6 }).endOf("day").toJSDate();
     } else {
-      startDate = new Date();
-      startDate.setMonth(startDate.getMonth() - 1);
-      startDate.setHours(0, 0, 0, 0);
-      endDate.setHours(23, 59, 59, 999);
+      startDate = now.startOf("month").toJSDate();
+      endDate = now.endOf("month").toJSDate();
     }
   }
   const activities = await LeadActivity.findAll({

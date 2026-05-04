@@ -3,7 +3,7 @@ import LeadActivity from "../models/leadActivity.model";
 import User from "../models/user.model";
 import Lead from "../models/lead.model";
 import { getPagination, getPagingData } from "../utils/paginate";
-import { Op, Sequelize, WhereOptions } from "sequelize";
+import { Op, Sequelize } from "sequelize";
 import Note from "../models/note.model";
 import ActivityLog from "../models/activityLog.model";
 interface ReportUser {
@@ -183,18 +183,40 @@ export const getLeadActivityReportByUser = async (
       },
     ],
   });
+
+  const touchedLeadIds = new Set<number>();
+  for (const act of activities) {
+    const a = act as any;
+    const lid =
+      a.LeadById?.id ??
+      a.Lead?.id ??
+      (a.entityType === "lead" ? a.entityId : undefined);
+    if (typeof lid === "number" && !Number.isNaN(lid)) touchedLeadIds.add(lid);
+  }
+  for (const note of notes) {
+    const nid = Number(note.notebleId);
+    if (!Number.isNaN(nid)) touchedLeadIds.add(nid);
+  }
+  const touchedIds = Array.from(touchedLeadIds);
+
+  // Only enrich with lead/status rows for leads the user actually touched in the
+  // period (activities + notes). A blanket updatedAt filter would count every
+  // assigned lead whose row changed for any reason (bulk ops, imports, others).
   const statusUpdatesWhere: any = {
     ...customFilter,
-    [Op.and]: Sequelize.literal(
-      `JSON_CONTAINS(assignees, JSON_OBJECT('userId', ${userId}))`
-    ),
+    [Op.and]: [
+      Sequelize.literal(
+        `JSON_CONTAINS(assignees, JSON_OBJECT('userId', ${userId}))`,
+      ),
+      { id: { [Op.in]: touchedIds } },
+    ],
   };
-  if (hasCustomDates) {
-    statusUpdatesWhere.updatedAt = { [Op.between]: [startDate, endDate] };
-  }
-  const statusUpdates = await Lead.findAll({
-    where: statusUpdatesWhere,
-  });
+  const statusUpdates =
+    touchedIds.length > 0
+      ? await Lead.findAll({
+          where: statusUpdatesWhere,
+        })
+      : [];
   const report: ReportUser = {
     user: activities[0]?.performedByUser ||
       notes[0]?.creator || { id: userId, name: "Unknown User" },
@@ -207,13 +229,21 @@ export const getLeadActivityReportByUser = async (
   };
   for (const act of activities) {
     report.totalActivities++;
+    const a = act as any;
+    const lead = a.LeadById ?? a.Lead;
+    const leadId: number | undefined =
+      typeof lead?.id === "number" && !Number.isNaN(lead.id)
+        ? lead.id
+        : a.entityType === "lead" && typeof a.entityId === "number"
+          ? a.entityId
+          : undefined;
     const leadName =
-      act.Lead?.leadData?.name ||
-      act.Lead?.leadData?.fullName ||
-      act.Lead?.leadCode ||
-      `Lead #${act.Lead?.id}`;
-    if (act.Lead?.id) {
-      report.leadsWorkedOn.set(act.Lead.id, leadName);
+      lead?.leadData?.name ||
+      lead?.leadData?.fullName ||
+      lead?.leadCode ||
+      (typeof leadId === "number" ? `Lead #${leadId}` : undefined);
+    if (typeof leadId === "number" && !Number.isNaN(leadId)) {
+      report.leadsWorkedOn.set(leadId, leadName || `Lead #${leadId}`);
     }
     if (act.createdAt > report.lastActivityAt) {
       report.lastActivityAt = act.createdAt;
@@ -244,7 +274,6 @@ export const getLeadActivityReportByUser = async (
       const leadName =
         lead.leadData?.name || lead.leadData?.fullName || lead.leadCode || `Lead #${lead.id}`;
       report.leadsWorkedOn.set(lead.id, leadName);
-      report.totalActivities++;
       report.statusChangeHistory?.push({
         leadId: lead.id,
         leadName,

@@ -1,7 +1,7 @@
 import Note from "../models/note.model";
 import User from "../models/user.model";
 import { logLeadActivity } from "../utils/logLeadActivity";
-import { Op } from "sequelize";
+import { Op, Sequelize } from "sequelize";
 import Campaign from "../models/campaign.model";
 
 interface AddNoteParams {
@@ -273,6 +273,14 @@ export const getAllNotesWithPagination = async (
   userId?: number,
   isAdmin: boolean = false,
   brandUserIds?: number[],
+  filters?: {
+    search?: string;
+    createdBy?: number;
+    leadId?: number;
+    campaignName?: string;
+    fromDate?: string;
+    toDate?: string;
+  },
 ) => {
   const Lead = (await import("../models/lead.model")).default;
   const offset = (page - 1) * limit;
@@ -299,6 +307,180 @@ export const getAllNotesWithPagination = async (
   } else if (userId) {
     // Simple user: own notes only
     whereCondition.createdBy = userId;
+  }
+
+  const createdByFilter = Number(filters?.createdBy);
+  if (Number.isFinite(createdByFilter) && createdByFilter > 0) {
+    if (isAdmin) {
+      whereCondition.createdBy = createdByFilter;
+    } else if (brandUserIds !== undefined) {
+      if (!brandUserIds.includes(createdByFilter)) {
+        return {
+          notes: [],
+          totalItems: 0,
+          totalPages: 0,
+          currentPage: page,
+          pageSize: limit,
+        };
+      }
+      whereCondition.createdBy = createdByFilter;
+    } else if (userId && createdByFilter === Number(userId)) {
+      whereCondition.createdBy = createdByFilter;
+    } else {
+      return {
+        notes: [],
+        totalItems: 0,
+        totalPages: 0,
+        currentPage: page,
+        pageSize: limit,
+      };
+    }
+  }
+
+  const leadIdFilter = Number(filters?.leadId);
+  if (Number.isFinite(leadIdFilter) && leadIdFilter > 0) {
+    whereCondition.notebleId = leadIdFilter;
+  }
+
+  const fromDate = String(filters?.fromDate || "").trim();
+  const toDate = String(filters?.toDate || "").trim();
+  const toSqlDate = (value: string) => {
+    if (!value) return "";
+    const date = new Date(value);
+    if (!Number.isNaN(date.getTime())) {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, "0");
+      const day = String(date.getDate()).padStart(2, "0");
+      return `${year}-${month}-${day}`;
+    }
+    const match = value.match(/^\d{4}-\d{2}-\d{2}/);
+    return match ? match[0] : "";
+  };
+  const fromSqlDate = toSqlDate(fromDate);
+  const toSqlDateValue = toSqlDate(toDate);
+  if (fromSqlDate && toSqlDateValue) {
+    whereCondition[Op.and] = [
+      ...(Array.isArray(whereCondition[Op.and]) ? whereCondition[Op.and] : []),
+      Sequelize.where(Sequelize.fn("DATE", Sequelize.col("Note.createdAt")), {
+        [Op.between]: [fromSqlDate, toSqlDateValue],
+      }),
+    ];
+  } else if (fromSqlDate) {
+    whereCondition[Op.and] = [
+      ...(Array.isArray(whereCondition[Op.and]) ? whereCondition[Op.and] : []),
+      Sequelize.where(Sequelize.fn("DATE", Sequelize.col("Note.createdAt")), {
+        [Op.gte]: fromSqlDate,
+      }),
+    ];
+  } else if (toSqlDateValue) {
+    whereCondition[Op.and] = [
+      ...(Array.isArray(whereCondition[Op.and]) ? whereCondition[Op.and] : []),
+      Sequelize.where(Sequelize.fn("DATE", Sequelize.col("Note.createdAt")), {
+        [Op.lte]: toSqlDateValue,
+      }),
+    ];
+  }
+
+  const campaignFilter = String(filters?.campaignName || "").trim();
+  if (campaignFilter) {
+    const leadMatches = await Lead.findAll({
+      attributes: ["id"],
+      where: {
+        campaignName: {
+          [Op.like]: `%${campaignFilter}%`,
+        },
+      },
+      raw: true,
+    });
+    const leadIds = leadMatches
+      .map((lead: any) => Number(lead.id))
+      .filter((id: number) => Number.isFinite(id));
+
+    if (leadIds.length === 0) {
+      return {
+        notes: [],
+        totalItems: 0,
+        totalPages: 0,
+        currentPage: page,
+        pageSize: limit,
+      };
+    }
+
+    if (whereCondition.notebleId != null) {
+      if (!leadIds.includes(Number(whereCondition.notebleId))) {
+        return {
+          notes: [],
+          totalItems: 0,
+          totalPages: 0,
+          currentPage: page,
+          pageSize: limit,
+        };
+      }
+    } else {
+      whereCondition.notebleId = { [Op.in]: leadIds };
+    }
+  }
+
+  const search = String(filters?.search || "").trim();
+  if (search) {
+    const searchLike = `%${search}%`;
+    const numericSearch = Number(search);
+    const leadCodeIdMatch = search.match(/(\d+)$/);
+    const possibleLeadIds = [
+      Number.isFinite(numericSearch) ? numericSearch : null,
+      leadCodeIdMatch ? Number(leadCodeIdMatch[1]) : null,
+    ].filter(
+      (id): id is number =>
+        typeof id === "number" && Number.isFinite(id) && id > 0,
+    );
+
+    const leadSearchMatches = await Lead.findAll({
+      attributes: ["id"],
+      where: {
+        [Op.or]: [
+          ...(possibleLeadIds.length > 0
+            ? [{ id: { [Op.in]: possibleLeadIds } }]
+            : []),
+          { campaignName: { [Op.like]: searchLike } },
+          Sequelize.where(Sequelize.cast(Sequelize.col("leadData"), "CHAR"), {
+            [Op.like]: searchLike,
+          }),
+        ],
+      },
+      raw: true,
+    });
+
+    const searchLeadIds = leadSearchMatches
+      .map((lead: any) => Number(lead.id))
+      .filter((id: number) => Number.isFinite(id));
+
+    const orConditions: any[] = [{ content: { [Op.like]: searchLike } }];
+    if (Number.isFinite(numericSearch) && numericSearch > 0) {
+      orConditions.push({ id: numericSearch });
+    }
+    if (searchLeadIds.length > 0) {
+      orConditions.push({ notebleId: { [Op.in]: searchLeadIds } });
+    }
+
+    if (whereCondition.notebleId != null && searchLeadIds.length > 0) {
+      const existingLeadIds = Array.isArray(whereCondition.notebleId?.[Op.in])
+        ? whereCondition.notebleId[Op.in]
+        : [Number(whereCondition.notebleId)];
+      const overlap = existingLeadIds.filter((id: number) =>
+        searchLeadIds.includes(Number(id)),
+      );
+      if (overlap.length === 0 && !orConditions.some((c) => c.content || c.id)) {
+        return {
+          notes: [],
+          totalItems: 0,
+          totalPages: 0,
+          currentPage: page,
+          pageSize: limit,
+        };
+      }
+    }
+
+    whereCondition[Op.or] = orConditions;
   }
 
   const { count, rows: notes } = await Note.findAndCountAll({
@@ -774,11 +956,14 @@ export const getRecentNotesForAdmin = async (
  */
 export const getRecentNotesFast = async (params: {
   limit?: number;
+  page?: number;
   userId?: number;
   isAdmin?: boolean;
   brandUserIds?: number[];
 }) => {
-  const limit = Math.max(1, Math.min(20, Number(params.limit) || 10));
+  const safePage = Math.max(1, Number(params.page) || 1);
+  const limit = Math.max(1, Math.min(50, Number(params.limit) || 50));
+  const offset = (safePage - 1) * limit;
   const isAdmin = Boolean(params.isAdmin);
   const userId = params.userId;
   const brandUserIds = params.brandUserIds;
@@ -897,13 +1082,21 @@ export const getRecentNotesFast = async (params: {
   if (isAdmin) {
     // no filter
   } else if (brandUserIds !== undefined) {
-    if (brandUserIds.length === 0) return [];
+    if (brandUserIds.length === 0) {
+      return {
+        notes: [],
+        totalItems: 0,
+        totalPages: 0,
+        currentPage: safePage,
+        pageSize: limit,
+      };
+    }
     whereCondition.createdBy = { [Op.in]: brandUserIds };
   } else if (userId) {
     whereCondition.createdBy = userId;
   }
 
-  const notes = await Note.findAll({
+  const { count, rows: notes } = await Note.findAndCountAll({
     where: whereCondition,
     include: [
       {
@@ -914,6 +1107,7 @@ export const getRecentNotesFast = async (params: {
     ],
     order: [["createdAt", "DESC"], ["id", "DESC"]],
     limit,
+    offset,
   });
 
   const leadIds = Array.from(
@@ -954,7 +1148,7 @@ export const getRecentNotesFast = async (params: {
     campaignFieldKeySetByName.set(String(c.campaignName), buildCampaignFieldKeySet(c.fields));
   }
 
-  return notes.map((note: any) => {
+  const notesWithLeads = notes.map((note: any) => {
     const lead = note.notebleType === "lead" ? leadById.get(note.notebleId) : null;
     let phoneNumber: string | null = null;
     let businessName: string | null = null;
@@ -990,6 +1184,14 @@ export const getRecentNotesFast = async (params: {
         : null,
     };
   });
+
+  return {
+    notes: notesWithLeads,
+    totalItems: count,
+    totalPages: Math.ceil(count / limit),
+    currentPage: safePage,
+    pageSize: limit,
+  };
 };
 
 export const updateNote = async (

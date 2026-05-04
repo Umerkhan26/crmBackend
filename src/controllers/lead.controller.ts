@@ -706,8 +706,20 @@ export const getLeadStatusSummary = async (
     const assigneeId = req.query.assigneeId
       ? parseInt(req.query.assigneeId as string, 10)
       : undefined;
+    const period = req.query.period
+      ? String(req.query.period).toLowerCase()
+      : undefined;
+    const startDate = req.query.startDate
+      ? String(req.query.startDate)
+      : undefined;
+    const endDate = req.query.endDate ? String(req.query.endDate) : undefined;
 
-    const result = await LeadService.getLeadStatusSummary(assigneeId);
+    const result = await LeadService.getLeadStatusSummary(
+      assigneeId,
+      period,
+      startDate,
+      endDate,
+    );
 
     return res.status(200).json({
       success: true,

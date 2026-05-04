@@ -1858,7 +1858,12 @@ function fillTemplate(template: string, data: any): string {
   });
 }
 
-export const getLeadStatusSummary = async (assigneeId?: number) => {
+export const getLeadStatusSummary = async (
+  assigneeId?: number,
+  period?: string,
+  startDate?: string,
+  endDate?: string,
+) => {
   try {
     const statuses = [
       "pending",
@@ -1871,6 +1876,43 @@ export const getLeadStatusSummary = async (assigneeId?: number) => {
     ];
     const statusCounts: Record<string, number> = {};
     const leadsByStatus: Record<string, any[]> = {};
+
+    const resolvePeriodRange = () => {
+      const now = new Date();
+      const start = new Date(now);
+      const end = new Date(now);
+
+      if (period === "custom" && startDate && endDate) {
+        const s = new Date(startDate);
+        const e = new Date(endDate);
+        if (!Number.isNaN(s.getTime()) && !Number.isNaN(e.getTime())) {
+          s.setHours(0, 0, 0, 0);
+          e.setHours(23, 59, 59, 999);
+          return { start: s, end: e };
+        }
+      }
+
+      if (period === "daily") {
+        start.setHours(0, 0, 0, 0);
+        end.setHours(23, 59, 59, 999);
+        return { start, end };
+      }
+      if (period === "weekly") {
+        start.setDate(start.getDate() - 7);
+        start.setHours(0, 0, 0, 0);
+        end.setHours(23, 59, 59, 999);
+        return { start, end };
+      }
+      if (period === "monthly") {
+        start.setMonth(start.getMonth() - 1);
+        start.setHours(0, 0, 0, 0);
+        end.setHours(23, 59, 59, 999);
+        return { start, end };
+      }
+      return null;
+    };
+
+    const periodRange = resolvePeriodRange();
 
     for (const status of statuses) {
       let whereCondition;
@@ -1891,8 +1933,48 @@ export const getLeadStatusSummary = async (assigneeId?: number) => {
         order: [["createdAt", "DESC"]],
       });
 
-      statusCounts[status] = leads.length;
-      leadsByStatus[status] = leads.map((lead) => ({
+      const filteredLeads = !periodRange
+        ? leads
+        : leads.filter((lead: any) => {
+            let referenceDate: Date | null = null;
+
+            if (assigneeId) {
+              try {
+                const assignees =
+                  typeof lead.assignees === "string"
+                    ? JSON.parse(lead.assignees)
+                    : Array.isArray(lead.assignees)
+                      ? lead.assignees
+                      : [];
+
+                const assigneeEntry = assignees.find(
+                  (a: any) =>
+                    Number(a?.userId) === Number(assigneeId) &&
+                    String(a?.status || "").toLowerCase() === status,
+                );
+                if (assigneeEntry?.assignedAt) {
+                  const d = new Date(assigneeEntry.assignedAt);
+                  if (!Number.isNaN(d.getTime())) referenceDate = d;
+                }
+              } catch {
+                // ignore parse failures; fallback below
+              }
+            }
+
+            if (!referenceDate) {
+              const fallback = new Date(lead.updatedAt || lead.createdAt);
+              if (!Number.isNaN(fallback.getTime())) referenceDate = fallback;
+            }
+            if (!referenceDate) return false;
+
+            return (
+              referenceDate >= periodRange.start &&
+              referenceDate <= periodRange.end
+            );
+          });
+
+      statusCounts[status] = filteredLeads.length;
+      leadsByStatus[status] = filteredLeads.map((lead) => ({
         ...(lead.toJSON() as any),
       }));
     }

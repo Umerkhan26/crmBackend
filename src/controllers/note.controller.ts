@@ -277,6 +277,16 @@ export const getAllNotes = async (
 
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
+    const search = String(req.query.search || "").trim();
+    const createdBy = req.query.createdBy
+      ? parseInt(req.query.createdBy as string, 10)
+      : undefined;
+    const leadId = req.query.leadId
+      ? parseInt(req.query.leadId as string, 10)
+      : undefined;
+    const campaignName = String(req.query.campaignName || "").trim();
+    const fromDate = String(req.query.fromDate || "").trim();
+    const toDate = String(req.query.toDate || "").trim();
 
     const result = await NoteService.getAllNotesWithPagination(
       page,
@@ -284,6 +294,14 @@ export const getAllNotes = async (
       userId,
       isAdmin,
       brandUserIds,
+      {
+        search,
+        createdBy: Number.isFinite(createdBy as number) ? createdBy : undefined,
+        leadId: Number.isFinite(leadId as number) ? leadId : undefined,
+        campaignName,
+        fromDate,
+        toDate,
+      },
     );
 
     return res.status(200).json({
@@ -315,6 +333,9 @@ export const getRecentNotes = async (
     const limit = req.query.limit
       ? parseInt(req.query.limit as string, 10)
       : 10;
+    const page = req.query.page
+      ? parseInt(req.query.page as string, 10)
+      : 1;
 
     const User = (await import("../models/user.model")).default;
     const Role = (await import("../models/role.model")).default;
@@ -329,8 +350,9 @@ export const getRecentNotes = async (
     const isManager = await isUserManager(userId);
     const brandUserIds = isManager && !isAdmin ? await getManagerBrandUserIds(userId) : undefined;
 
-    const notes = await NoteService.getRecentNotesFast({
+    const result = await NoteService.getRecentNotesFast({
       limit,
+      page,
       userId,
       isAdmin,
       brandUserIds,
@@ -339,7 +361,7 @@ export const getRecentNotes = async (
     return res.status(200).json({
       success: true,
       message: "Recent notes fetched successfully",
-      notes,
+      ...result,
     });
   } catch (error: any) {
     return res.status(500).json({

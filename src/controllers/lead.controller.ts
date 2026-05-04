@@ -714,11 +714,18 @@ export const getLeadStatusSummary = async (
       : undefined;
     const endDate = req.query.endDate ? String(req.query.endDate) : undefined;
 
+    const campaignName = req.query.campaignName as string | undefined;
+    const campaignId = req.query.campaignId
+      ? parseInt(req.query.campaignId as string, 10)
+      : undefined;
+
     const result = await LeadService.getLeadStatusSummary(
       assigneeId,
       period,
       startDate,
       endDate,
+      campaignName,
+      campaignId,
     );
 
     return res.status(200).json({
@@ -799,7 +806,17 @@ export const getManagerHotLeadRequests = async (
     }
     const page = parseInt(req.query.page as string, 10) || 1;
     const limit = parseInt(req.query.limit as string, 10) || 10;
-    const result = await LeadService.getManagerHotLeadRequests({ managerId, page, limit });
+    const campaignName = req.query.campaignName as string | undefined;
+    const campaignId = req.query.campaignId
+      ? parseInt(req.query.campaignId as string, 10)
+      : undefined;
+    const result = await LeadService.getManagerHotLeadRequests({
+      managerId,
+      page,
+      limit,
+      campaignName,
+      campaignId,
+    });
     return res.status(200).json({
       success: true,
       message: "Hot lead requests fetched successfully",
@@ -862,7 +879,17 @@ export const getMyHotLeadRequests = async (
     }
     const page = parseInt(req.query.page as string, 10) || 1;
     const limit = parseInt(req.query.limit as string, 10) || 10;
-    const result = await LeadService.getMyHotLeadRequests({ userId, page, limit });
+    const campaignName = req.query.campaignName as string | undefined;
+    const campaignId = req.query.campaignId
+      ? parseInt(req.query.campaignId as string, 10)
+      : undefined;
+    const result = await LeadService.getMyHotLeadRequests({
+      userId,
+      page,
+      limit,
+      campaignName,
+      campaignId,
+    });
     return res.status(200).json({
       success: true,
       message: "My hot lead requests fetched successfully",

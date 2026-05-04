@@ -1484,6 +1484,29 @@ const buildDynamicFilters = (conditions: any[]) => {
   return finalWhere;
 };
 
+/** Match getLeadsByAssigneeId / DB: trim, lower, collapse spaces. */
+const normalizeCampaignNameForApi = (value?: string) =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+
+async function resolveEffectiveCampaignNameFromQuery(
+  campaignName?: string,
+  campaignId?: number,
+): Promise<string> {
+  let effective = campaignName?.trim() || "";
+  if (campaignId && !isNaN(Number(campaignId))) {
+    const campaignRecord = await Campaign.findByPk(Number(campaignId), {
+      attributes: ["campaignName"],
+    });
+    if (campaignRecord?.campaignName) {
+      effective = String(campaignRecord.campaignName).trim();
+    }
+  }
+  return effective;
+}
+
 export const getLeadsByAssigneeId = async (
   assigneeId: number,
   filterType?: FilterType,
@@ -1497,12 +1520,6 @@ export const getLeadsByAssigneeId = async (
   conditions: any[] = [],
 ) => {
   try {
-    const normalizeCampaignName = (value?: string) =>
-      String(value || "")
-        .trim()
-        .toLowerCase()
-        .replace(/\s+/g, " ");
-
     const { offset } = getPagination({ page, limit });
 
     // Build the base query with JSON search for assignee
@@ -1514,19 +1531,14 @@ export const getLeadsByAssigneeId = async (
 
     // Resolve campaign filter from campaignId first (source of truth).
     // Falls back to campaignName when ID is not provided.
-    let effectiveCampaignName = campaignName?.trim() || "";
-    if (campaignId && !isNaN(Number(campaignId))) {
-      const campaignRecord = await Campaign.findByPk(Number(campaignId), {
-        attributes: ["campaignName"],
-      });
-      if (campaignRecord?.campaignName) {
-        effectiveCampaignName = String(campaignRecord.campaignName).trim();
-      }
-    }
+    const effectiveCampaignName = await resolveEffectiveCampaignNameFromQuery(
+      campaignName,
+      campaignId,
+    );
 
     // Add campaign filter if provided (trim + lower + collapse spaces, match DB trim)
     if (effectiveCampaignName) {
-      const normalizedCampaignName = normalizeCampaignName(effectiveCampaignName);
+      const normalizedCampaignName = normalizeCampaignNameForApi(effectiveCampaignName);
       baseWhereClause[Op.and] = Sequelize.and(
         baseWhereClause[Op.and],
         Sequelize.where(
@@ -1556,12 +1568,12 @@ export const getLeadsByAssigneeId = async (
     // Defensive post-query guard: ensure no similarly named campaign leaks
     // through due to DB collation or environment differences.
     if (effectiveCampaignName) {
-      const normalizedRequestedCampaign = normalizeCampaignName(
+      const normalizedRequestedCampaign = normalizeCampaignNameForApi(
         effectiveCampaignName,
       );
       allLeads = allLeads.filter(
         (lead: any) =>
-          normalizeCampaignName(lead?.campaignName) ===
+          normalizeCampaignNameForApi(lead?.campaignName) ===
           normalizedRequestedCampaign,
       );
     }
@@ -1863,8 +1875,18 @@ export const getLeadStatusSummary = async (
   period?: string,
   startDate?: string,
   endDate?: string,
+  campaignName?: string,
+  campaignId?: number,
 ) => {
   try {
+    const effectiveCampaignName = await resolveEffectiveCampaignNameFromQuery(
+      campaignName,
+      campaignId,
+    );
+    const normalizedCampaignFilter = effectiveCampaignName
+      ? normalizeCampaignNameForApi(effectiveCampaignName)
+      : "";
+
     const statuses = [
       "pending",
       "sold",
@@ -1928,8 +1950,21 @@ export const getLeadStatusSummary = async (
         `);
       }
 
+      const whereParts: any[] = [whereCondition];
+      if (normalizedCampaignFilter) {
+        whereParts.push(
+          Sequelize.where(
+            Sequelize.fn(
+              "LOWER",
+              Sequelize.fn("TRIM", Sequelize.col("campaignName")),
+            ),
+            normalizedCampaignFilter,
+          ),
+        );
+      }
       const leads = await Lead.findAll({
-        where: whereCondition,
+        where:
+          whereParts.length === 1 ? whereParts[0] : { [Op.and]: whereParts },
         order: [["createdAt", "DESC"]],
       });
 
@@ -2183,18 +2218,46 @@ export const getManagerHotLeadRequests = async ({
   managerId,
   page = 1,
   limit = 10,
+  campaignName,
+  campaignId,
 }: {
   managerId: number;
   page?: number;
   limit?: number;
+  /** When set (or campaignId resolves), only pending hot leads in that campaign. */
+  campaignName?: string;
+  campaignId?: number;
 }) => {
   const managedUserIds = await getManagerBrandUserIds(managerId);
   if (managedUserIds.length === 0) {
     return { rows: [], totalItems: 0, totalPages: 0, currentPage: page, pageSize: limit };
   }
 
+  const effectiveCampaignName = await resolveEffectiveCampaignNameFromQuery(
+    campaignName,
+    campaignId,
+  );
+  const normalizedCampaign = effectiveCampaignName
+    ? normalizeCampaignNameForApi(effectiveCampaignName)
+    : "";
+
+  const leadWhereParts: any[] = [
+    literal(`JSON_CONTAINS(assignees, JSON_OBJECT('status', 'hot_lead'))`),
+  ];
+  if (normalizedCampaign) {
+    leadWhereParts.push(
+      Sequelize.where(
+        Sequelize.fn("LOWER", Sequelize.fn("TRIM", Sequelize.col("campaignName"))),
+        normalizedCampaign,
+      ),
+    );
+  }
+
   const candidateLeads = await Lead.findAll({
-    where: literal(`JSON_CONTAINS(assignees, JSON_OBJECT('status', 'hot_lead'))`),
+    where:
+      leadWhereParts.length === 1
+        ? leadWhereParts[0]
+        : { [Op.and]: leadWhereParts },
     order: [["updatedAt", "DESC"]],
   });
 
@@ -2207,6 +2270,7 @@ export const getManagerHotLeadRequests = async ({
       if (assignee.hotLeadRequestStatus !== "pending") continue;
       rows.push({
         leadId: (lead as any).id,
+        leadCode: lead.leadCode,
         campaignName: (lead as any).campaignName,
         leadData: (lead as any).leadData,
         userId: Number(assignee.userId),
@@ -2313,13 +2377,40 @@ export const getMyHotLeadRequests = async ({
   userId,
   page = 1,
   limit = 10,
+  campaignName,
+  campaignId,
 }: {
   userId: number;
   page?: number;
   limit?: number;
+  campaignName?: string;
+  campaignId?: number;
 }) => {
+  const effectiveCampaignName = await resolveEffectiveCampaignNameFromQuery(
+    campaignName,
+    campaignId,
+  );
+  const normalizedCampaign = effectiveCampaignName
+    ? normalizeCampaignNameForApi(effectiveCampaignName)
+    : "";
+
+  const myLeadWhereParts: any[] = [
+    literal(`JSON_CONTAINS(assignees, JSON_OBJECT('userId', ${Number(userId)}))`),
+  ];
+  if (normalizedCampaign) {
+    myLeadWhereParts.push(
+      Sequelize.where(
+        Sequelize.fn("LOWER", Sequelize.fn("TRIM", Sequelize.col("campaignName"))),
+        normalizedCampaign,
+      ),
+    );
+  }
+
   const leads = await Lead.findAll({
-    where: literal(`JSON_CONTAINS(assignees, JSON_OBJECT('userId', ${Number(userId)}))`),
+    where:
+      myLeadWhereParts.length === 1
+        ? myLeadWhereParts[0]
+        : { [Op.and]: myLeadWhereParts },
     order: [["updatedAt", "DESC"]],
   });
 
@@ -2338,6 +2429,7 @@ export const getMyHotLeadRequests = async ({
     if (mine.hotLeadRequestStatus === "approved") approvedCounter++;
     rows.push({
       leadId: (lead as any).id,
+      leadCode: lead.leadCode,
       campaignName: (lead as any).campaignName,
       leadData: (lead as any).leadData,
       status: mine.status,

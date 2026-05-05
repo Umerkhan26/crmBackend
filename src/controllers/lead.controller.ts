@@ -191,12 +191,45 @@ export const getAdminMasterLeads = async (
       });
     }
 
+    const incomingSourceRows = (incomingAwaitingPromotion?.data || []) as any[];
+    const incomingRows = incomingSourceRows.map((incoming: any) => {
+      const payload =
+        incoming?.payload && typeof incoming.payload === "object" ? incoming.payload : {};
+      const campaignName =
+        (incoming?.campaignName && String(incoming.campaignName).trim()) ||
+        (payload?.campaignName && String(payload.campaignName).trim()) ||
+        "General";
+
+      // Keep a unique id shape so staging ids don't collide with real lead ids in UI tables.
+      const syntheticId = `incoming-${incoming.id}`;
+      return {
+        id: syntheticId,
+        sourceType: "incoming_pending",
+        incomingLeadId: incoming.id,
+        campaignName,
+        leadData: payload,
+        assignees: [],
+        createdAt: incoming.createdAt,
+        updatedAt: incoming.updatedAt,
+        incomingStatus: incoming.status,
+      };
+    });
+
+    const mergedRows = includeStaging
+      ? [...incomingRows, ...(leadsData.rows || [])]
+      : leadsData.rows || [];
+    const mergedTotalItems = includeStaging
+      ? Number(leadsData.totalItems || 0) + Number(incomingAwaitingPromotion?.totalItems || 0)
+      : Number(leadsData.totalItems || 0);
+
     return res.status(200).json({
       success: true,
       message: "Admin master leads fetched successfully",
       assignmentState,
       contactState,
       ...leadsData,
+      rows: mergedRows,
+      totalItems: mergedTotalItems,
       incomingAwaitingPromotion,
     });
   } catch (error: any) {

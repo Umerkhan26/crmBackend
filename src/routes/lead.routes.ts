@@ -43,6 +43,12 @@ router.get(
   verifyToken,
   LeadController.getLeadById);
 router.get(
+  "/admin/new-master-leads/:id",
+  verifyToken,
+  checkPermission(PERMISSIONS.LEAD_GET_ALL),
+  LeadController.getUnifiedAdminLeadById,
+);
+router.get(
   "/leads/campaign/:campaignName",
   verifyToken,
   checkPermission(PERMISSIONS.LEAD_GET_BY_CAMPAIGN),

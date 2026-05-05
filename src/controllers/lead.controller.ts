@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import * as LeadService from "../services/lead.service";
-import { getIncomingLeads } from "../services/incomingLead.service";
+import { getIncomingLeadById, getIncomingLeads } from "../services/incomingLead.service";
 import { LeadStatus } from "../models/lead.model";
 import { FilterType } from "../utils/dateFilters";
 import { getPagingData } from "../utils/paginate";
@@ -264,6 +264,92 @@ export const getLeadById = async (
     return res.status(500).json({
       success: false,
       message: error.message || "An error occurred while fetching the lead",
+    });
+  }
+};
+
+export const getUnifiedAdminLeadById = async (
+  req: Request,
+  res: Response,
+): Promise<any> => {
+  try {
+    const userId = (req as any).user?.id;
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "User not authenticated",
+      });
+    }
+
+    const isAdmin = canViewAllLeads(req);
+    if (!isAdmin) {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied. Admin only endpoint.",
+      });
+    }
+
+    const rawId = String(req.params.id || "").trim();
+    if (!rawId) {
+      return res.status(400).json({ success: false, message: "Invalid lead ID." });
+    }
+
+    const source = String(req.query.source || "").toLowerCase();
+    const isIncomingPrefixed = rawId.startsWith("incoming-");
+    const incomingIdRaw = isIncomingPrefixed ? rawId.replace(/^incoming-/, "") : rawId;
+
+    if (source === "incoming" || isIncomingPrefixed) {
+      const incomingId = Number(incomingIdRaw);
+      if (!Number.isInteger(incomingId) || incomingId <= 0) {
+        return res
+          .status(400)
+          .json({ success: false, message: "Invalid incoming lead ID." });
+      }
+
+      const incoming = await getIncomingLeadById(incomingId);
+      const payload =
+        incoming?.payload && typeof incoming.payload === "object" ? incoming.payload : {};
+      const campaignName =
+        (incoming?.campaignName && String(incoming.campaignName).trim()) ||
+        (payload?.campaignName && String(payload.campaignName).trim()) ||
+        "General";
+
+      return res.status(200).json({
+        success: true,
+        message: "Unified lead details fetched successfully",
+        data: {
+          id: `incoming-${incoming.id}`,
+          sourceType: "incoming_pending",
+          incomingLeadId: incoming.id,
+          campaignName,
+          leadData: payload,
+          assignees: [],
+          createdAt: incoming.createdAt,
+          updatedAt: incoming.updatedAt,
+          incomingStatus: incoming.status,
+          runId: incoming.runId,
+          externalId: incoming.externalId,
+          dedupeKey: incoming.dedupeKey,
+          targetLeadId: incoming.targetLeadId,
+        },
+      });
+    }
+
+    const leadId = Number(rawId);
+    if (!Number.isInteger(leadId) || leadId <= 0) {
+      return res.status(400).json({ success: false, message: "Invalid lead ID." });
+    }
+
+    const lead = await LeadService.getLeadById(leadId);
+    return res.status(200).json({
+      success: true,
+      message: "Unified lead details fetched successfully",
+      data: { ...lead, sourceType: "lead" },
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      message: error.message || "An error occurred while fetching unified lead details",
     });
   }
 };

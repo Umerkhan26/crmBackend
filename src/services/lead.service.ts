@@ -144,6 +144,7 @@ export const getAllLeads = async ({
   endDate,
   assignmentState = "all",
   contactState = "all",
+  onlyPromotedFromIncoming = false,
   userId, // Add userId parameter to filter by creator
   isAdmin = false, // Add isAdmin flag
   isManager = false, // Add isManager flag
@@ -157,6 +158,17 @@ export const getAllLeads = async ({
   try {
     // Base where condition
     const whereCondition: any = { ...filters };
+
+    if (onlyPromotedFromIncoming) {
+      whereCondition[Op.and] = whereCondition[Op.and] || [];
+      whereCondition[Op.and].push({
+        id: {
+          [Op.in]: literal(
+            "(SELECT targetLeadId FROM incoming_leads WHERE status = 'promoted' AND targetLeadId IS NOT NULL)",
+          ),
+        },
+      });
+    }
 
     // Optional campaign filter (exact, case-insensitive)
     if (campaign && campaign.trim() !== "") {
@@ -230,9 +242,11 @@ export const getAllLeads = async ({
       }
     }
 
-    // Dynamic conditions (if any)
+    // Dynamic conditions (if any) — merge into Op.and so we do not drop campaign / incoming filters
     if (conditions.length > 0) {
-      Object.assign(whereCondition, { [Op.and]: conditions });
+      const existingAnd = whereCondition[Op.and];
+      const andArray = Array.isArray(existingAnd) ? existingAnd : existingAnd != null ? [existingAnd] : [];
+      whereCondition[Op.and] = [...andArray, ...conditions];
     }
 
     // STEP 1: Fetch ALL leads matching filters (no pagination yet)
@@ -1064,6 +1078,8 @@ export interface GetAllLeadsParams {
   endDate?: string;
   assignmentState?: "all" | "assigned" | "unassigned";
   contactState?: "all" | "present" | "missing";
+  /** When true, only leads that were promoted from incoming_leads (staging → leads). */
+  onlyPromotedFromIncoming?: boolean;
 }
 
 export const getAllLeadsWithAssignee = async ({

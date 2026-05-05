@@ -132,14 +132,12 @@ router.put(
 router.get(
   "/hot-leads/manager/requests",
   verifyToken,
-  checkPermission(PERMISSIONS.LEAD_GET_ALL),
   LeadController.getManagerHotLeadRequests,
 );
 
 router.put(
   "/hot-leads/manager/requests/:leadId/review",
   verifyToken,
-  checkPermission(PERMISSIONS.LEAD_GET_ALL),
   LeadController.reviewHotLeadRequest,
 );
 

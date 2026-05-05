@@ -1932,6 +1932,7 @@ export const getLeadStatusSummary = async (
       "not_answered",
       "not_interested",
       "hot_lead",
+      "lead_rejected",
     ];
     const statusCounts: Record<string, number> = {};
     const leadsByStatus: Record<string, any[]> = {};
@@ -2265,13 +2266,15 @@ export const getManagerHotLeadRequests = async ({
   limit = 10,
   campaignName,
   campaignId,
+  /** pending = inbox awaiting manager action; reviewed = approved/rejected history; all = both */
+  reviewState = "pending",
 }: {
   managerId: number;
   page?: number;
   limit?: number;
-  /** When set (or campaignId resolves), only reviewed hot lead requests in that campaign. */
   campaignName?: string;
   campaignId?: number;
+  reviewState?: "pending" | "reviewed" | "all";
 }) => {
   const managedUserIds = await getManagerBrandUserIds(managerId);
   if (managedUserIds.length === 0) {
@@ -2286,18 +2289,23 @@ export const getManagerHotLeadRequests = async ({
     ? normalizeCampaignNameForApi(effectiveCampaignName)
     : "";
 
-  const leadWhereParts: any[] = [
-    {
-      [Op.or]: [
-        literal(
-          `JSON_SEARCH(assignees, 'one', 'approved', NULL, '$[*].hotLeadRequestStatus') IS NOT NULL`,
-        ),
-        literal(
-          `JSON_SEARCH(assignees, 'one', 'rejected', NULL, '$[*].hotLeadRequestStatus') IS NOT NULL`,
-        ),
-      ],
-    },
-  ];
+  const pendingLiteral = literal(
+    `JSON_SEARCH(assignees, 'one', 'pending', NULL, '$[*].hotLeadRequestStatus') IS NOT NULL`,
+  );
+  const reviewedLiteral = literal(
+    `(JSON_SEARCH(assignees, 'one', 'approved', NULL, '$[*].hotLeadRequestStatus') IS NOT NULL OR JSON_SEARCH(assignees, 'one', 'rejected', NULL, '$[*].hotLeadRequestStatus') IS NOT NULL)`,
+  );
+
+  let hotMetaWhere: any;
+  if (reviewState === "pending") {
+    hotMetaWhere = pendingLiteral;
+  } else if (reviewState === "reviewed") {
+    hotMetaWhere = reviewedLiteral;
+  } else {
+    hotMetaWhere = { [Op.or]: [pendingLiteral, reviewedLiteral] };
+  }
+
+  const leadWhereParts: any[] = [hotMetaWhere];
   if (normalizedCampaign) {
     leadWhereParts.push(
       Sequelize.where(
@@ -2320,12 +2328,21 @@ export const getManagerHotLeadRequests = async ({
     const assignees = extractAssignees(lead);
     for (const assignee of assignees) {
       if (!managedUserIds.includes(Number(assignee.userId))) continue;
-      if (
-        assignee.hotLeadRequestStatus !== "approved" &&
-        assignee.hotLeadRequestStatus !== "rejected"
-      ) {
-        continue;
+
+      const hrs = assignee.hotLeadRequestStatus;
+      let include = false;
+      if (reviewState === "pending") {
+        include = hrs === "pending" && assignee.status === "hot_lead";
+      } else if (reviewState === "reviewed") {
+        include = hrs === "approved" || hrs === "rejected";
+      } else {
+        include =
+          (hrs === "pending" && assignee.status === "hot_lead") ||
+          hrs === "approved" ||
+          hrs === "rejected";
       }
+      if (!include) continue;
+
       rows.push({
         leadId: (lead as any).id,
         leadCode: lead.leadCode,
@@ -2336,6 +2353,9 @@ export const getManagerHotLeadRequests = async ({
         hotLeadRequestStatus: assignee.hotLeadRequestStatus,
         hotLeadPreviousStatus: assignee.hotLeadPreviousStatus || null,
         hotLeadRequestedAt: assignee.hotLeadRequestedAt || null,
+        hotLeadReviewedAt: assignee.hotLeadReviewedAt || null,
+        hotLeadReviewedBy: assignee.hotLeadReviewedBy ?? null,
+        hotLeadRejectReason: assignee.hotLeadRejectReason || null,
       });
     }
   }
@@ -2357,6 +2377,7 @@ export const getManagerHotLeadRequests = async ({
   const totalPages = totalItems === 0 ? 0 : Math.ceil(totalItems / limit);
   const start = (page - 1) * limit;
   return {
+    reviewState,
     rows: enriched.slice(start, start + limit),
     totalItems,
     totalPages,
@@ -2480,7 +2501,8 @@ export const getMyHotLeadRequests = async ({
     if (!mine) continue;
     const hasHotContext =
       mine.hotLeadRequestStatus === "approved" ||
-      mine.hotLeadRequestStatus === "rejected";
+      mine.hotLeadRequestStatus === "rejected" ||
+      (mine.hotLeadRequestStatus === "pending" && mine.status === "hot_lead");
     if (!hasHotContext) continue;
     if (mine.hotLeadRequestStatus === "approved") approvedCounter++;
     rows.push({

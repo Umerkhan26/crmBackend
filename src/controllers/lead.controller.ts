@@ -879,6 +879,20 @@ export const updateLeadStatus = async (
   }
 };
 
+const canAccessManagerHotLeads = async (req: Request): Promise<boolean> => {
+  const uid = req.user?.id;
+  if (!uid) return false;
+  const perms = req.user?.permissions || [];
+  if (
+    perms.includes(PERMISSIONS.LEAD_GET_ALL) ||
+    perms.includes(PERMISSIONS.LEAD_VIEW_ALL)
+  ) {
+    return true;
+  }
+  const { isUserManager } = await import("../utils/brandUtils");
+  return isUserManager(uid);
+};
+
 export const getManagerHotLeadRequests = async (
   req: Request,
   res: Response,
@@ -888,18 +902,31 @@ export const getManagerHotLeadRequests = async (
     if (!managerId) {
       return res.status(401).json({ success: false, message: "User not authenticated" });
     }
+    if (!(await canAccessManagerHotLeads(req))) {
+      return res.status(403).json({
+        success: false,
+        message:
+          "Forbidden: managers (brand scope) or users with lead:getAll / lead:viewAll may view hot lead requests.",
+      });
+    }
     const page = parseInt(req.query.page as string, 10) || 1;
     const limit = parseInt(req.query.limit as string, 10) || 10;
     const campaignName = req.query.campaignName as string | undefined;
     const campaignId = req.query.campaignId
       ? parseInt(req.query.campaignId as string, 10)
       : undefined;
+    const reviewStateRaw = String(req.query.reviewState || "pending").toLowerCase();
+    const reviewState =
+      reviewStateRaw === "reviewed" || reviewStateRaw === "all"
+        ? (reviewStateRaw as "reviewed" | "all")
+        : "pending";
     const result = await LeadService.getManagerHotLeadRequests({
       managerId,
       page,
       limit,
       campaignName,
       campaignId,
+      reviewState,
     });
     return res.status(200).json({
       success: true,
@@ -921,6 +948,13 @@ export const reviewHotLeadRequest = async (
     if (!managerId) {
       return res.status(401).json({ success: false, message: "User not authenticated" });
     }
+    if (!(await canAccessManagerHotLeads(req))) {
+      return res.status(403).json({
+        success: false,
+        message:
+          "Forbidden: managers (brand scope) or users with lead:getAll / lead:viewAll may review hot lead requests.",
+      });
+    }
     const leadId = Number(req.params.leadId);
     const userId = Number(req.body.userId);
     const decision = req.body.decision as "approved" | "rejected";
@@ -930,6 +964,15 @@ export const reviewHotLeadRequest = async (
         success: false,
         message: "leadId, userId and valid decision (approved/rejected) are required",
       });
+    }
+    if (decision === "rejected") {
+      const trimmed = String(rejectReason || "").trim();
+      if (!trimmed) {
+        return res.status(400).json({
+          success: false,
+          message: "rejectReason is required when rejecting a hot lead request",
+        });
+      }
     }
     const data = await LeadService.reviewHotLeadRequest({
       managerId,

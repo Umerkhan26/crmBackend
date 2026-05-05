@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import * as LeadService from "../services/lead.service";
+import { getIncomingLeads } from "../services/incomingLead.service";
 import { LeadStatus } from "../models/lead.model";
 import { FilterType } from "../utils/dateFilters";
 import { getPagingData } from "../utils/paginate";
@@ -171,7 +172,24 @@ export const getAdminMasterLeads = async (
       contactState,
       isAdmin: true,
       userId,
+      // Only leads that came from incoming_leads → `leads` (empty assignees until cron, then assigned).
+      onlyPromotedFromIncoming: true,
     });
+
+    const includeStaging =
+      String(req.query.includeStaging ?? "true").toLowerCase() !== "false";
+
+    let incomingAwaitingPromotion: Awaited<ReturnType<typeof getIncomingLeads>> | null =
+      null;
+    if (includeStaging) {
+      incomingAwaitingPromotion = await getIncomingLeads({
+        page,
+        limit,
+        search,
+        status: "awaiting_promotion",
+        campaignName: campaign?.trim() || undefined,
+      });
+    }
 
     return res.status(200).json({
       success: true,
@@ -179,6 +197,7 @@ export const getAdminMasterLeads = async (
       assignmentState,
       contactState,
       ...leadsData,
+      incomingAwaitingPromotion,
     });
   } catch (error: any) {
     return res.status(500).json({

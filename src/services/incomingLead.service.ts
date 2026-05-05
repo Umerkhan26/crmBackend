@@ -133,7 +133,15 @@ export const getIncomingLeads = async ({
   page?: number;
   limit?: number;
   search?: string;
-  status?: "pending" | "validated" | "assigned" | "promoted" | "failed" | "all";
+  status?:
+    | "pending"
+    | "validated"
+    | "assigned"
+    | "promoted"
+    | "failed"
+    | "all"
+    /** Not yet promoted to `leads` (excludes promoted + failed) — for admin pipeline views */
+    | "awaiting_promotion";
   runId?: string;
   /** Exact match on stored campaign name (same string as import) */
   campaignName?: string;
@@ -141,7 +149,11 @@ export const getIncomingLeads = async ({
   const { offset, limit: pageLimit } = getPagination({ page, limit });
 
   const andParts: any[] = [];
-  if (status !== "all") andParts.push({ status });
+  if (status === "awaiting_promotion") {
+    andParts.push({ status: { [Op.notIn]: ["promoted", "failed"] } });
+  } else if (status !== "all") {
+    andParts.push({ status });
+  }
   if (runId?.trim()) andParts.push({ runId: runId.trim() });
   if (campaignName?.trim()) andParts.push({ campaignName: campaignName.trim() });
 

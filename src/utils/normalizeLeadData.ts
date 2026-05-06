@@ -44,3 +44,44 @@ export function normalizeLeadDataInput(raw: unknown): Record<string, unknown> {
   }
   return {};
 }
+
+/** Strip LRM/RLM/etc. so Fiverr-style phones still count as non-empty. */
+const STRIP_BIDI = /[\u200e\u200f\u202a-\u202e]/g;
+
+/** Field names used across campaigns / imports (must stay in sync with CRM frontend helpers). */
+const LEAD_DATA_PHONE_KEYS: string[] = [
+  "phone_number",
+  "phoneNumber",
+  "phone",
+  "Phone",
+  "PHONE",
+  "number",
+  "number_",
+  "contactNumber",
+  "contact_number",
+  "mobile",
+  "cell",
+  "cellphone",
+  "telephone",
+  "tel",
+  "whatsapp",
+];
+
+/**
+ * First non-empty phone-like value from leadData (after JSON coercion + bidi strip).
+ * Used for contactState=present|missing on admin master lists.
+ */
+export function extractPhoneRawFromLeadData(leadData: unknown): string {
+  const ld = normalizeLeadDataInput(leadData);
+  for (const k of LEAD_DATA_PHONE_KEYS) {
+    const v = ld[k];
+    if (v == null) continue;
+    const s = String(v).replace(STRIP_BIDI, "").trim();
+    if (s.length > 0) return s;
+  }
+  return "";
+}
+
+export function leadRowHasContactPhone(lead: { leadData?: unknown }): boolean {
+  return extractPhoneRawFromLeadData(lead?.leadData) !== "";
+}

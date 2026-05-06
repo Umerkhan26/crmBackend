@@ -5,6 +5,7 @@ import { LeadStatus } from "../models/lead.model";
 import { FilterType } from "../utils/dateFilters";
 import { getPagingData } from "../utils/paginate";
 import { PERMISSIONS } from "../constants/permissions";
+import { leadRowHasContactPhone, normalizeLeadDataInput } from "../utils/normalizeLeadData";
 
 const canViewAllLeads = (req: Request): boolean => {
   return req.user?.permissions?.includes(PERMISSIONS.LEAD_VIEW_ALL) ?? false;
@@ -178,10 +179,14 @@ export const getAdminMasterLeads = async (
 
     const includeStaging =
       String(req.query.includeStaging ?? "true").toLowerCase() !== "false";
+    // Staging rows are never "assigned" until promoted; merge them only for all/unassigned.
+    const mergeIncoming =
+      includeStaging &&
+      (assignmentState === "all" || assignmentState === "unassigned");
 
     let incomingAwaitingPromotion: Awaited<ReturnType<typeof getIncomingLeads>> | null =
       null;
-    if (includeStaging) {
+    if (mergeIncoming) {
       incomingAwaitingPromotion = await getIncomingLeads({
         page,
         limit,
@@ -193,8 +198,7 @@ export const getAdminMasterLeads = async (
 
     const incomingSourceRows = (incomingAwaitingPromotion?.data || []) as any[];
     const incomingRows = incomingSourceRows.map((incoming: any) => {
-      const payload =
-        incoming?.payload && typeof incoming.payload === "object" ? incoming.payload : {};
+      const payload = normalizeLeadDataInput(incoming?.payload);
       const campaignName =
         (incoming?.campaignName && String(incoming.campaignName).trim()) ||
         (payload?.campaignName && String(payload.campaignName).trim()) ||
@@ -215,12 +219,34 @@ export const getAdminMasterLeads = async (
       };
     });
 
-    const mergedRows = includeStaging
-      ? [...incomingRows, ...(leadsData.rows || [])]
+    // contactState is applied inside getAllLeads for promoted rows only; staging rows must match too.
+    const incomingRowsForMerge =
+      mergeIncoming && contactState === "present"
+        ? incomingRows.filter((r) => leadRowHasContactPhone(r))
+        : mergeIncoming && contactState === "missing"
+          ? incomingRows.filter((r) => !leadRowHasContactPhone(r))
+          : mergeIncoming
+            ? incomingRows
+            : [];
+
+    const mergedRows = mergeIncoming
+      ? [...incomingRowsForMerge, ...(leadsData.rows || [])]
       : leadsData.rows || [];
-    const mergedTotalItems = includeStaging
-      ? Number(leadsData.totalItems || 0) + Number(incomingAwaitingPromotion?.totalItems || 0)
-      : Number(leadsData.totalItems || 0);
+
+    const dbTotal = Number(leadsData.totalItems || 0);
+    const incTotalAll = Number(incomingAwaitingPromotion?.totalItems || 0);
+    const mergedTotalItems = mergeIncoming
+      ? dbTotal +
+        (contactState === "all"
+          ? incTotalAll
+          : incomingRowsForMerge.length)
+      : dbTotal;
+
+    const pageSize = Math.max(1, Number(leadsData.pageSize || limit || 10));
+    const mergedTotalPages =
+      mergedTotalItems <= 0
+        ? 0
+        : Math.max(1, Math.ceil(mergedTotalItems / pageSize));
 
     return res.status(200).json({
       success: true,
@@ -230,6 +256,7 @@ export const getAdminMasterLeads = async (
       ...leadsData,
       rows: mergedRows,
       totalItems: mergedTotalItems,
+      totalPages: mergedTotalPages,
       incomingAwaitingPromotion,
     });
   } catch (error: any) {
@@ -307,8 +334,7 @@ export const getUnifiedAdminLeadById = async (
       }
 
       const incoming = await getIncomingLeadById(incomingId);
-      const payload =
-        incoming?.payload && typeof incoming.payload === "object" ? incoming.payload : {};
+      const payload = normalizeLeadDataInput(incoming?.payload);
       const campaignName =
         (incoming?.campaignName && String(incoming.campaignName).trim()) ||
         (payload?.campaignName && String(payload.campaignName).trim()) ||

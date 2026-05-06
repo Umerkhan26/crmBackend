@@ -3,6 +3,7 @@ import IncomingLead from "../models/incomingLead.model";
 import Lead from "../models/lead.model";
 import { getPagination, getPagingData } from "../utils/paginate";
 import { normalizeLeadDataInput } from "../utils/normalizeLeadData";
+import { normalizeLeadCodeSearchInput } from "../utils/leadCode";
 
 export const createIncomingLead = async ({
   runId,
@@ -158,7 +159,8 @@ export const getIncomingLeads = async ({
   if (campaignName?.trim()) andParts.push({ campaignName: campaignName.trim() });
 
   if (search?.trim()) {
-    const term = `%${search.trim()}%`;
+    const normalized = normalizeLeadCodeSearchInput(search);
+    const term = `%${normalized}%`;
     const orParts: any[] = [
       { externalId: { [Op.like]: term } },
       { runId: { [Op.like]: term } },
@@ -171,6 +173,19 @@ export const getIncomingLeads = async ({
         [Op.like]: term,
       }),
     );
+    // Staging lead code is campaign initials + id (e.g. JNO-1737); payload rarely contains that string.
+    const leadCodeMatch = normalized.match(/^([A-Za-z]+)-?(\d+)$/);
+    if (leadCodeMatch) {
+      const codeNum = Number(leadCodeMatch[2]);
+      if (Number.isFinite(codeNum) && codeNum > 0) {
+        orParts.push({ id: codeNum });
+      }
+    } else if (/^\d+$/.test(normalized)) {
+      const n = Number(normalized);
+      if (Number.isFinite(n) && n > 0) {
+        orParts.push({ id: n });
+      }
+    }
     andParts.push({ [Op.or]: orParts });
   }
 

@@ -1,5 +1,6 @@
 import { Op, Sequelize } from "sequelize";
 import Lead from "../models/lead.model";
+import IncomingLead from "../models/incomingLead.model";
 import User from "../models/user.model";
 import Campaign from "../models/campaign.model";
 import Order from "../models/order.model";
@@ -7,6 +8,12 @@ import ProductSale from "../models/product.model";
 import Role from "../models/role.model";
 import ClientLead from "../models/clientLead.model";
 import ActivityLog from "../models/activityLog.model";
+import {
+  buildLeadCodeFromCampaignAndId,
+  campaignNameToLeadCodeInitials,
+  leadCodeMatchesSearch,
+  normalizeLeadCodeSearchInput,
+} from "../utils/leadCode";
 
 interface MasterSearchResult {
   leads: any[];
@@ -35,7 +42,8 @@ export const masterSearch = async (
   userId?: number,
   allowedCampaignNames?: string[]
 ): Promise<MasterSearchResult> => {
-  if (!query || query.trim().length === 0) {
+  const qNorm = normalizeLeadCodeSearchInput(query);
+  if (!qNorm) {
     return {
       leads: [],
       users: [],
@@ -58,17 +66,16 @@ export const masterSearch = async (
     };
   }
 
-  const searchTerm = `%${query.trim()}%`;
-  const numericId = isNaN(Number(query)) ? undefined : Number(query);
-  
-  // Check if query might be a leadCode (letters followed by numbers, e.g., "ABC123")
-  // Extract numeric part if it looks like a leadCode
-  const leadCodeMatch = query.trim().match(/^([A-Za-z]+)(\d+)$/i);
+  const searchTerm = `%${qNorm}%`;
+  const numericId = isNaN(Number(qNorm)) ? undefined : Number(qNorm);
+
+  // Lead code: ABC-123 or legacy ABC123 (optional hyphen before digits)
+  const leadCodeMatch = qNorm.match(/^([A-Za-z]+)-?(\d+)$/i);
   const leadCodeNumericId = leadCodeMatch ? Number(leadCodeMatch[2]) : undefined;
   const leadCodePrefix = leadCodeMatch ? leadCodeMatch[1].toUpperCase() : null;
-  
+
   // Also check if query is just letters (might be campaign initials prefix)
-  const isLettersOnly = /^[A-Za-z]+$/.test(query.trim());
+  const isLettersOnly = /^[A-Za-z]+$/.test(qNorm);
 
   // Build where conditions for each entity
   const leadWhere: any = {
@@ -83,7 +90,7 @@ export const masterSearch = async (
   }
   // If query is just letters, also search for campaigns starting with those letters
   if (isLettersOnly && !leadCodeMatch) {
-    leadWhere[Op.or].push({ campaignName: { [Op.like]: `${query.trim()}%` } });
+    leadWhere[Op.or].push({ campaignName: { [Op.like]: `${qNorm}%` } });
   }
 
   // For non-admin users, filter leads by assignment and campaign permissions
@@ -275,22 +282,114 @@ export const masterSearch = async (
     }),
   ]);
 
+  // Staging rows use incoming_leads.id in the display code (JNO-{id}); they are not in `leads` until promoted.
+  let incomingStagingRows: any[] = [];
+  if (
+    leadCodeNumericId !== undefined &&
+    Number.isFinite(leadCodeNumericId) &&
+    !(
+      userId != null &&
+      allowedCampaignNames !== undefined &&
+      allowedCampaignNames.length === 0
+    )
+  ) {
+    const incWhere: any = {
+      id: leadCodeNumericId,
+      status: { [Op.notIn]: ["promoted", "failed"] },
+    };
+    if (
+      userId != null &&
+      allowedCampaignNames !== undefined &&
+      allowedCampaignNames.length > 0
+    ) {
+      incWhere.campaignName = { [Op.in]: allowedCampaignNames };
+    }
+    incomingStagingRows = await IncomingLead.findAll({
+      where: incWhere,
+      limit: Math.max(limit, 10),
+      order: [["createdAt", "DESC"]],
+      attributes: ["id", "campaignName", "payload", "createdAt"],
+    });
+  }
+
   // Process leads to include leadCode and filter by leadData content
-  const queryLower = query.trim().toLowerCase();
-  const processedLeads = leads
+  const queryLower = qNorm.toLowerCase();
+
+  const leadMatchesQuery = (campaignName: string, numericId: number, matchesLeadData: boolean) => {
+    const matchesCampaignName = (campaignName || "")
+      .toLowerCase()
+      .includes(queryLower);
+    const matchesLeadCode = leadCodeMatchesSearch(
+      campaignName || "",
+      numericId,
+      qNorm,
+    );
+    let matchesLeadCodePattern = false;
+    if (leadCodePrefix) {
+      const campaignInitials = campaignNameToLeadCodeInitials(campaignName || "");
+      matchesLeadCodePattern =
+        !!leadCodePrefix &&
+        campaignInitials.includes(leadCodePrefix) &&
+        numericId === leadCodeNumericId;
+    }
+    return (
+      matchesCampaignName ||
+      matchesLeadCode ||
+      matchesLeadCodePattern ||
+      matchesLeadData
+    );
+  };
+
+  const processedStagingLeads = incomingStagingRows
+    .map((row: any) => {
+      const inc = row.get ? row.get({ plain: true }) : row;
+      let payload: any = inc.payload;
+      if (typeof payload === "string") {
+        try {
+          payload = JSON.parse(payload);
+        } catch {
+          payload = {};
+        }
+      }
+      const campaignName = inc.campaignName || "";
+      const numId = Number(inc.id);
+      const leadCode = buildLeadCodeFromCampaignAndId(campaignName, numId);
+      const leadDataStr = JSON.stringify(payload || {}).toLowerCase();
+      const matchesLeadData = leadDataStr.includes(queryLower);
+      return {
+        id: `incoming-${inc.id}`,
+        sourceType: "incoming_pending" as const,
+        incomingLeadId: inc.id,
+        leadCode,
+        campaignName,
+        businessName: payload?.business_name || payload?.businessName || "",
+        email: payload?.email || "",
+        phone: payload?.phone || payload?.phone_number || "",
+        createdAt: inc.createdAt,
+        _matchesLeadData: matchesLeadData,
+      };
+    })
+    .filter((lead: any) =>
+      leadMatchesQuery(lead.campaignName || "", Number(lead.incomingLeadId), lead._matchesLeadData),
+    )
+    .map(({ _matchesLeadData, ...lead }: any) => lead);
+
+  const processedDbLeads = leads
     .map((lead: any) => {
-      const leadData =
-        typeof lead.leadData === "string"
-          ? JSON.parse(lead.leadData)
-          : lead.leadData;
+      let leadData: any = lead.leadData;
+      if (typeof leadData === "string") {
+        try {
+          leadData = JSON.parse(leadData);
+        } catch {
+          leadData = {};
+        }
+      }
 
-      const initials = lead.campaignName
-        .split(" ")
-        .map((word: string) => word[0]?.toUpperCase() || "")
-        .join("");
-      const leadCode = `${initials}${lead.id}`;
+      const leadCode = buildLeadCodeFromCampaignAndId(
+        lead.campaignName || "",
+        Number(lead.id),
+      );
 
-      // Check if search term matches any field in leadData
       const leadDataStr = JSON.stringify(leadData || {}).toLowerCase();
       const matchesLeadData = leadDataStr.includes(queryLower);
 
@@ -302,35 +401,17 @@ export const masterSearch = async (
         email: leadData?.email || "",
         phone: leadData?.phone || leadData?.phone_number || "",
         createdAt: lead.createdAt,
-        _matchesLeadData: matchesLeadData, // Internal flag for filtering
+        _matchesLeadData: matchesLeadData,
       };
     })
-    .filter((lead: any) => {
-      // Keep if it matches campaignName, leadCode, ID, or leadData content
-      const matchesCampaignName = lead.campaignName.toLowerCase().includes(queryLower);
-      const matchesLeadCode = lead.leadCode.toLowerCase().includes(queryLower);
-      const matchesLeadData = lead._matchesLeadData;
-      
-      // If query looks like a leadCode pattern, also check if the prefix matches campaign initials
-      let matchesLeadCodePattern = false;
-      if (leadCodePrefix) {
-        const campaignInitials = lead.campaignName
-          .split(" ")
-          .map((word: string) => word[0]?.toUpperCase() || "")
-          .join("");
-        matchesLeadCodePattern = campaignInitials.toUpperCase().includes(leadCodePrefix) && 
-                                 lead.id === leadCodeNumericId;
-      }
-      
-      return (
-        matchesCampaignName ||
-        matchesLeadCode ||
-        matchesLeadCodePattern ||
-        matchesLeadData
-      );
-    })
-    .slice(0, limit)
-    .map(({ _matchesLeadData, ...lead }: any) => lead); // Remove internal flag
+    .filter((lead: any) =>
+      leadMatchesQuery(lead.campaignName || "", Number(lead.id), lead._matchesLeadData),
+    )
+    .map(({ _matchesLeadData, ...lead }: any) => lead);
+
+  const mergedLeadResults = [...processedStagingLeads, ...processedDbLeads];
+  const processedLeads = mergedLeadResults.slice(0, limit);
+  const leadsTotalForSearch = mergedLeadResults.length;
 
   // Process client leads - search in leadData JSON
   const processedClientLeads = clientLeads
@@ -398,7 +479,7 @@ export const masterSearch = async (
     clientLeads: processedClientLeads,
     activityLogs: activityLogs.map((al: any) => al.toJSON()),
     totals: {
-      leads: processedLeads.length, // Use filtered count since we filter by leadData
+      leads: leadsTotalForSearch,
       users: usersCount,
       campaigns: campaignsCount,
       orders: ordersCount,

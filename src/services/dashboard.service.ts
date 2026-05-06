@@ -25,6 +25,43 @@ interface DashboardStatsParams {
   notesLimit?: number;
 }
 
+const buildCreatedAtBetween = (dateWhereClause: any): [Date, Date] | null => {
+  const range = dateWhereClause?.createdAt?.[Op.between];
+  if (!Array.isArray(range) || range.length !== 2) return null;
+  return [range[0], range[1]];
+};
+
+const getMasterLeadIndexCounts = async (dateWhereClause: any) => {
+  const dateBetween = buildCreatedAtBetween(dateWhereClause);
+  const createdAtSql = dateBetween ? " AND createdAt BETWEEN :start AND :end " : "";
+  const replacements = dateBetween
+    ? { start: dateBetween[0], end: dateBetween[1] }
+    : {};
+
+  const rows = (await db.query(
+    `
+      SELECT
+        COUNT(*) AS total,
+        SUM(CASE WHEN JSON_LENGTH(COALESCE(assignees, '[]')) > 0 THEN 1 ELSE 0 END) AS assigned,
+        SUM(CASE WHEN JSON_LENGTH(COALESCE(assignees, '[]')) = 0 THEN 1 ELSE 0 END) AS unassigned
+      FROM leads
+      WHERE 1=1
+      ${createdAtSql}
+    `,
+    { type: QueryTypes.SELECT, replacements },
+  )) as any[];
+
+  const total = Number(rows?.[0]?.total || 0);
+  const assigned = Number(rows?.[0]?.assigned || 0);
+  const unassigned = Number(rows?.[0]?.unassigned || 0);
+
+  return {
+    total,
+    assigned,
+    unassigned,
+  };
+};
+
 /**
  * Get dashboard statistics
  * For admin: returns global stats
@@ -52,14 +89,12 @@ export const getDashboardStats = async ({
       dateFilter && Object.keys(dateFilter).length > 0 ? dateFilter : {};
 
     if (isAdmin) {
+      const masterLeadCounts = await getMasterLeadIndexCounts(dateWhereClause);
       // Admin sees global stats
       const [
         totalUsers,
         activeUsers,
         blockedUsers,
-        totalLeads,
-        assignedLeadsCount,
-        unassignedLeadsCount,
         totalProducts,
         totalCampaigns,
         leadsWithWorkResult,
@@ -76,31 +111,6 @@ export const getDashboardStats = async ({
         // Blocked Users (not date-filtered)
         User.count({
           where: { status: "blocked" },
-        }),
-
-        // Total Leads (optionally date-filtered)
-        Lead.count({
-          where: dateWhereClause as any,
-        }),
-
-        // Assigned Leads - count leads where assignees JSON array has at least one item
-        Lead.count({
-          where: {
-            ...dateWhereClause,
-            [Op.and]: Sequelize.literal(
-              "JSON_LENGTH(COALESCE(assignees, '[]')) > 0",
-            ),
-          } as any,
-        }),
-
-        // Unassigned Leads - count leads where assignees is null, empty, or empty array
-        Lead.count({
-          where: {
-            ...dateWhereClause,
-            [Op.and]: Sequelize.literal(
-              "(assignees IS NULL OR assignees = '[]' OR assignees = '' OR JSON_LENGTH(COALESCE(assignees, '[]')) = 0)",
-            ),
-          } as any,
         }),
 
         // Total Products (pending status, optionally date-filtered)
@@ -193,9 +203,9 @@ export const getDashboardStats = async ({
           blocked: blockedUsers,
         },
         leads: {
-          total: totalLeads,
-          assigned: assignedLeadsCount,
-          unassigned: unassignedLeadsCount,
+          total: masterLeadCounts.total,
+          assigned: masterLeadCounts.assigned,
+          unassigned: masterLeadCounts.unassigned,
           withWork: leadsWithWorkCount, // Admin only: leads with work done
         },
         products: {
@@ -216,6 +226,7 @@ export const getDashboardStats = async ({
         // },
       };
     } else if (isManager && userId) {
+      const masterLeadCounts = await getMasterLeadIndexCounts(dateWhereClause);
       // Manager: Users + LeadsWithWork = brand-scoped; rest = admin/master (global)
       const brandUserIds = await getManagerBrandUserIds(userId);
       const brandUserIdsList =
@@ -225,9 +236,6 @@ export const getDashboardStats = async ({
         totalUsers,
         activeUsers,
         blockedUsers,
-        totalLeads,
-        assignedLeadsCount,
-        unassignedLeadsCount,
         totalProducts,
         totalCampaigns,
         leadsWithWorkResult,
@@ -251,24 +259,6 @@ export const getDashboardStats = async ({
             brandUserIds.length > 0
               ? { id: { [Op.in]: brandUserIds }, status: "blocked" }
               : { id: -1 },
-        }),
-        // Leads: admin view (all master leads)
-        Lead.count({ where: dateWhereClause as any }),
-        Lead.count({
-          where: {
-            ...dateWhereClause,
-            [Op.and]: Sequelize.literal(
-              "JSON_LENGTH(COALESCE(assignees, '[]')) > 0",
-            ),
-          } as any,
-        }),
-        Lead.count({
-          where: {
-            ...dateWhereClause,
-            [Op.and]: Sequelize.literal(
-              "(assignees IS NULL OR assignees = '[]' OR assignees = '' OR JSON_LENGTH(COALESCE(assignees, '[]')) = 0)",
-            ),
-          } as any,
         }),
         // Products: admin view
         ProductSale.count({
@@ -315,9 +305,9 @@ export const getDashboardStats = async ({
           blocked: blockedUsers,
         },
         leads: {
-          total: totalLeads,
-          assigned: assignedLeadsCount,
-          unassigned: unassignedLeadsCount,
+          total: masterLeadCounts.total,
+          assigned: masterLeadCounts.assigned,
+          unassigned: masterLeadCounts.unassigned,
           withWork: leadsWithWorkCount,
         },
         products: { total: totalProducts },

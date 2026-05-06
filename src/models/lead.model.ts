@@ -1,6 +1,7 @@
 import { DataTypes, Model, Optional } from "sequelize";
 import db from "../../db";
 import User from "./user.model";
+import { buildLeadCodeFromCampaignAndId } from "../utils/leadCode";
 
 export type LeadStatus =
   | "pending"
@@ -45,12 +46,7 @@ export class Lead
   public readonly assignedUsers?: InstanceType<typeof User>[];
 
   public get leadCode(): string {
-    const initials = this.campaignName
-      .split(" ")
-      .map((word) => (word[0] || "").replace(/[^a-zA-Z0-9]/g, "").toUpperCase())
-      .filter(Boolean)
-      .join("");
-    return `${initials}${this.id}`;
+    return buildLeadCodeFromCampaignAndId(this.campaignName, this.id);
   }
 }
 
@@ -91,14 +87,7 @@ Lead.init(
     getterMethods: {
       leadCode() {
         const lead = this as Lead;
-        const initials = lead.campaignName
-          .split(" ")
-          .map((word) =>
-            (word[0] || "").replace(/[^a-zA-Z0-9]/g, "").toUpperCase(),
-          )
-          .filter(Boolean)
-          .join("");
-        return `${initials}${lead.id}`;
+        return buildLeadCodeFromCampaignAndId(lead.campaignName, lead.id);
       },
     },
   }

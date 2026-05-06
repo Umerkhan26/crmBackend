@@ -28,6 +28,13 @@ import Role from "../models/role.model";
 import { Permission } from "../models/permission.model";
 import LeadRotationState from "../models/leadRotationState.model";
 import { getManagerBrandUserIds } from "../utils/brandUtils";
+import {
+  buildLeadCodeFromCampaignAndId,
+  leadEnrichedRowMatchesSearch,
+  leadPartialRowMatchesSearch,
+  normalizeLeadCodeSearchInput,
+} from "../utils/leadCode";
+import { leadRowHasContactPhone } from "../utils/normalizeLeadData";
 
 interface PaginationParams {
   page?: number;
@@ -38,17 +45,6 @@ interface LeadQueryParams extends PaginationParams {
   search?: string;
 }
 
-/** Match leadCode getter: initials from first char of each word, alphanumeric only. */
-const buildLeadCodePrefixForSearch = (campaignName?: string) =>
-  String(campaignName || "")
-    .split(/\s+/)
-    .map((word) =>
-      String(word[0] || "")
-        .replace(/[^a-zA-Z0-9]/g, "")
-        .toLowerCase(),
-    )
-    .filter(Boolean)
-    .join("");
 /**
  * Check if a lead with the same phone number already exists
  */
@@ -291,14 +287,10 @@ export const getAllLeads = async ({
           });
         }
 
-        // Generate leadCode for search
-        const leadCode = (() => {
-          const initials = lead.campaignName
-            .split(" ")
-            .map((word: string) => word[0]?.toUpperCase() || "")
-            .join("");
-          return `${initials}${lead.id}`;
-        })();
+        const leadCode = buildLeadCodeFromCampaignAndId(
+          lead.campaignName || "",
+          Number(lead.id),
+        );
 
         return {
           ...lead.toJSON(),
@@ -310,38 +302,16 @@ export const getAllLeads = async ({
 
     // STEP 3: GLOBAL search (search anywhere in JSON + campaign + assignees + leadCode)
     const searchFilteredLeads = search
-      ? enrichedLeads.filter((lead) => {
-          const searchLower = search.toLowerCase();
-          const jsonStr = JSON.stringify(lead).toLowerCase();
-
-          // Explicitly check leadCode for better search accuracy
-          const leadCodeStr = (lead.leadCode || "").toLowerCase();
-
-          return (
-            jsonStr.includes(searchLower) || leadCodeStr.includes(searchLower)
-          );
-        })
+      ? enrichedLeads.filter((lead) =>
+          leadEnrichedRowMatchesSearch(lead as Record<string, unknown>, search),
+        )
       : enrichedLeads;
-
-    const extractLeadPhone = (lead: any): string => {
-      const leadData =
-        lead?.leadData && typeof lead.leadData === "object" ? lead.leadData : {};
-      const raw =
-        leadData.phone_number ??
-        leadData.phone ??
-        leadData.number ??
-        leadData.contactNumber ??
-        leadData.contact_number ??
-        leadData.mobile ??
-        leadData.whatsapp;
-      return raw == null ? "" : String(raw).trim();
-    };
 
     const filteredLeads =
       contactState === "present"
-        ? searchFilteredLeads.filter((lead) => extractLeadPhone(lead) !== "")
+        ? searchFilteredLeads.filter((lead) => leadRowHasContactPhone(lead))
         : contactState === "missing"
-          ? searchFilteredLeads.filter((lead) => extractLeadPhone(lead) === "")
+          ? searchFilteredLeads.filter((lead) => !leadRowHasContactPhone(lead))
           : searchFilteredLeads;
 
     // STEP 4: PAGINATION
@@ -579,14 +549,10 @@ export const getLeadsByCampaign = async ({
           });
         }
 
-        // Generate leadCode for search
-        const leadCode = (() => {
-          const initials = lead.campaignName
-            .split(" ")
-            .map((word: string) => word[0]?.toUpperCase() || "")
-            .join("");
-          return `${initials}${lead.id}`;
-        })();
+        const leadCode = buildLeadCodeFromCampaignAndId(
+          lead.campaignName || "",
+          Number(lead.id),
+        );
 
         return {
           ...lead.toJSON(),
@@ -604,31 +570,9 @@ export const getLeadsByCampaign = async ({
     });
 
     const filteredLeads = search
-      ? enrichedLeads.filter((lead) => {
-          const searchLower = search.toLowerCase().trim();
-          const jsonStr = JSON.stringify(lead).toLowerCase();
-
-          // Explicitly check leadCode for better search accuracy
-          const leadCodeStr = (lead.leadCode || "").toLowerCase();
-
-          const matchesJson = jsonStr.includes(searchLower);
-          const matchesLeadCode = leadCodeStr.includes(searchLower);
-          const matches = matchesJson || matchesLeadCode;
-
-          // Debug first few leads
-          if (enrichedLeads.indexOf(lead) < 3) {
-            console.log("🔍 Lead search check:", {
-              leadId: lead.id,
-              leadCode: lead.leadCode,
-              searchTerm: searchLower,
-              matchesJson,
-              matchesLeadCode,
-              matches,
-            });
-          }
-
-          return matches;
-        })
+      ? enrichedLeads.filter((lead) =>
+          leadEnrichedRowMatchesSearch(lead as Record<string, unknown>, search),
+        )
       : enrichedLeads;
 
     console.log("🔍 Search filter - Output:", {
@@ -1200,14 +1144,10 @@ export const getAllLeadsWithAssignee = async ({
             };
           });
         }
-        // Generate leadCode for search
-        const leadCode = (() => {
-          const initials = lead.campaignName
-            .split(" ")
-            .map((word: string) => word[0]?.toUpperCase() || "")
-            .join("");
-          return `${initials}${lead.id}`;
-        })();
+        const leadCode = buildLeadCodeFromCampaignAndId(
+          lead.campaignName || "",
+          Number(lead.id),
+        );
 
         return {
           ...(lead.toJSON() as any),
@@ -1221,17 +1161,9 @@ export const getAllLeadsWithAssignee = async ({
     // ─────────────────────────────────────────
     const filteredLeads =
       search && search.trim() !== ""
-        ? enrichedLeads.filter((lead) => {
-            const searchLower = search.trim().toLowerCase();
-            const jsonStr = JSON.stringify(lead).toLowerCase();
-
-            // Explicitly check leadCode for better search accuracy
-            const leadCodeStr = (lead.leadCode || "").toLowerCase();
-
-            return (
-              jsonStr.includes(searchLower) || leadCodeStr.includes(searchLower)
-            );
-          })
+        ? enrichedLeads.filter((lead) =>
+            leadEnrichedRowMatchesSearch(lead as Record<string, unknown>, search),
+          )
         : enrichedLeads;
     // ─────────────────────────────────────────
     // Pagination AFTER filtering
@@ -1379,14 +1311,10 @@ export const getUnassignedLeads = async ({
         }
         const plainLead = lead.toJSON();
 
-        // Generate leadCode for search
-        const leadCode = (() => {
-          const initials = lead.campaignName
-            .split(" ")
-            .map((word: string) => word[0]?.toUpperCase() || "")
-            .join("");
-          return `${initials}${lead.id}`;
-        })();
+        const leadCode = buildLeadCodeFromCampaignAndId(
+          lead.campaignName || "",
+          Number(lead.id),
+        );
 
         return {
           ...plainLead,
@@ -1398,17 +1326,12 @@ export const getUnassignedLeads = async ({
     // STEP 7: GLOBAL SEARCH across all fields (including leadCode)
     const filteredLeads =
       searchTerm && searchTerm.trim() !== ""
-        ? enrichedLeads.filter((lead) => {
-            const searchLower = searchTerm.trim().toLowerCase();
-            const jsonStr = JSON.stringify(lead).toLowerCase();
-
-            // Explicitly check leadCode for better search accuracy
-            const leadCodeStr = (lead.leadCode || "").toLowerCase();
-
-            return (
-              jsonStr.includes(searchLower) || leadCodeStr.includes(searchLower)
-            );
-          })
+        ? enrichedLeads.filter((lead) =>
+            leadEnrichedRowMatchesSearch(
+              lead as Record<string, unknown>,
+              searchTerm,
+            ),
+          )
         : enrichedLeads;
     // STEP 8: Pagination AFTER filtering
     const total = filteredLeads.length;
@@ -1708,19 +1631,9 @@ export const getLeadsByAssigneeId = async (
     // STEP 2.5: Apply search filter (leadData, campaignName, leadCode)
     let searchedLeads = filteredLeads;
     if (search && search.trim() !== "") {
-      const searchLower = search.toLowerCase().trim();
-      searchedLeads = filteredLeads.filter((lead: any) => {
-        const leadDataStr = JSON.stringify(lead.leadData || {}).toLowerCase();
-        const campaignNameStr = (lead.campaignName || "").toLowerCase();
-        const leadCodeStr =
-          `${buildLeadCodePrefixForSearch(lead.campaignName)}${lead.id}`.toLowerCase();
-
-        return (
-          leadDataStr.includes(searchLower) ||
-          campaignNameStr.includes(searchLower) ||
-          leadCodeStr.includes(searchLower)
-        );
-      });
+      searchedLeads = filteredLeads.filter((lead: any) =>
+        leadPartialRowMatchesSearch(lead, search),
+      );
     }
 
     // STEP 2.6: Apply conditions filter (from LeadFilterModal)
@@ -2909,25 +2822,9 @@ export const getAssignmentLeads = async ({
     // Apply search filter if provided
     let filteredLeads = matchingLeads;
     if (search && search.trim() !== "") {
-      const searchLower = search.toLowerCase().trim();
-      filteredLeads = matchingLeads.filter((lead) => {
-        // Search in leadData JSON
-        const leadDataStr = JSON.stringify(lead.leadData || {}).toLowerCase();
-        // Search in campaign name
-        const campaignNameStr = (lead.campaignName || "").toLowerCase();
-        // Search in lead code
-        const initials = (lead.campaignName || "")
-          .split(" ")
-          .map((word: string) => word[0]?.toLowerCase() || "")
-          .join("");
-        const leadCodeStr = `${initials}${lead.id}`.toLowerCase();
-
-        return (
-          leadDataStr.includes(searchLower) ||
-          campaignNameStr.includes(searchLower) ||
-          leadCodeStr.includes(searchLower)
-        );
-      });
+      filteredLeads = matchingLeads.filter((lead) =>
+        leadPartialRowMatchesSearch(lead, search),
+      );
     }
 
     // Apply pagination
@@ -3008,12 +2905,22 @@ export const getLeadsWithWork = async ({
       replacements.end = createdAtFilter[Op.lte];
     }
 
-    const q = (search || "").trim().toLowerCase();
+    const qRaw = normalizeLeadCodeSearchInput(search || "");
+    const q = qRaw.toLowerCase();
     let searchSql = "";
     if (q) {
       searchSql =
-        " AND (LOWER(l.campaignName) LIKE :q OR LOWER(CAST(l.leadData AS CHAR)) LIKE :q OR CAST(l.id AS CHAR) LIKE :q) ";
+        " AND (LOWER(l.campaignName) LIKE :q OR LOWER(CAST(l.leadData AS CHAR)) LIKE :q OR CAST(l.id AS CHAR) LIKE :q ";
       replacements.q = `%${q}%`;
+      const leadCodeMatch = qRaw.match(/^([A-Za-z]+)-?(\d+)$/);
+      if (leadCodeMatch) {
+        const codeNum = Number(leadCodeMatch[2]);
+        if (Number.isFinite(codeNum) && codeNum > 0) {
+          searchSql += "OR l.id = :leadCodeNumericId ";
+          replacements.leadCodeNumericId = codeNum;
+        }
+      }
+      searchSql += ") ";
     }
 
     const managerFilter =
@@ -3094,11 +3001,10 @@ export const getLeadsWithWork = async ({
 
     const data = rows.map((row: any) => {
       const campaignName = row.campaignName || "";
-      const initials = String(campaignName)
-        .split(" ")
-        .map((w: string) => w[0]?.toUpperCase() || "")
-        .join("");
-      const leadCode = `${initials}${row.id}`;
+      const leadCode = buildLeadCodeFromCampaignAndId(
+        campaignName,
+        Number(row.id),
+      );
 
       const notesCount = Number(row.notesCount || 0);
       const activitiesCount = Number(row.activitiesCount || 0);
@@ -3315,25 +3221,9 @@ export const getAssignmentLeadsWithWork = async ({
     // Apply search filter if provided
     let filteredLeads = matchingLeads;
     if (search && search.trim() !== "") {
-      const searchLower = search.toLowerCase().trim();
-      filteredLeads = matchingLeads.filter((lead) => {
-        // Search in leadData JSON
-        const leadDataStr = JSON.stringify(lead.leadData || {}).toLowerCase();
-        // Search in campaign name
-        const campaignNameStr = (lead.campaignName || "").toLowerCase();
-        // Search in lead code
-        const initials = (lead.campaignName || "")
-          .split(" ")
-          .map((word: string) => word[0]?.toLowerCase() || "")
-          .join("");
-        const leadCodeStr = `${initials}${lead.id}`.toLowerCase();
-
-        return (
-          leadDataStr.includes(searchLower) ||
-          campaignNameStr.includes(searchLower) ||
-          leadCodeStr.includes(searchLower)
-        );
-      });
+      filteredLeads = matchingLeads.filter((lead) =>
+        leadPartialRowMatchesSearch(lead, search),
+      );
     }
 
     // Apply pagination

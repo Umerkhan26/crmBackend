@@ -31,7 +31,7 @@ const buildCreatedAtBetween = (dateWhereClause: any): [Date, Date] | null => {
   return [range[0], range[1]];
 };
 
-const getMasterLeadIndexCounts = async (dateWhereClause: any) => {
+const getMasterLeadCounts = async (dateWhereClause: any) => {
   const dateBetween = buildCreatedAtBetween(dateWhereClause);
   const createdAtSql = dateBetween ? " AND createdAt BETWEEN :start AND :end " : "";
   const replacements = dateBetween
@@ -50,7 +50,6 @@ const getMasterLeadIndexCounts = async (dateWhereClause: any) => {
     `,
     { type: QueryTypes.SELECT, replacements },
   )) as any[];
-
   const total = Number(rows?.[0]?.total || 0);
   const assigned = Number(rows?.[0]?.assigned || 0);
   const unassigned = Number(rows?.[0]?.unassigned || 0);
@@ -59,6 +58,52 @@ const getMasterLeadIndexCounts = async (dateWhereClause: any) => {
     total,
     assigned,
     unassigned,
+  };
+};
+
+const getUnifiedLeadCounts = async (dateWhereClause: any) => {
+  const dateBetween = buildCreatedAtBetween(dateWhereClause);
+  const createdAtSql = dateBetween ? " AND createdAt BETWEEN :start AND :end " : "";
+  const replacements = dateBetween
+    ? { start: dateBetween[0], end: dateBetween[1] }
+    : {};
+
+  const promotedRows = (await db.query(
+    `
+      SELECT
+        COUNT(*) AS total,
+        SUM(CASE WHEN JSON_LENGTH(COALESCE(assignees, '[]')) > 0 THEN 1 ELSE 0 END) AS assigned,
+        SUM(CASE WHEN JSON_LENGTH(COALESCE(assignees, '[]')) = 0 THEN 1 ELSE 0 END) AS unassigned
+      FROM leads
+      WHERE id IN (
+        SELECT targetLeadId
+        FROM incoming_leads
+        WHERE status = 'promoted' AND targetLeadId IS NOT NULL
+      )
+      ${createdAtSql}
+    `,
+    { type: QueryTypes.SELECT, replacements },
+  )) as any[];
+
+  const stagingRows = (await db.query(
+    `
+      SELECT COUNT(*) AS total
+      FROM incoming_leads
+      WHERE status NOT IN ('promoted', 'failed')
+      ${createdAtSql}
+    `,
+    { type: QueryTypes.SELECT, replacements },
+  )) as any[];
+
+  const promotedTotal = Number(promotedRows?.[0]?.total || 0);
+  const promotedAssigned = Number(promotedRows?.[0]?.assigned || 0);
+  const promotedUnassigned = Number(promotedRows?.[0]?.unassigned || 0);
+  const stagingTotal = Number(stagingRows?.[0]?.total || 0);
+
+  return {
+    total: promotedTotal + stagingTotal,
+    assigned: promotedAssigned,
+    unassigned: promotedUnassigned + stagingTotal,
   };
 };
 
@@ -89,7 +134,8 @@ export const getDashboardStats = async ({
       dateFilter && Object.keys(dateFilter).length > 0 ? dateFilter : {};
 
     if (isAdmin) {
-      const masterLeadCounts = await getMasterLeadIndexCounts(dateWhereClause);
+      const masterLeadCounts = await getMasterLeadCounts(dateWhereClause);
+      const unifiedLeadCounts = await getUnifiedLeadCounts(dateWhereClause);
       // Admin sees global stats
       const [
         totalUsers,
@@ -208,6 +254,11 @@ export const getDashboardStats = async ({
           unassigned: masterLeadCounts.unassigned,
           withWork: leadsWithWorkCount, // Admin only: leads with work done
         },
+        unifiedLeads: {
+          total: unifiedLeadCounts.total,
+          assigned: unifiedLeadCounts.assigned,
+          unassigned: unifiedLeadCounts.unassigned,
+        },
         products: {
           total: totalProducts,
         },
@@ -226,7 +277,8 @@ export const getDashboardStats = async ({
         // },
       };
     } else if (isManager && userId) {
-      const masterLeadCounts = await getMasterLeadIndexCounts(dateWhereClause);
+      const masterLeadCounts = await getMasterLeadCounts(dateWhereClause);
+      const unifiedLeadCounts = await getUnifiedLeadCounts(dateWhereClause);
       // Manager: Users + LeadsWithWork = brand-scoped; rest = admin/master (global)
       const brandUserIds = await getManagerBrandUserIds(userId);
       const brandUserIdsList =
@@ -309,6 +361,11 @@ export const getDashboardStats = async ({
           assigned: masterLeadCounts.assigned,
           unassigned: masterLeadCounts.unassigned,
           withWork: leadsWithWorkCount,
+        },
+        unifiedLeads: {
+          total: unifiedLeadCounts.total,
+          assigned: unifiedLeadCounts.assigned,
+          unassigned: unifiedLeadCounts.unassigned,
         },
         products: { total: totalProducts },
         sales: { total: totalSales },

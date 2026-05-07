@@ -21,9 +21,10 @@ declare global {
 global.io = io;
 
 io.on("connection", (socket) => {
-  const userId = socket.handshake.query.userId;
-  if (userId) {
-    socket.join(`user_${userId}`);
+  const raw = socket.handshake.query.userId;
+  const userId = Array.isArray(raw) ? raw[0] : raw;
+  if (userId != null && String(userId).trim() !== "") {
+    socket.join(`user_${String(userId).trim()}`);
   }
 
   socket.on("disconnect", () => {

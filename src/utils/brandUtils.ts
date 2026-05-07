@@ -154,3 +154,24 @@ export const getAccessibleBrandIds = async (userId: number): Promise<number[]> =
     return [];
   }
 };
+
+/**
+ * Managers assigned to brands the user can access (member or manager of brand).
+ * Used to alert managers when this user requests a hot lead. Excludes self.
+ */
+export const getBrandManagerIdsForUser = async (userId: number): Promise<number[]> => {
+  try {
+    const brandIds = await getAccessibleBrandIds(userId);
+    if (brandIds.length === 0) return [];
+
+    const rows = await BrandManager.findAll({
+      where: { brandId: { [Op.in]: brandIds } },
+      attributes: ["managerId"],
+    });
+
+    return [...new Set(rows.map((r) => r.managerId))].filter((id) => id !== userId);
+  } catch (error) {
+    console.error("Error getting brand manager IDs for user:", error);
+    return [];
+  }
+};

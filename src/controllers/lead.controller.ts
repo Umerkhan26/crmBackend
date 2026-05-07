@@ -1007,6 +1007,7 @@ export const updateLeadStatus = async (
     const leadId = Number(req.params.leadId);
     const userId = Number(req.body.userId);
     const status = req.body.status as LeadStatus;
+    const hotLeadComment = req.body.hotLeadComment as string | undefined;
 
     if (!leadId || !userId || !status) {
       return res.status(400).json({
@@ -1028,6 +1029,7 @@ export const updateLeadStatus = async (
       leadId,
       userId,
       status,
+      hotLeadComment,
     );
 
     return res.status(200).json({
@@ -1123,15 +1125,23 @@ export const reviewHotLeadRequest = async (
     const userId = Number(req.body.userId);
     const decision = req.body.decision as "approved" | "rejected";
     const rejectReason = req.body.rejectReason as string | undefined;
+    const reviewReason = req.body.reviewReason as string | undefined;
     if (!leadId || !userId || (decision !== "approved" && decision !== "rejected")) {
       return res.status(400).json({
         success: false,
         message: "leadId, userId and valid decision (approved/rejected) are required",
       });
     }
+    const trimmedReviewReason = String(reviewReason || "").trim();
+    if (!trimmedReviewReason) {
+      return res.status(400).json({
+        success: false,
+        message: "reviewReason is required for hot lead review",
+      });
+    }
     if (decision === "rejected") {
-      const trimmed = String(rejectReason || "").trim();
-      if (!trimmed) {
+      const trimmedRejectReason = String(rejectReason || "").trim();
+      if (!trimmedRejectReason) {
         return res.status(400).json({
           success: false,
           message: "rejectReason is required when rejecting a hot lead request",
@@ -1144,6 +1154,7 @@ export const reviewHotLeadRequest = async (
       userId,
       decision,
       rejectReason,
+      reviewReason: trimmedReviewReason,
     });
     return res.status(200).json({
       success: true,

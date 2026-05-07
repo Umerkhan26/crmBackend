@@ -8,7 +8,7 @@ import Lead, {
 import { buildSearchFilter } from "../utils/filterQuery";
 import { getPagination, getPagingData } from "../utils/paginate";
 import { logActivity } from "./activity.service";
-import { sendNotification } from "./notification.service";
+import { emitSocketToUser, sendNotification } from "./notification.service";
 import User from "../models/user.model";
 import { checkEmailPermission } from "./email.service";
 import EmailTemplate from "../models/emailTemplate.model";
@@ -27,7 +27,7 @@ import LeadActivity from "../models/leadActivity.model";
 import Role from "../models/role.model";
 import { Permission } from "../models/permission.model";
 import LeadRotationState from "../models/leadRotationState.model";
-import { getManagerBrandUserIds } from "../utils/brandUtils";
+import { getBrandManagerIdsForUser, getManagerBrandUserIds } from "../utils/brandUtils";
 import {
   buildLeadCodeFromCampaignAndId,
   leadEnrichedRowMatchesSearch,
@@ -2021,6 +2021,8 @@ type AssigneeWithHotLeadMeta = AssigneeWithStatus & {
   hotLeadRequestStatus?: HotLeadRequestStatus | null;
   hotLeadPreviousStatus?: LeadStatus | null;
   hotLeadRequestedAt?: string | null;
+  hotLeadRequestComment?: string | null;
+  hotLeadReviewReason?: string | null;
   hotLeadReviewedAt?: string | null;
   hotLeadReviewedBy?: number | null;
   hotLeadRejectReason?: string | null;
@@ -2086,6 +2088,7 @@ export const updateLeadStatusForUser = async (
   leadId: number,
   userId: number,
   newStatus: LeadStatus,
+  hotLeadComment?: string,
 ) => {
   if (!ALLOWED_STATUSES.includes(newStatus)) {
     throw new Error(
@@ -2120,6 +2123,7 @@ export const updateLeadStatusForUser = async (
   }
 
   const previousStatus = assignees[index].status;
+  const cleanHotLeadComment = String(hotLeadComment || "").trim();
 
   const nowIso = new Date().toISOString();
   const updatedAssignees = assignees.map((a, i) => {
@@ -2135,6 +2139,7 @@ export const updateLeadStatusForUser = async (
         hotLeadRequestStatus: "pending" as HotLeadRequestStatus,
         hotLeadPreviousStatus: fallbackPreviousStatus,
         hotLeadRequestedAt: nowIso,
+        hotLeadRequestComment: cleanHotLeadComment || null,
         hotLeadReviewedAt: null,
         hotLeadReviewedBy: null,
         hotLeadRejectReason: null,
@@ -2146,6 +2151,7 @@ export const updateLeadStatusForUser = async (
       hotLeadRequestStatus: null,
       hotLeadPreviousStatus: null,
       hotLeadRequestedAt: null,
+      hotLeadRequestComment: null,
       hotLeadReviewedAt: null,
       hotLeadReviewedBy: null,
       hotLeadRejectReason: null,
@@ -2163,9 +2169,49 @@ export const updateLeadStatusForUser = async (
       entityType: "lead",
       action: "status_updated",
       performedBy: userId,
-      details: `Status changed from "${previousStatus}" to "${newStatus}"`,
+      details:
+        newStatus === "hot_lead" && cleanHotLeadComment
+          ? `Status changed from "${previousStatus}" to "${newStatus}" (comment: ${cleanHotLeadComment})`
+          : `Status changed from "${previousStatus}" to "${newStatus}"`,
     });
   } catch (err) {}
+
+  if (newStatus === "hot_lead") {
+    try {
+      const managerIds = await getBrandManagerIdsForUser(userId);
+      if (managerIds.length > 0) {
+        const requester = await User.findByPk(userId, {
+          attributes: ["firstname", "lastname"],
+        });
+        const reqName =
+          requester &&
+          `${requester.firstname || ""} ${requester.lastname || ""}`.trim().length > 0
+            ? `${requester.firstname || ""} ${requester.lastname || ""}`.trim()
+            : `User ${userId}`;
+        const camp = String((lead as any).campaignName || "").trim().slice(0, 120);
+        const msgBase =
+          `${reqName} requested hot lead approval · Lead #${leadId}` +
+          (camp ? ` (${camp})` : "");
+        const message = msgBase.slice(0, 255);
+        const socketPayload = {
+          type: "hot_lead_request" as const,
+          leadId,
+          requesterUserId: userId,
+          campaignName: camp || null,
+        };
+        await Promise.all(
+          managerIds.map(async (mid) => {
+            await sendNotification(mid, message, reqName, socketPayload);
+            emitSocketToUser(mid, "hot_lead_request", {
+              ...socketPayload,
+              message,
+              requesterName: reqName,
+            });
+          }),
+        );
+      }
+    } catch (_) {}
+  }
 
   return { ...(lead.toJSON() as any) };
 };
@@ -2282,6 +2328,8 @@ export const getManagerHotLeadRequests = async ({
         hotLeadRequestStatus: assignee.hotLeadRequestStatus,
         hotLeadPreviousStatus: assignee.hotLeadPreviousStatus || null,
         hotLeadRequestedAt: assignee.hotLeadRequestedAt || null,
+      hotLeadRequestComment: assignee.hotLeadRequestComment || null,
+        hotLeadReviewReason: assignee.hotLeadReviewReason || null,
         hotLeadReviewedAt: assignee.hotLeadReviewedAt || null,
         hotLeadReviewedBy: assignee.hotLeadReviewedBy ?? null,
         hotLeadRejectReason: assignee.hotLeadRejectReason || null,
@@ -2302,9 +2350,33 @@ export const getManagerHotLeadRequests = async ({
     ...r,
     user: userById.get(r.userId) || null,
   }));
+
+  // Newest pending/reviewed requests first so pagination & popup polling see recent items first
+  enriched.sort((a, b) => {
+    const ta = a.hotLeadRequestedAt
+      ? new Date(a.hotLeadRequestedAt as unknown as string).getTime()
+      : 0;
+    const tb = b.hotLeadRequestedAt
+      ? new Date(b.hotLeadRequestedAt as unknown as string).getTime()
+      : 0;
+    const na = Number.isFinite(ta) ? ta : 0;
+    const nb = Number.isFinite(tb) ? tb : 0;
+    return nb - na;
+  });
+
   const totalItems = enriched.length;
   const totalPages = totalItems === 0 ? 0 : Math.ceil(totalItems / limit);
   const start = (page - 1) * limit;
+  const statusCounts = enriched.reduce(
+    (acc, item) => {
+      const status = String(item?.hotLeadRequestStatus || "").toLowerCase().trim();
+      if (status === "approved") acc.approved += 1;
+      else if (status === "rejected") acc.rejected += 1;
+      else acc.pending += 1;
+      return acc;
+    },
+    { pending: 0, approved: 0, rejected: 0 },
+  );
   return {
     reviewState,
     rows: enriched.slice(start, start + limit),
@@ -2312,6 +2384,7 @@ export const getManagerHotLeadRequests = async ({
     totalPages,
     currentPage: page,
     pageSize: limit,
+    statusCounts,
   };
 };
 
@@ -2321,12 +2394,14 @@ export const reviewHotLeadRequest = async ({
   userId,
   decision,
   rejectReason,
+  reviewReason,
 }: {
   managerId: number;
   leadId: number;
   userId: number;
   decision: "approved" | "rejected";
   rejectReason?: string;
+  reviewReason?: string;
 }) => {
   const managedUserIds = await getManagerBrandUserIds(managerId);
   if (!managedUserIds.includes(userId)) {
@@ -2345,11 +2420,13 @@ export const reviewHotLeadRequest = async ({
   }
 
   const nowIso = new Date().toISOString();
+  const cleanReviewReason = String(reviewReason || "").trim();
   if (decision === "approved") {
     assignees[idx] = {
       ...current,
       status: "hot_lead",
       hotLeadRequestStatus: "approved",
+      hotLeadReviewReason: cleanReviewReason || null,
       hotLeadReviewedBy: managerId,
       hotLeadReviewedAt: nowIso,
       hotLeadRejectReason: null,
@@ -2359,6 +2436,7 @@ export const reviewHotLeadRequest = async ({
       ...current,
       status: "lead_rejected",
       hotLeadRequestStatus: "rejected",
+      hotLeadReviewReason: cleanReviewReason || null,
       hotLeadReviewedBy: managerId,
       hotLeadReviewedAt: nowIso,
       hotLeadRejectReason: rejectReason?.trim() || null,
@@ -2374,7 +2452,7 @@ export const reviewHotLeadRequest = async ({
     performedBy: managerId,
     details:
       decision === "approved"
-        ? `Hot lead approved for user ${userId}`
+        ? `Hot lead approved for user ${userId}${cleanReviewReason ? ` (reason: ${cleanReviewReason})` : ""}`
         : `Hot lead rejected for user ${userId}${rejectReason ? ` (reason: ${rejectReason})` : ""}`,
   });
 
@@ -2443,6 +2521,8 @@ export const getMyHotLeadRequests = async ({
       hotLeadRequestStatus: mine.hotLeadRequestStatus || null,
       hotLeadPreviousStatus: mine.hotLeadPreviousStatus || null,
       hotLeadRequestedAt: mine.hotLeadRequestedAt || null,
+      hotLeadRequestComment: mine.hotLeadRequestComment || null,
+      hotLeadReviewReason: mine.hotLeadReviewReason || null,
       hotLeadReviewedAt: mine.hotLeadReviewedAt || null,
       hotLeadReviewedBy: mine.hotLeadReviewedBy || null,
       hotLeadRejectReason: mine.hotLeadRejectReason || null,
@@ -2452,6 +2532,16 @@ export const getMyHotLeadRequests = async ({
   const totalItems = rows.length;
   const totalPages = totalItems === 0 ? 0 : Math.ceil(totalItems / limit);
   const start = (page - 1) * limit;
+  const statusCounts = rows.reduce(
+    (acc, item) => {
+      const status = String(item?.hotLeadRequestStatus || "").toLowerCase().trim();
+      if (status === "approved") acc.approved += 1;
+      else if (status === "rejected") acc.rejected += 1;
+      else acc.pending += 1;
+      return acc;
+    },
+    { pending: 0, approved: 0, rejected: 0 },
+  );
   return {
     rows: rows.slice(start, start + limit),
     totalItems,
@@ -2459,6 +2549,7 @@ export const getMyHotLeadRequests = async ({
     currentPage: page,
     pageSize: limit,
     approvedHotLeadCount: approvedCounter,
+    statusCounts,
   };
 };
 

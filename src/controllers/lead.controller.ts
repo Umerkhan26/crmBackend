@@ -1086,6 +1086,10 @@ export const getManagerHotLeadRequests = async (
       reviewStateRaw === "reviewed" || reviewStateRaw === "all"
         ? (reviewStateRaw as "reviewed" | "all")
         : "pending";
+    const perms = req.user?.permissions || [];
+    const scopeAll =
+      perms.includes(PERMISSIONS.LEAD_GET_ALL) ||
+      perms.includes(PERMISSIONS.LEAD_VIEW_ALL);
     const result = await LeadService.getManagerHotLeadRequests({
       managerId,
       page,
@@ -1093,6 +1097,7 @@ export const getManagerHotLeadRequests = async (
       campaignName,
       campaignId,
       reviewState,
+      scopeAll,
     });
     return res.status(200).json({
       success: true,
@@ -1148,6 +1153,10 @@ export const reviewHotLeadRequest = async (
         });
       }
     }
+    const perms = req.user?.permissions || [];
+    const scopeAll =
+      perms.includes(PERMISSIONS.LEAD_GET_ALL) ||
+      perms.includes(PERMISSIONS.LEAD_VIEW_ALL);
     const data = await LeadService.reviewHotLeadRequest({
       managerId,
       leadId,
@@ -1155,6 +1164,7 @@ export const reviewHotLeadRequest = async (
       decision,
       rejectReason,
       reviewReason: trimmedReviewReason,
+      scopeAll,
     });
     return res.status(200).json({
       success: true,

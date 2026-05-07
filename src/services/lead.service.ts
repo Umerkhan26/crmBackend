@@ -28,6 +28,7 @@ import Role from "../models/role.model";
 import { Permission } from "../models/permission.model";
 import LeadRotationState from "../models/leadRotationState.model";
 import { getBrandManagerIdsForUser, getManagerBrandUserIds } from "../utils/brandUtils";
+import LeadLock from "../models/leadLock.model";
 import {
   buildLeadCodeFromCampaignAndId,
   leadEnrichedRowMatchesSearch,
@@ -2178,6 +2179,36 @@ export const updateLeadStatusForUser = async (
 
   if (newStatus === "hot_lead") {
     try {
+      // Auto-lock hot-lead request with the requesting assignee.
+      // If already locked by someone else, move lock ownership to requester.
+      const now = new Date();
+      const activeLock = await LeadLock.findOne({
+        where: {
+          leadId,
+          status: "locked",
+          [Op.or]: [{ lockUntil: null }, { lockUntil: { [Op.gt]: now } }],
+        } as any,
+      });
+      if (!activeLock) {
+        await LeadLock.create({
+          leadId,
+          lockedByUserId: userId,
+          status: "locked",
+          reason: "Auto-lock on hot lead request",
+          lockedAt: now,
+          lockUntil: null,
+          unlockedAt: null,
+        } as any);
+      } else if (Number((activeLock as any).lockedByUserId) !== Number(userId)) {
+        await activeLock.update({
+          lockedByUserId: userId,
+          status: "locked",
+          reason: "Auto-lock moved to hot lead requester",
+          lockUntil: null,
+          unlockedAt: null,
+        } as any);
+      }
+
       const managerIds = await getBrandManagerIdsForUser(userId);
       if (managerIds.length > 0) {
         const requester = await User.findByPk(userId, {
@@ -2243,6 +2274,7 @@ export const getManagerHotLeadRequests = async ({
   campaignId,
   /** pending = inbox awaiting manager action; reviewed = approved/rejected history; all = both */
   reviewState = "pending",
+  scopeAll = false,
 }: {
   managerId: number;
   page?: number;
@@ -2250,9 +2282,10 @@ export const getManagerHotLeadRequests = async ({
   campaignName?: string;
   campaignId?: number;
   reviewState?: "pending" | "reviewed" | "all";
+  scopeAll?: boolean;
 }) => {
-  const managedUserIds = await getManagerBrandUserIds(managerId);
-  if (managedUserIds.length === 0) {
+  const managedUserIds = scopeAll ? [] : await getManagerBrandUserIds(managerId);
+  if (!scopeAll && managedUserIds.length === 0) {
     return { rows: [], totalItems: 0, totalPages: 0, currentPage: page, pageSize: limit };
   }
 
@@ -2302,7 +2335,7 @@ export const getManagerHotLeadRequests = async ({
   for (const lead of candidateLeads) {
     const assignees = extractAssignees(lead);
     for (const assignee of assignees) {
-      if (!managedUserIds.includes(Number(assignee.userId))) continue;
+      if (!scopeAll && !managedUserIds.includes(Number(assignee.userId))) continue;
 
       const hrs = assignee.hotLeadRequestStatus;
       let include = false;
@@ -2395,6 +2428,7 @@ export const reviewHotLeadRequest = async ({
   decision,
   rejectReason,
   reviewReason,
+  scopeAll = false,
 }: {
   managerId: number;
   leadId: number;
@@ -2402,9 +2436,10 @@ export const reviewHotLeadRequest = async ({
   decision: "approved" | "rejected";
   rejectReason?: string;
   reviewReason?: string;
+  scopeAll?: boolean;
 }) => {
-  const managedUserIds = await getManagerBrandUserIds(managerId);
-  if (!managedUserIds.includes(userId)) {
+  const managedUserIds = scopeAll ? [] : await getManagerBrandUserIds(managerId);
+  if (!scopeAll && !managedUserIds.includes(userId)) {
     throw new Error("You can only review hot leads for users under your management");
   }
 
@@ -2444,6 +2479,25 @@ export const reviewHotLeadRequest = async ({
   }
 
   await saveAssignees(lead, assignees);
+
+  if (decision === "rejected") {
+    // Auto-unlock on manager rejection so lead can re-enter normal rotation/shuffle.
+    const now = new Date();
+    await LeadLock.update(
+      {
+        status: "unlocked",
+        unlockedAt: now,
+        reason: "Auto-unlocked after manager hot lead rejection",
+      } as any,
+      {
+        where: {
+          leadId,
+          status: "locked",
+          [Op.or]: [{ lockUntil: null }, { lockUntil: { [Op.gt]: now } }],
+        } as any,
+      },
+    );
+  }
 
   await logLeadActivity({
     entityId: leadId,

@@ -77,6 +77,33 @@ const parseFirstAssigneeUserIdFromLead = (assignees: unknown): Id | null => {
   return Number.isFinite(n) ? n : null;
 };
 
+/**
+ * Reassignment status policy:
+ * - Carry forward previous assignee status for continuity.
+ * - Reset special review states for new assignee.
+ */
+const deriveStatusForNextAssignee = (assignees: unknown): string => {
+  let arr: any[] = [];
+  if (typeof assignees === "string") {
+    const t = assignees.trim();
+    if (t) {
+      try {
+        const p = JSON.parse(t);
+        arr = Array.isArray(p) ? p : [];
+      } catch {
+        arr = [];
+      }
+    }
+  } else if (Array.isArray(assignees)) {
+    arr = assignees as any[];
+  }
+
+  const raw = String(arr?.[0]?.status || "").toLowerCase().trim();
+  if (!raw) return "pending";
+  if (raw === "hot_lead" || raw === "lead_rejected") return "pending";
+  return raw;
+};
+
 const getCycleNo = (stateRow: any): number => {
   const n = Number(stateRow?.cycleNo ?? 1);
   return Number.isFinite(n) && n >= 1 ? n : 1;
@@ -700,7 +727,7 @@ export const runManualAutoAssignment = async ({
         const assignees = [
           {
             userId: assigneeId,
-            status: "pending",
+            status: deriveStatusForNextAssignee((lead as any).assignees),
             assignedAt,
           },
         ];
@@ -770,7 +797,7 @@ export const runManualAutoAssignment = async ({
       const assignees = [
         {
           userId: assignee,
-          status: "pending",
+          status: deriveStatusForNextAssignee((lead as any).assignees),
           assignedAt,
         },
       ];
@@ -900,7 +927,7 @@ export const runManualAutoAssignment = async ({
         const assignees = [
           {
             userId: assigneeId,
-            status: "pending",
+            status: deriveStatusForNextAssignee((lead as any).assignees),
             assignedAt,
           },
         ];
@@ -1114,7 +1141,13 @@ export const assignByDateToTeamA = async ({
       });
       if (!lead) continue;
       const assignedAt = new Date().toISOString();
-      const assignees = [{ userId: assigneeId, status: "pending", assignedAt }];
+      const assignees = [
+        {
+          userId: assigneeId,
+          status: deriveStatusForNextAssignee((lead as any).assignees),
+          assignedAt,
+        },
+      ];
       await lead.update({ assignees } as any, { transaction: t });
       await LeadAssignmentState.upsert(
         {
@@ -1363,7 +1396,13 @@ export const rebalanceTeam = async ({
       });
       if (!lead) continue;
       const assignedAt = new Date().toISOString();
-      const assignees = [{ userId: assigneeId, status: "pending", assignedAt }];
+      const assignees = [
+        {
+          userId: assigneeId,
+          status: deriveStatusForNextAssignee((lead as any).assignees),
+          assignedAt,
+        },
+      ];
       await lead.update({ assignees } as any, { transaction: t });
       await LeadAssignmentState.upsert(
         {
@@ -1565,7 +1604,13 @@ export const rotateByTenure = async ({
         continue;
       }
       const assignedAt = new Date().toISOString();
-      const assignees = [{ userId: assignee, status: "pending", assignedAt }];
+      const assignees = [
+        {
+          userId: assignee,
+          status: deriveStatusForNextAssignee((lead as any).assignees),
+          assignedAt,
+        },
+      ];
       await lead.update({ assignees } as any, { transaction: t });
       await rs.update(
         {

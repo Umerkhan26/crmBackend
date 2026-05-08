@@ -1092,6 +1092,15 @@ export const getManagerHotLeadRequests = async (
       reviewStateRaw === "reviewed" || reviewStateRaw === "all"
         ? (reviewStateRaw as "reviewed" | "all")
         : "pending";
+    const filterType = req.query.filterType as string | undefined;
+    const startDate = req.query.startDate as string | undefined;
+    const endDate = req.query.endDate as string | undefined;
+    const userIdRaw = req.query.userId;
+    const parsedUserId =
+      userIdRaw != null && String(userIdRaw).trim() !== ""
+        ? parseInt(String(userIdRaw), 10)
+        : NaN;
+    const filterUserId = Number.isFinite(parsedUserId) ? parsedUserId : undefined;
     const perms = req.user?.permissions || [];
     const scopeAll =
       perms.includes(PERMISSIONS.LEAD_GET_ALL) ||
@@ -1105,6 +1114,10 @@ export const getManagerHotLeadRequests = async (
       leadId,
       reviewState,
       scopeAll,
+      filterType,
+      startDate,
+      endDate,
+      filterUserId,
     });
     return res.status(200).json({
       success: true,
@@ -1213,6 +1226,9 @@ export const getMyHotLeadRequests = async (
       reviewMyRaw === "pending" || reviewMyRaw === "reviewed"
         ? (reviewMyRaw as "pending" | "reviewed")
         : "all";
+    const filterType = req.query.filterType as string | undefined;
+    const startDate = req.query.startDate as string | undefined;
+    const endDate = req.query.endDate as string | undefined;
     const result = await LeadService.getMyHotLeadRequests({
       userId,
       page,
@@ -1221,6 +1237,9 @@ export const getMyHotLeadRequests = async (
       campaignId,
       leadId,
       reviewState,
+      filterType,
+      startDate,
+      endDate,
     });
     return res.status(200).json({
       success: true,
@@ -1519,10 +1538,13 @@ export const getLeadsWithWork = async (
       });
     }
 
-    const isAdmin = canViewAllLeads(req);
     const { isUserManager, getManagerBrandUserIds } = await import("../utils/brandUtils");
     const isManager = await isUserManager(userId);
     const managerBrandUserIds = isManager ? await getManagerBrandUserIds(userId) : [];
+    const isAdmin = canViewAllLeads(req);
+    // Manager dropdown must stay scoped to manager's own users.
+    // Only non-manager admins should receive global users.
+    const useAdminScope = isAdmin && !isManager;
 
     if (!isAdmin && !isManager) {
       return res.status(403).json({
@@ -1602,10 +1624,11 @@ export const getLeadsWithWorkFilterUsers = async (
       });
     }
 
-    const isAdmin = canViewAllLeads(req);
     const { isUserManager, getManagerBrandUserIds } = await import("../utils/brandUtils");
     const isManager = await isUserManager(userId);
     const managerBrandUserIds = isManager ? await getManagerBrandUserIds(userId) : [];
+    const isAdmin = canViewAllLeads(req);
+    const useAdminScope = isAdmin && !isManager;
 
     if (!isAdmin && !isManager) {
       return res.status(403).json({
@@ -1616,7 +1639,7 @@ export const getLeadsWithWorkFilterUsers = async (
 
     const result = await LeadService.getLeadsWithWorkFilterUsers({
       brandUserIds: isManager ? managerBrandUserIds : undefined,
-      isAdmin,
+      isAdmin: useAdminScope,
     });
 
     return res.status(200).json({

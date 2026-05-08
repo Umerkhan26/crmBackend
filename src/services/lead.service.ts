@@ -22,6 +22,12 @@ import { normalizePhone } from "../utils/phoneNormalizer";
 import { logLeadActivity } from "../utils/logLeadActivity";
 import Campaign from "../models/campaign.model";
 import { DateTime } from "luxon";
+import {
+  getPktMonthlyShiftWindow,
+  getPktShiftDailyWindow,
+  getPktWeeklyShiftWindow,
+  PKT_ZONE,
+} from "../utils/pktReportingWindows";
 import Note from "../models/note.model";
 import LeadActivity from "../models/leadActivity.model";
 import Role from "../models/role.model";
@@ -1868,12 +1874,11 @@ export const getLeadStatusSummary = async (
     const leadsByStatus: Record<string, any[]> = {};
 
     const resolvePeriodRange = () => {
-      const zone = "Asia/Karachi";
-      const now = DateTime.now().setZone(zone);
+      const now = DateTime.now().setZone(PKT_ZONE);
 
       if (period === "custom" && startDate && endDate) {
-        const s = DateTime.fromISO(startDate, { zone });
-        const e = DateTime.fromISO(endDate, { zone });
+        const s = DateTime.fromISO(startDate, { zone: PKT_ZONE });
+        const e = DateTime.fromISO(endDate, { zone: PKT_ZONE });
         if (s.isValid && e.isValid) {
           return {
             start: s.startOf("day").toJSDate(),
@@ -1883,26 +1888,18 @@ export const getLeadStatusSummary = async (
       }
 
       if (period === "daily") {
-        return {
-          start: now.startOf("day").toJSDate(),
-          end: now.endOf("day").toJSDate(),
-        };
+        const { start, end } = getPktShiftDailyWindow(now);
+        return { start: start.toJSDate(), end: end.toJSDate() };
       }
 
       if (period === "weekly") {
-        // Calendar week aligned to Sunday-Saturday in PKT.
-        const weekStart = now.minus({ days: now.weekday % 7 }).startOf("day");
-        return {
-          start: weekStart.toJSDate(),
-          end: weekStart.plus({ days: 6 }).endOf("day").toJSDate(),
-        };
+        const { start, end } = getPktWeeklyShiftWindow(now);
+        return { start: start.toJSDate(), end: end.toJSDate() };
       }
 
       if (period === "monthly") {
-        return {
-          start: now.startOf("month").toJSDate(),
-          end: now.endOf("month").toJSDate(),
-        };
+        const { start, end } = getPktMonthlyShiftWindow(now);
+        return { start: start.toJSDate(), end: end.toJSDate() };
       }
 
       return null;
@@ -2272,6 +2269,7 @@ export const getManagerHotLeadRequests = async ({
   limit = 10,
   campaignName,
   campaignId,
+  leadId: leadIdFilter,
   /** pending = inbox awaiting manager action; reviewed = approved/rejected history; all = both */
   reviewState = "pending",
   scopeAll = false,
@@ -2281,6 +2279,7 @@ export const getManagerHotLeadRequests = async ({
   limit?: number;
   campaignName?: string;
   campaignId?: number;
+  leadId?: number;
   reviewState?: "pending" | "reviewed" | "all";
   scopeAll?: boolean;
 }) => {
@@ -2321,6 +2320,9 @@ export const getManagerHotLeadRequests = async ({
         normalizedCampaign,
       ),
     );
+  }
+  if (leadIdFilter != null && !Number.isNaN(Number(leadIdFilter))) {
+    leadWhereParts.push({ id: Number(leadIdFilter) });
   }
 
   const candidateLeads = await Lead.findAll({
@@ -2519,12 +2521,17 @@ export const getMyHotLeadRequests = async ({
   limit = 10,
   campaignName,
   campaignId,
+  leadId: leadIdFilter,
+  /** Same semantics as manager list: pending / reviewed / all */
+  reviewState = "all",
 }: {
   userId: number;
   page?: number;
   limit?: number;
   campaignName?: string;
   campaignId?: number;
+  leadId?: number;
+  reviewState?: "pending" | "reviewed" | "all";
 }) => {
   const effectiveCampaignName = await resolveEffectiveCampaignNameFromQuery(
     campaignName,
@@ -2544,6 +2551,9 @@ export const getMyHotLeadRequests = async ({
         normalizedCampaign,
       ),
     );
+  }
+  if (leadIdFilter != null && !Number.isNaN(Number(leadIdFilter))) {
+    myLeadWhereParts.push({ id: Number(leadIdFilter) });
   }
 
   const leads = await Lead.findAll({
@@ -2565,6 +2575,18 @@ export const getMyHotLeadRequests = async ({
       mine.hotLeadRequestStatus === "rejected" ||
       (mine.hotLeadRequestStatus === "pending" && mine.status === "hot_lead");
     if (!hasHotContext) continue;
+    if (reviewState === "pending") {
+      if (!(mine.hotLeadRequestStatus === "pending" && mine.status === "hot_lead")) continue;
+    } else if (reviewState === "reviewed") {
+      if (
+        !(
+          mine.hotLeadRequestStatus === "approved" ||
+          mine.hotLeadRequestStatus === "rejected"
+        )
+      ) {
+        continue;
+      }
+    }
     if (mine.hotLeadRequestStatus === "approved") approvedCounter++;
     rows.push({
       leadId: (lead as any).id,
@@ -2989,6 +3011,89 @@ export const getAssignmentLeads = async ({
   }
 };
 
+/** First assignee userId from JSON assignees (for display). */
+const getFirstAssigneeUserId = (assigneesRaw: unknown): number | null => {
+  let arr: any[] = [];
+  if (typeof assigneesRaw === "string") {
+    try {
+      arr = JSON.parse(assigneesRaw);
+    } catch {
+      arr = [];
+    }
+  } else if (Array.isArray(assigneesRaw)) {
+    arr = assigneesRaw;
+  }
+  const uid = Number(arr?.[0]?.userId);
+  return Number.isFinite(uid) && uid > 0 ? uid : null;
+};
+
+const enrichLeadsWithAssigneeUsername = async (leads: any[]): Promise<void> => {
+  const ids = new Set<number>();
+  for (const row of leads) {
+    const uid = getFirstAssigneeUserId(row.assignees);
+    if (uid) ids.add(uid);
+  }
+  if (ids.size === 0) {
+    for (const row of leads) {
+      row.username = "";
+      row.assigneeDisplayName = "";
+    }
+    return;
+  }
+  const users = await User.findAll({
+    where: { id: { [Op.in]: [...ids] } },
+    attributes: ["id", "email", "firstname", "lastname"],
+  });
+  const byId = new Map(users.map((u) => [u.id, u.toJSON() as any]));
+  for (const row of leads) {
+    const uid = getFirstAssigneeUserId(row.assignees);
+    const u = uid ? byId.get(uid) : null;
+    row.username = u?.email ? String(u.email) : "";
+    row.assigneeDisplayName = u
+      ? `${String(u.firstname || "").trim()} ${String(u.lastname || "").trim()}`.trim()
+      : "";
+  }
+};
+
+/** Users available for "Leads with Work" filter dropdown (manager = brand users; admin = users with lead work). */
+export const getLeadsWithWorkFilterUsers = async ({
+  brandUserIds,
+  isAdmin,
+}: {
+  brandUserIds?: number[];
+  isAdmin: boolean;
+}): Promise<{ users: { id: number; firstname?: string; lastname?: string; email?: string }[] }> => {
+  if (!isAdmin && (!brandUserIds || brandUserIds.length === 0)) {
+    return { users: [] };
+  }
+  if (!isAdmin && brandUserIds?.length) {
+    const users = await User.findAll({
+      where: { id: { [Op.in]: brandUserIds } },
+      attributes: ["id", "firstname", "lastname", "email"],
+      order: [
+        ["firstname", "ASC"],
+        ["lastname", "ASC"],
+      ],
+    });
+    return { users: users.map((u) => u.toJSON() as any) };
+  }
+  const rows = (await db.query(
+    `
+    SELECT DISTINCT u.id, u.firstname, u.lastname, u.email
+    FROM users u
+    WHERE u.id IN (
+      SELECT DISTINCT createdBy FROM notes WHERE notebleType = 'lead' AND createdBy IS NOT NULL
+      UNION
+      SELECT DISTINCT performedBy FROM lead_activities WHERE entityType = 'lead' AND performedBy IS NOT NULL
+    )
+    ORDER BY u.email ASC
+    LIMIT 500
+    `,
+    { type: QueryTypes.SELECT },
+  )) as any[];
+  return { users: rows };
+};
+
 /**
  * Get leads with work done (notes, comments, activities, reminders)
  * Admin: all leads with work. Manager: only leads where work done by their brand users.
@@ -3001,6 +3106,7 @@ export const getLeadsWithWork = async ({
   startDate,
   endDate,
   brandUserIds,
+  filterUserId,
 }: {
   page?: number;
   limit?: number;
@@ -3009,6 +3115,8 @@ export const getLeadsWithWork = async ({
   startDate?: string;
   endDate?: string;
   brandUserIds?: number[];
+  /** When set, only notes/activities by this user count as "work" for filtering. */
+  filterUserId?: number;
 }) => {
   try {
     if (brandUserIds !== undefined && brandUserIds.length === 0) {
@@ -3068,10 +3176,13 @@ export const getLeadsWithWork = async ({
       searchSql += ") ";
     }
 
-    const managerFilter =
-      brandUserIds && brandUserIds.length > 0
-        ? ` AND ((n.id IS NOT NULL AND n.createdBy IN (${brandUserIds.join(",")})) OR (la.id IS NOT NULL AND la.performedBy IN (${brandUserIds.join(",")}))) `
-        : "";
+    let userScopeSql = "";
+    if (filterUserId != null && filterUserId > 0) {
+      userScopeSql = ` AND ((n.id IS NOT NULL AND n.createdBy = :filterUid) OR (la.id IS NOT NULL AND la.performedBy = :filterUid)) `;
+      replacements.filterUid = filterUserId;
+    } else if (brandUserIds && brandUserIds.length > 0) {
+      userScopeSql = ` AND ((n.id IS NOT NULL AND n.createdBy IN (${brandUserIds.join(",")})) OR (la.id IS NOT NULL AND la.performedBy IN (${brandUserIds.join(",")}))) `;
+    }
 
     // Count first (for pagination)
     const countRows = (await db.query(
@@ -3087,7 +3198,7 @@ export const getLeadsWithWork = async ({
         AND la.entityType = 'lead'
         ${actsDateSql}
       WHERE (n.id IS NOT NULL OR la.id IS NOT NULL)
-      ${managerFilter}
+      ${userScopeSql}
       ${searchSql}
       `,
       { type: QueryTypes.SELECT, replacements },
@@ -3135,7 +3246,7 @@ export const getLeadsWithWork = async ({
         AND la.entityType = 'lead'
         ${actsDateSql}
       WHERE (n.id IS NOT NULL OR la.id IS NOT NULL)
-      ${managerFilter}
+      ${userScopeSql}
       ${searchSql}
       GROUP BY l.id
       ORDER BY l.createdAt DESC
@@ -3166,6 +3277,8 @@ export const getLeadsWithWork = async ({
         },
       };
     });
+
+    await enrichLeadsWithAssigneeUsername(data);
 
     return {
       data,

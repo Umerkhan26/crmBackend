@@ -197,6 +197,12 @@ router.get(
 );
 
 router.get(
+  "/leads/with-work/filter-users",
+  verifyToken,
+  LeadController.getLeadsWithWorkFilterUsers
+);
+
+router.get(
   "/leads/with-work",
   verifyToken,
   LeadController.getLeadsWithWork

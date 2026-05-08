@@ -7,6 +7,12 @@ import { Op, Sequelize } from "sequelize";
 import Note from "../models/note.model";
 import ActivityLog from "../models/activityLog.model";
 import { DateTime } from "luxon";
+import {
+  getPktMonthlyShiftWindow,
+  getPktShiftDailyWindow,
+  getPktWeeklyShiftWindow,
+  PKT_ZONE,
+} from "../utils/pktReportingWindows";
 interface ReportUser {
   user: any;
   totalActivities: number;
@@ -135,20 +141,20 @@ export const getLeadActivityReportByUser = async (
     const { startDate: _, endDate: __, ...cleanCustomFilter } = customFilter;
     customFilter = cleanCustomFilter;
   } else {
-    const zone = "Asia/Karachi";
-    const now = DateTime.now().setZone(zone);
+    const now = DateTime.now().setZone(PKT_ZONE);
 
     if (period === "daily") {
-      startDate = now.startOf("day").toJSDate();
-      endDate = now.endOf("day").toJSDate();
+      const { start, end } = getPktShiftDailyWindow(now);
+      startDate = start.toJSDate();
+      endDate = end.toJSDate();
     } else if (period === "weekly") {
-      // Calendar week aligned to Sunday-Saturday in PKT.
-      const weekStart = now.minus({ days: now.weekday % 7 }).startOf("day");
-      startDate = weekStart.toJSDate();
-      endDate = weekStart.plus({ days: 6 }).endOf("day").toJSDate();
+      const { start, end } = getPktWeeklyShiftWindow(now);
+      startDate = start.toJSDate();
+      endDate = end.toJSDate();
     } else {
-      startDate = now.startOf("month").toJSDate();
-      endDate = now.endOf("month").toJSDate();
+      const { start, end } = getPktMonthlyShiftWindow(now);
+      startDate = start.toJSDate();
+      endDate = end.toJSDate();
     }
   }
   const activities = await LeadActivity.findAll({

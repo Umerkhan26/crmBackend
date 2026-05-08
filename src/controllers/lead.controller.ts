@@ -1081,6 +1081,12 @@ export const getManagerHotLeadRequests = async (
     const campaignId = req.query.campaignId
       ? parseInt(req.query.campaignId as string, 10)
       : undefined;
+    const leadIdRaw = req.query.leadId;
+    const parsedLeadId =
+      leadIdRaw != null && String(leadIdRaw).trim() !== ""
+        ? parseInt(String(leadIdRaw), 10)
+        : NaN;
+    const leadId = Number.isFinite(parsedLeadId) ? parsedLeadId : undefined;
     const reviewStateRaw = String(req.query.reviewState || "pending").toLowerCase();
     const reviewState =
       reviewStateRaw === "reviewed" || reviewStateRaw === "all"
@@ -1096,6 +1102,7 @@ export const getManagerHotLeadRequests = async (
       limit,
       campaignName,
       campaignId,
+      leadId,
       reviewState,
       scopeAll,
     });
@@ -1195,12 +1202,25 @@ export const getMyHotLeadRequests = async (
     const campaignId = req.query.campaignId
       ? parseInt(req.query.campaignId as string, 10)
       : undefined;
+    const leadIdRaw = req.query.leadId;
+    const parsedLeadId =
+      leadIdRaw != null && String(leadIdRaw).trim() !== ""
+        ? parseInt(String(leadIdRaw), 10)
+        : NaN;
+    const leadId = Number.isFinite(parsedLeadId) ? parsedLeadId : undefined;
+    const reviewMyRaw = String(req.query.reviewState || "all").toLowerCase();
+    const reviewState =
+      reviewMyRaw === "pending" || reviewMyRaw === "reviewed"
+        ? (reviewMyRaw as "pending" | "reviewed")
+        : "all";
     const result = await LeadService.getMyHotLeadRequests({
       userId,
       page,
       limit,
       campaignName,
       campaignId,
+      leadId,
+      reviewState,
     });
     return res.status(200).json({
       success: true,
@@ -1526,6 +1546,24 @@ export const getLeadsWithWork = async (
       ? (req.query.endDate as string)
       : undefined;
 
+    let resolvedFilterUserId: number | undefined = req.query.filterUserId
+      ? parseInt(req.query.filterUserId as string, 10)
+      : undefined;
+    if (
+      resolvedFilterUserId !== undefined &&
+      (Number.isNaN(resolvedFilterUserId) || resolvedFilterUserId <= 0)
+    ) {
+      resolvedFilterUserId = undefined;
+    }
+    if (!isAdmin && isManager && resolvedFilterUserId !== undefined) {
+      if (!managerBrandUserIds.includes(resolvedFilterUserId)) {
+        return res.status(403).json({
+          success: false,
+          message: "Selected user is not in your managed scope.",
+        });
+      }
+    }
+
     const leads = await LeadService.getLeadsWithWork({
       page,
       limit,
@@ -1534,6 +1572,7 @@ export const getLeadsWithWork = async (
       startDate,
       endDate,
       brandUserIds: isManager ? managerBrandUserIds : undefined,
+      filterUserId: resolvedFilterUserId,
     });
 
     return res.status(200).json({
@@ -1545,6 +1584,50 @@ export const getLeadsWithWork = async (
     return res.status(500).json({
       success: false,
       message: error.message || "Failed to fetch leads with work",
+    });
+  }
+};
+
+export const getLeadsWithWorkFilterUsers = async (
+  req: Request,
+  res: Response,
+): Promise<any> => {
+  try {
+    const userId = (req as any).user?.id;
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "User not authenticated",
+      });
+    }
+
+    const isAdmin = canViewAllLeads(req);
+    const { isUserManager, getManagerBrandUserIds } = await import("../utils/brandUtils");
+    const isManager = await isUserManager(userId);
+    const managerBrandUserIds = isManager ? await getManagerBrandUserIds(userId) : [];
+
+    if (!isAdmin && !isManager) {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied. Admin or Manager only feature.",
+      });
+    }
+
+    const result = await LeadService.getLeadsWithWorkFilterUsers({
+      brandUserIds: isManager ? managerBrandUserIds : undefined,
+      isAdmin,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Filter users fetched successfully",
+      ...result,
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to fetch filter users",
     });
   }
 };

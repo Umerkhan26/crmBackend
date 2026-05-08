@@ -2540,6 +2540,13 @@ export const reviewHotLeadRequest = async ({
 
   await saveAssignees(lead, assignees);
 
+  const requesterUser = await User.findByPk(userId, {
+    attributes: ["id", "firstname", "lastname", "email"],
+  });
+  const requesterName = `${requesterUser?.firstname || ""} ${requesterUser?.lastname || ""}`.trim();
+  const requesterLabel =
+    requesterName || requesterUser?.email?.trim() || `User #${userId}`;
+
   if (decision === "rejected") {
     // Auto-unlock on manager rejection so lead can re-enter normal rotation/shuffle.
     const now = new Date();
@@ -2566,8 +2573,8 @@ export const reviewHotLeadRequest = async ({
     performedBy: managerId,
     details:
       decision === "approved"
-        ? `Hot lead approved for user ${userId}${cleanReviewReason ? ` (reason: ${cleanReviewReason})` : ""}`
-        : `Hot lead rejected for user ${userId}${rejectReason ? ` (reason: ${rejectReason})` : ""}`,
+        ? `Hot lead approved for ${requesterLabel} (#${userId})${cleanReviewReason ? ` (reason: ${cleanReviewReason})` : ""}`
+        : `Hot lead rejected for ${requesterLabel} (#${userId})${rejectReason ? ` (reason: ${rejectReason})` : ""}`,
   });
 
   return { ...(lead.toJSON() as any), reviewedAssignee: assignees[idx] };

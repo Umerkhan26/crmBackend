@@ -2263,6 +2263,50 @@ const saveAssignees = async (lead: Lead, assignees: AssigneeWithHotLeadMeta[]) =
   await lead.save();
 };
 
+const resolveHotLeadDateRange = (
+  filterType?: string,
+  startDate?: string,
+  endDate?: string,
+): { start?: Date; end?: Date } | null => {
+  const normalized = String(filterType || "").trim().toLowerCase();
+  if (!normalized || normalized === "all") return null;
+  const mappedFilterType =
+    normalized === "weekend"
+      ? "weekly"
+      : normalized === "month"
+        ? "monthly"
+        : normalized;
+  const built = buildDateFilter(
+    mappedFilterType as FilterType,
+    startDate,
+    endDate,
+  ) as any;
+  const createdAtFilter = built?.createdAt;
+  if (!createdAtFilter || typeof createdAtFilter !== "object") return null;
+  if (createdAtFilter[Op.between]) {
+    const [s, e] = createdAtFilter[Op.between];
+    return { start: s, end: e };
+  }
+  if (createdAtFilter[Op.gte] || createdAtFilter[Op.lte]) {
+    return { start: createdAtFilter[Op.gte], end: createdAtFilter[Op.lte] };
+  }
+  return null;
+};
+
+const inHotLeadDateRange = (
+  row: any,
+  range: { start?: Date; end?: Date } | null,
+): boolean => {
+  if (!range) return true;
+  const raw = row?.hotLeadRequestedAt || row?.hotLeadReviewedAt;
+  if (!raw) return false;
+  const dt = new Date(raw);
+  if (Number.isNaN(dt.getTime())) return false;
+  if (range.start && dt < range.start) return false;
+  if (range.end && dt > range.end) return false;
+  return true;
+};
+
 export const getManagerHotLeadRequests = async ({
   managerId,
   page = 1,
@@ -2273,6 +2317,10 @@ export const getManagerHotLeadRequests = async ({
   /** pending = inbox awaiting manager action; reviewed = approved/rejected history; all = both */
   reviewState = "pending",
   scopeAll = false,
+  filterType,
+  startDate,
+  endDate,
+  filterUserId,
 }: {
   managerId: number;
   page?: number;
@@ -2282,6 +2330,10 @@ export const getManagerHotLeadRequests = async ({
   leadId?: number;
   reviewState?: "pending" | "reviewed" | "all";
   scopeAll?: boolean;
+  filterType?: string;
+  startDate?: string;
+  endDate?: string;
+  filterUserId?: number;
 }) => {
   const managedUserIds = scopeAll ? [] : await getManagerBrandUserIds(managerId);
   if (!scopeAll && managedUserIds.length === 0) {
@@ -2338,6 +2390,7 @@ export const getManagerHotLeadRequests = async ({
     const assignees = extractAssignees(lead);
     for (const assignee of assignees) {
       if (!scopeAll && !managedUserIds.includes(Number(assignee.userId))) continue;
+      if (filterUserId != null && Number(assignee.userId) !== Number(filterUserId)) continue;
 
       const hrs = assignee.hotLeadRequestStatus;
       let include = false;
@@ -2399,10 +2452,15 @@ export const getManagerHotLeadRequests = async ({
     return nb - na;
   });
 
-  const totalItems = enriched.length;
+  const dateRange = resolveHotLeadDateRange(filterType, startDate, endDate);
+  const dateFiltered = dateRange
+    ? enriched.filter((row) => inHotLeadDateRange(row, dateRange))
+    : enriched;
+
+  const totalItems = dateFiltered.length;
   const totalPages = totalItems === 0 ? 0 : Math.ceil(totalItems / limit);
   const start = (page - 1) * limit;
-  const statusCounts = enriched.reduce(
+  const statusCounts = dateFiltered.reduce(
     (acc, item) => {
       const status = String(item?.hotLeadRequestStatus || "").toLowerCase().trim();
       if (status === "approved") acc.approved += 1;
@@ -2414,7 +2472,7 @@ export const getManagerHotLeadRequests = async ({
   );
   return {
     reviewState,
-    rows: enriched.slice(start, start + limit),
+    rows: dateFiltered.slice(start, start + limit),
     totalItems,
     totalPages,
     currentPage: page,
@@ -2524,6 +2582,9 @@ export const getMyHotLeadRequests = async ({
   leadId: leadIdFilter,
   /** Same semantics as manager list: pending / reviewed / all */
   reviewState = "all",
+  filterType,
+  startDate,
+  endDate,
 }: {
   userId: number;
   page?: number;
@@ -2532,6 +2593,9 @@ export const getMyHotLeadRequests = async ({
   campaignId?: number;
   leadId?: number;
   reviewState?: "pending" | "reviewed" | "all";
+  filterType?: string;
+  startDate?: string;
+  endDate?: string;
 }) => {
   const effectiveCampaignName = await resolveEffectiveCampaignNameFromQuery(
     campaignName,
@@ -2605,10 +2669,15 @@ export const getMyHotLeadRequests = async ({
     });
   }
 
-  const totalItems = rows.length;
+  const dateRange = resolveHotLeadDateRange(filterType, startDate, endDate);
+  const dateFilteredRows = dateRange
+    ? rows.filter((row) => inHotLeadDateRange(row, dateRange))
+    : rows;
+
+  const totalItems = dateFilteredRows.length;
   const totalPages = totalItems === 0 ? 0 : Math.ceil(totalItems / limit);
   const start = (page - 1) * limit;
-  const statusCounts = rows.reduce(
+  const statusCounts = dateFilteredRows.reduce(
     (acc, item) => {
       const status = String(item?.hotLeadRequestStatus || "").toLowerCase().trim();
       if (status === "approved") acc.approved += 1;
@@ -2619,7 +2688,7 @@ export const getMyHotLeadRequests = async ({
     { pending: 0, approved: 0, rejected: 0 },
   );
   return {
-    rows: rows.slice(start, start + limit),
+    rows: dateFilteredRows.slice(start, start + limit),
     totalItems,
     totalPages,
     currentPage: page,

@@ -1,11 +1,11 @@
 import { Response } from "express";
 import { CustomRequest } from "../types/custom";
 import {
+  getCallReportByUserPage,
   getCallReportSummary,
-  parseIsoDateRange,
-  dayRangeUtc,
-  weekRangeUtc,
-  monthRangeUtc,
+  listReportCalls,
+  resolveAdminReportRange,
+  resolveUserReportRange,
 } from "../services/callReport.service";
 
 function parseOptionalUserId(raw: unknown): number | null {
@@ -14,63 +14,6 @@ function parseOptionalUserId(raw: unknown): number | null {
   }
   const n = Number(raw);
   return Number.isFinite(n) && n > 0 ? n : null;
-}
-
-type AdminPeriod = "day" | "week" | "month" | "range";
-
-function resolveAdminRange(query: Record<string, unknown>): {
-  from: Date;
-  to: Date;
-  period: AdminPeriod;
-} {
-  const raw = (query.period as string)?.toLowerCase().trim();
-  if (raw && !["day", "week", "month", "range"].includes(raw)) {
-    throw new Error(
-      `Unknown period "${query.period}". Use day, week, month, or range (or omit for range).`
-    );
-  }
-  const period: AdminPeriod =
-    raw === "day" || raw === "week" || raw === "month" || raw === "range"
-      ? raw
-      : "range";
-
-  if (period === "day") {
-    const date = query.date as string | undefined;
-    if (!date || typeof date !== "string") {
-      throw new Error(
-        "For period=day, query parameter `date` is required (YYYY-MM-DD, UTC day bounds)"
-      );
-    }
-    const { from, to } = dayRangeUtc(date.slice(0, 10));
-    return { from, to, period: "day" };
-  }
-
-  if (period === "week") {
-    const weekStart = query.weekStart as string | undefined;
-    if (!weekStart || typeof weekStart !== "string") {
-      throw new Error(
-        "For period=week, query parameter `weekStart` is required (YYYY-MM-DD, first day in UTC)"
-      );
-    }
-    const { from, to } = weekRangeUtc(weekStart.slice(0, 10));
-    return { from, to, period: "week" };
-  }
-
-  if (period === "month") {
-    const month = query.month as string | undefined;
-    if (!month || typeof month !== "string") {
-      throw new Error("For period=month, query parameter `month` is required (YYYY-MM)");
-    }
-    const { from, to } = monthRangeUtc(month);
-    return { from, to, period: "month" };
-  }
-
-  const { from, to } = parseIsoDateRange(
-    query.from as string | undefined,
-    query.to as string | undefined,
-    60
-  );
-  return { from, to, period: "range" };
 }
 
 export const getMyCallReportController = async (
@@ -84,8 +27,7 @@ export const getMyCallReportController = async (
       return;
     }
 
-    const { from, to } = req.query as { from?: string; to?: string };
-    const range = parseIsoDateRange(from, to, 60);
+    const range = resolveUserReportRange(req.query as { period?: string; from?: string; to?: string });
     const data = await getCallReportSummary({
       userId,
       from: range.from,
@@ -95,7 +37,10 @@ export const getMyCallReportController = async (
     res.status(200).json({
       success: true,
       message: "Call report summary",
-      data,
+      data: {
+        ...data,
+        requestedPeriod: range.requestedPeriod,
+      },
     });
   } catch (error: any) {
     res.status(500).json({
@@ -105,11 +50,54 @@ export const getMyCallReportController = async (
   }
 };
 
+/** Paginated outbound calls in the report window (same filters as summary). */
+export const getMyCallReportCallsController = async (
+  req: CustomRequest,
+  res: Response
+): Promise<void> => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      res.status(401).json({ success: false, message: "User not authenticated" });
+      return;
+    }
+
+    const { page, limit } = req.query as {
+      page?: string;
+      limit?: string;
+    };
+    const range = resolveUserReportRange(req.query as { period?: string; from?: string; to?: string });
+    const data = await listReportCalls({
+      userId,
+      from: range.from,
+      to: range.to,
+      page: page != null ? Number(page) : 1,
+      limit: limit != null ? Number(limit) : 20,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Call report calls (paginated)",
+      data: {
+        period: { from: range.from.toISOString(), to: range.to.toISOString() },
+        requestedPeriod: range.requestedPeriod,
+        ...data,
+      },
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: error?.message || "Failed to list calls",
+    });
+  }
+};
+
 /**
- * Admin: one endpoint. Query `period`: day | week | month | range (default range).
+ * Admin: one endpoint. Query `period`: day | week | month | range | today | yesterday (default range).
  * - day: `date=YYYY-MM-DD`
  * - week: `weekStart=YYYY-MM-DD`
  * - month: `month=YYYY-MM`
+ * - today / yesterday: no extra params (UTC calendar day)
  * - range: optional `from` / `to` ISO (default last 60 days)
  * Optional `userId` for any period.
  */
@@ -121,9 +109,9 @@ export const getAdminCallReportController = async (
     const userIdQ = (req.query as { userId?: string }).userId;
     const filterUserId = parseOptionalUserId(userIdQ);
 
-    let range: { from: Date; to: Date; period: AdminPeriod };
+    let range: ReturnType<typeof resolveAdminReportRange>;
     try {
-      range = resolveAdminRange(req.query as Record<string, unknown>);
+      range = resolveAdminReportRange(req.query as Record<string, unknown>);
     } catch (e: any) {
       res.status(400).json({
         success: false,
@@ -153,6 +141,102 @@ export const getAdminCallReportController = async (
     res.status(status).json({
       success: false,
       message: error?.message || "Failed to build call report",
+    });
+  }
+};
+
+/** Admin: paginated per-user full reports for the same window as the aggregate report. */
+export const getAdminCallReportByUserController = async (
+  req: CustomRequest,
+  res: Response
+): Promise<void> => {
+  try {
+    let range: ReturnType<typeof resolveAdminReportRange>;
+    try {
+      range = resolveAdminReportRange(req.query as Record<string, unknown>);
+    } catch (e: any) {
+      res.status(400).json({
+        success: false,
+        message:
+          e?.message ||
+          "Invalid query. Use period=day|week|month|range with the matching params.",
+      });
+      return;
+    }
+
+    const { page, limit } = req.query as { page?: string; limit?: string };
+    const result = await getCallReportByUserPage({
+      from: range.from,
+      to: range.to,
+      page: page != null ? Number(page) : 1,
+      limit: limit != null ? Number(limit) : 20,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: `Admin call report by user (${range.period}, UTC window)`,
+      data: {
+        ...result,
+        requestedPeriod: range.period,
+      },
+    });
+  } catch (error: any) {
+    const status = error?.message?.includes("Invalid") ? 400 : 500;
+    res.status(status).json({
+      success: false,
+      message: error?.message || "Failed to build call report by user",
+    });
+  }
+};
+
+/** Admin: paginated call rows (optional `userId`); same period params as aggregate report. */
+export const getAdminCallReportCallsController = async (
+  req: CustomRequest,
+  res: Response
+): Promise<void> => {
+  try {
+    let range: ReturnType<typeof resolveAdminReportRange>;
+    try {
+      range = resolveAdminReportRange(req.query as Record<string, unknown>);
+    } catch (e: any) {
+      res.status(400).json({
+        success: false,
+        message:
+          e?.message ||
+          "Invalid query. Use period=day|week|month|range with the matching params.",
+      });
+      return;
+    }
+
+    const { page, limit, userId: userIdQ } = req.query as {
+      page?: string;
+      limit?: string;
+      userId?: string;
+    };
+    const filterUserId = parseOptionalUserId(userIdQ);
+
+    const list = await listReportCalls({
+      userId: filterUserId,
+      from: range.from,
+      to: range.to,
+      page: page != null ? Number(page) : 1,
+      limit: limit != null ? Number(limit) : 20,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: `Admin call report calls (${range.period}, UTC window)`,
+      data: {
+        period: { from: range.from.toISOString(), to: range.to.toISOString() },
+        requestedPeriod: range.period,
+        ...list,
+      },
+    });
+  } catch (error: any) {
+    const status = error?.message?.includes("Invalid") ? 400 : 500;
+    res.status(status).json({
+      success: false,
+      message: error?.message || "Failed to list calls",
     });
   }
 };

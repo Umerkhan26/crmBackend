@@ -1,5 +1,7 @@
 import db from "../../db";
-import { QueryTypes } from "sequelize";
+import { Op, QueryTypes } from "sequelize";
+import Call from "../models/call.model";
+import User from "../models/user.model";
 
 export interface CallReportPeriod {
   from: string;
@@ -374,6 +376,27 @@ export function dayRangeUtc(dateStr: string): { from: Date; to: Date } {
   return { from, to };
 }
 
+/** Current UTC calendar day 00:00:00.000Z … 23:59:59.999Z */
+export function todayRangeUtc(now = new Date()): { from: Date; to: Date } {
+  const y = now.getUTCFullYear();
+  const m = now.getUTCMonth();
+  const d = now.getUTCDate();
+  const from = new Date(Date.UTC(y, m, d, 0, 0, 0, 0));
+  const to = new Date(Date.UTC(y, m, d, 23, 59, 59, 999));
+  return { from, to };
+}
+
+/** Previous UTC calendar day (full day bounds). */
+export function yesterdayRangeUtc(now = new Date()): { from: Date; to: Date } {
+  const y = now.getUTCFullYear();
+  const m = now.getUTCMonth();
+  const d = now.getUTCDate();
+  const prev = new Date(Date.UTC(y, m, d - 1, 0, 0, 0, 0));
+  const from = new Date(prev);
+  const to = new Date(Date.UTC(prev.getUTCFullYear(), prev.getUTCMonth(), prev.getUTCDate(), 23, 59, 59, 999));
+  return { from, to };
+}
+
 export function weekRangeUtc(weekStartStr: string): { from: Date; to: Date } {
   const from = new Date(`${weekStartStr}T00:00:00.000Z`);
   if (Number.isNaN(from.getTime())) {
@@ -398,4 +421,273 @@ export function monthRangeUtc(monthStr: string): { from: Date; to: Date } {
   const from = new Date(Date.UTC(y, mo - 1, 1, 0, 0, 0, 0));
   const to = new Date(Date.UTC(y, mo, 0, 23, 59, 59, 999));
   return { from, to };
+}
+
+export type AdminReportPeriod =
+  | "day"
+  | "week"
+  | "month"
+  | "range"
+  | "today"
+  | "yesterday";
+
+/** User report: optional `period=today|yesterday` overrides `from`/`to`; otherwise same as parseIsoDateRange. */
+export function resolveUserReportRange(query: {
+  period?: string;
+  from?: string;
+  to?: string;
+}): { from: Date; to: Date; requestedPeriod: "today" | "yesterday" | "range" } {
+  const raw = query.period?.toLowerCase().trim() || "";
+  if (raw === "today") {
+    const { from, to } = todayRangeUtc();
+    return { from, to, requestedPeriod: "today" };
+  }
+  if (raw === "yesterday") {
+    const { from, to } = yesterdayRangeUtc();
+    return { from, to, requestedPeriod: "yesterday" };
+  }
+  const { from, to } = parseIsoDateRange(query.from, query.to, 60);
+  return { from, to, requestedPeriod: "range" };
+}
+
+/** Shared admin date-window resolver (query matches call report controller). */
+export function resolveAdminReportRange(query: Record<string, unknown>): {
+  from: Date;
+  to: Date;
+  period: AdminReportPeriod;
+} {
+  const raw = (query.period as string)?.toLowerCase().trim();
+  if (
+    raw &&
+    !["day", "week", "month", "range", "today", "yesterday"].includes(raw)
+  ) {
+    throw new Error(
+      `Unknown period "${query.period}". Use day, week, month, range, today, yesterday (or omit for range).`
+    );
+  }
+
+  if (raw === "today") {
+    const { from, to } = todayRangeUtc();
+    return { from, to, period: "today" };
+  }
+  if (raw === "yesterday") {
+    const { from, to } = yesterdayRangeUtc();
+    return { from, to, period: "yesterday" };
+  }
+
+  const period: AdminReportPeriod =
+    raw === "day" || raw === "week" || raw === "month" || raw === "range"
+      ? raw
+      : "range";
+
+  if (period === "day") {
+    const date = query.date as string | undefined;
+    if (!date || typeof date !== "string") {
+      throw new Error(
+        "For period=day, query parameter `date` is required (YYYY-MM-DD, UTC day bounds)"
+      );
+    }
+    const { from, to } = dayRangeUtc(date.slice(0, 10));
+    return { from, to, period: "day" };
+  }
+
+  if (period === "week") {
+    const weekStart = query.weekStart as string | undefined;
+    if (!weekStart || typeof weekStart !== "string") {
+      throw new Error(
+        "For period=week, query parameter `weekStart` is required (YYYY-MM-DD, first day in UTC)"
+      );
+    }
+    const { from, to } = weekRangeUtc(weekStart.slice(0, 10));
+    return { from, to, period: "week" };
+  }
+
+  if (period === "month") {
+    const month = query.month as string | undefined;
+    if (!month || typeof month !== "string") {
+      throw new Error("For period=month, query parameter `month` is required (YYYY-MM)");
+    }
+    const { from, to } = monthRangeUtc(month);
+    return { from, to, period: "month" };
+  }
+
+  const { from, to } = parseIsoDateRange(
+    query.from as string | undefined,
+    query.to as string | undefined,
+    60
+  );
+  return { from, to, period: "range" };
+}
+
+export interface CallReportPaginationMeta {
+  page: number;
+  limit: number;
+  totalItems: number;
+  totalPages: number;
+}
+
+function safePageLimit(page: unknown, limit: unknown): { page: number; limit: number } {
+  const p = Number(page);
+  const l = Number(limit);
+  const safePage = Number.isFinite(p) && p > 0 ? Math.floor(p) : 1;
+  const safeLimit = Number.isFinite(l) && l > 0 ? Math.min(100, Math.floor(l)) : 20;
+  return { page: safePage, limit: safeLimit };
+}
+
+/** Paginated outbound report-scoped calls (same filters as the summary). */
+export async function listReportCalls(opts: {
+  userId: number | null;
+  from: Date;
+  to: Date;
+  page: number;
+  limit: number;
+}): Promise<{
+  rows: Call[];
+  totalItems: number;
+  totalPages: number;
+  currentPage: number;
+  pageSize: number;
+}> {
+  const { page, limit } = safePageLimit(opts.page, opts.limit);
+  const offset = (page - 1) * limit;
+
+  const where: Record<string, unknown> = {
+    status: { [Op.in]: ["completed", "failed"] },
+    direction: "outgoing",
+    startedAt: { [Op.between]: [opts.from, opts.to] },
+  };
+  if (opts.userId != null && Number.isFinite(opts.userId)) {
+    where.userId = Number(opts.userId);
+  }
+
+  const { rows, count } = await Call.findAndCountAll({
+    where: where as any,
+    order: [["startedAt", "DESC"]],
+    limit,
+    offset,
+    attributes: [
+      "id",
+      "userId",
+      "phoneNumber",
+      "direction",
+      "status",
+      "startedAt",
+      "endedAt",
+      "durationSeconds",
+      "leadId",
+      "clientLeadId",
+    ],
+  });
+
+  return {
+    rows,
+    totalItems: count,
+    totalPages: Math.ceil(count / limit) || 0,
+    currentPage: page,
+    pageSize: limit,
+  };
+}
+
+export interface CallReportByUserRow {
+  userId: number;
+  user: {
+    id: number;
+    firstname: string | null;
+    lastname: string | null;
+    email: string | null;
+  } | null;
+  report: CallReportSummary;
+}
+
+/** Admin: one full report per user, paginated by distinct users who had report-scoped calls. */
+export async function getCallReportByUserPage(opts: {
+  from: Date;
+  to: Date;
+  page: number;
+  limit: number;
+}): Promise<{
+  period: CallReportPeriod;
+  pagination: CallReportPaginationMeta;
+  items: CallReportByUserRow[];
+}> {
+  const { page, limit } = safePageLimit(opts.page, opts.limit);
+  const offset = (page - 1) * limit;
+
+  const { sql: whereSql, replacements } = buildWhereReplacements(
+    opts.from,
+    opts.to,
+    null
+  );
+
+  const countSql = `
+    SELECT COUNT(*) AS c FROM (
+      SELECT DISTINCT ${q("userId")} FROM ${q("calls")} WHERE ${whereSql}
+    ) x
+  `;
+  const [countRow] = (await db.query(countSql, {
+    replacements,
+    type: QueryTypes.SELECT,
+  })) as Record<string, unknown>[];
+  const totalItems = Number(countRow?.c ?? 0);
+  const totalPages = totalItems > 0 ? Math.ceil(totalItems / limit) : 0;
+
+  const idsSql = `
+    SELECT DISTINCT ${q("userId")} AS userId
+    FROM ${q("calls")}
+    WHERE ${whereSql}
+    ORDER BY ${q("userId")} ASC
+    LIMIT :limit OFFSET :offset
+  `;
+  const idRows = (await db.query(idsSql, {
+    replacements: { ...replacements, limit, offset },
+    type: QueryTypes.SELECT,
+  })) as { userId: number }[];
+
+  const userIds = idRows.map((r) => Number(r.userId)).filter((id) => Number.isFinite(id));
+
+  const users =
+    userIds.length > 0
+      ? await User.findAll({
+          where: { id: userIds },
+          attributes: ["id", "firstname", "lastname", "email"],
+        })
+      : [];
+
+  const userById = new Map(users.map((u) => [u.id, u]));
+
+  const reports = await Promise.all(
+    userIds.map((uid) =>
+      getCallReportSummary({ userId: uid, from: opts.from, to: opts.to })
+    )
+  );
+
+  const items: CallReportByUserRow[] = userIds.map((uid, i) => {
+    const u = userById.get(uid);
+    return {
+      userId: uid,
+      user: u && u.id != null
+        ? {
+            id: u.id as number,
+            firstname: u.firstname ?? null,
+            lastname: u.lastname ?? null,
+            email: u.email ?? null,
+          }
+        : null,
+      report: reports[i],
+    };
+  });
+
+  return {
+    period: {
+      from: opts.from.toISOString(),
+      to: opts.to.toISOString(),
+    },
+    pagination: {
+      page,
+      limit,
+      totalItems,
+      totalPages,
+    },
+    items,
+  };
 }

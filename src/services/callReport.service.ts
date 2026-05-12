@@ -2,6 +2,8 @@ import db from "../../db";
 import { Op, QueryTypes } from "sequelize";
 import Call from "../models/call.model";
 import User from "../models/user.model";
+import Lead from "../models/lead.model";
+import { buildLeadCodeFromCampaignAndId } from "../utils/leadCode";
 
 export interface CallReportPeriod {
   from: string;
@@ -9,7 +11,10 @@ export interface CallReportPeriod {
 }
 
 export interface CallReportOptions {
+  /** Single user (self, admin filter, or one team member). */
   userId?: number | null;
+  /** Multiple users (e.g. brand team aggregate). When set, overrides `userId`. */
+  userIds?: number[] | null;
   from: Date;
   to: Date;
 }
@@ -81,12 +86,38 @@ function dateDistinctSql(): string {
 function buildWhereReplacements(
   from: Date,
   to: Date,
-  userId: number | null | undefined
+  userId: number | null | undefined,
+  userIds?: number[] | null,
 ): { sql: string; replacements: Record<string, unknown> } {
-  const userClause =
-    userId != null && Number.isFinite(userId)
-      ? `AND ${q("userId")} = :userId`
-      : "";
+  const replacements: Record<string, unknown> = { from, to };
+  let userClause = "";
+
+  if (userIds != null) {
+    if (userIds.length === 0) {
+      userClause = "AND 1=0";
+    } else {
+      const ids = [
+        ...new Set(
+          userIds
+            .map((x) => Number(x))
+            .filter((n) => Number.isFinite(n) && n > 0),
+        ),
+      ];
+      if (ids.length === 0) {
+        userClause = "AND 1=0";
+      } else {
+        const ph = ids.map((_, i) => `:rpuid${i}`);
+        ids.forEach((id, i) => {
+          replacements[`rpuid${i}`] = id;
+        });
+        userClause = `AND ${q("userId")} IN (${ph.join(", ")})`;
+      }
+    }
+  } else if (userId != null && Number.isFinite(userId)) {
+    userClause = `AND ${q("userId")} = :userId`;
+    replacements.userId = userId;
+  }
+
   return {
     sql: `
       ${q("status")} IN ('completed', 'failed')
@@ -95,27 +126,72 @@ function buildWhereReplacements(
       AND ${q("startedAt")} <= :to
       ${userClause}
     `,
-    replacements: {
-      from,
-      to,
-      ...(userId != null && Number.isFinite(userId) ? { userId } : {}),
-    },
+    replacements,
   };
+}
+
+/**
+ * Lightweight COUNT for dashboard widgets (same filters as {@link getCallReportSummary}).
+ * Omit scope for org-wide; pass userId for one user; pass userIds for IN (...).
+ */
+export async function countOutboundCallsInRange(
+  from: Date,
+  to: Date,
+  scope?: { userId?: number | null; userIds?: number[] },
+): Promise<number> {
+  const repl: Record<string, unknown> = { from, to };
+  let userClause = "";
+  if (scope?.userIds && scope.userIds.length > 0) {
+    const ids = [
+      ...new Set(
+        scope.userIds
+          .map((id) => Number(id))
+          .filter((n) => Number.isFinite(n)),
+      ),
+    ];
+    if (ids.length === 0) return 0;
+    const placeholders = ids.map((_, i) => `:u${i}`);
+    ids.forEach((id, i) => {
+      repl[`u${i}`] = id;
+    });
+    userClause = `AND ${q("userId")} IN (${placeholders.join(", ")})`;
+  } else if (scope?.userId != null && Number.isFinite(Number(scope.userId))) {
+    userClause = `AND ${q("userId")} = :userId`;
+    repl.userId = Number(scope.userId);
+  }
+
+  const sql = `
+    SELECT COUNT(*) AS totalCalls
+    FROM ${q("calls")}
+    WHERE ${q("status")} IN ('completed', 'failed')
+      AND ${q("direction")} = 'outgoing'
+      AND ${q("startedAt")} >= :from
+      AND ${q("startedAt")} <= :to
+      ${userClause}
+  `;
+  const [row] = (await db.query(sql, {
+    replacements: repl,
+    type: QueryTypes.SELECT,
+  })) as Record<string, unknown>[];
+  return Number(row?.totalCalls ?? 0);
 }
 
 export async function getCallReportSummary(
   opts: CallReportOptions
 ): Promise<CallReportSummary> {
   const { from, to } = opts;
+  const useUserIds = opts.userIds != null;
+  const userIds = useUserIds ? opts.userIds : null;
   const userId =
-    opts.userId != null && Number.isFinite(opts.userId)
+    !useUserIds && opts.userId != null && Number.isFinite(opts.userId)
       ? Number(opts.userId)
       : null;
 
   const { sql: whereSql, replacements } = buildWhereReplacements(
     from,
     to,
-    userId
+    userId,
+    userIds,
   );
 
   const ds = q("durationSeconds");
@@ -536,13 +612,24 @@ function safePageLimit(page: unknown, limit: unknown): { page: number; limit: nu
 
 /** Paginated outbound report-scoped calls (same filters as the summary). */
 export async function listReportCalls(opts: {
-  userId: number | null;
+  userId?: number | null;
+  userIds?: number[] | null;
   from: Date;
   to: Date;
   page: number;
   limit: number;
 }): Promise<{
-  rows: Call[];
+  rows: Array<
+    Record<string, unknown> & {
+      leadDisplayCode: string | null;
+      user: {
+        id: number;
+        firstname: string | null;
+        lastname: string | null;
+        email: string | null;
+      } | null;
+    }
+  >;
   totalItems: number;
   totalPages: number;
   currentPage: number;
@@ -551,12 +638,40 @@ export async function listReportCalls(opts: {
   const { page, limit } = safePageLimit(opts.page, opts.limit);
   const offset = (page - 1) * limit;
 
+  if (opts.userIds != null && opts.userIds.length === 0) {
+    return {
+      rows: [],
+      totalItems: 0,
+      totalPages: 1,
+      currentPage: page,
+      pageSize: limit,
+    };
+  }
+
   const where: Record<string, unknown> = {
     status: { [Op.in]: ["completed", "failed"] },
     direction: "outgoing",
     startedAt: { [Op.between]: [opts.from, opts.to] },
   };
-  if (opts.userId != null && Number.isFinite(opts.userId)) {
+  if (opts.userIds != null && opts.userIds.length > 0) {
+    const ids = [
+      ...new Set(
+        opts.userIds
+          .map((x) => Number(x))
+          .filter((n) => Number.isFinite(n) && n > 0),
+      ),
+    ];
+    if (ids.length === 0) {
+      return {
+        rows: [],
+        totalItems: 0,
+        totalPages: 1,
+        currentPage: page,
+        pageSize: limit,
+      };
+    }
+    where.userId = { [Op.in]: ids };
+  } else if (opts.userId != null && Number.isFinite(opts.userId)) {
     where.userId = Number(opts.userId);
   }
 
@@ -579,8 +694,71 @@ export async function listReportCalls(opts: {
     ],
   });
 
+  const distinctUserIds = [
+    ...new Set(
+      rows
+        .map((r) => r.userId)
+        .filter((id) => id != null && Number.isFinite(Number(id)))
+        .map((id) => Number(id)),
+    ),
+  ];
+  const users =
+    distinctUserIds.length > 0
+      ? await User.findAll({
+          where: { id: distinctUserIds },
+          attributes: ["id", "firstname", "lastname", "email"],
+        })
+      : [];
+  const userById = new Map(users.map((u) => [u.id as number, u]));
+
+  const leadIds = [
+    ...new Set(
+      rows
+        .map((r) => r.leadId)
+        .filter((id) => id != null && Number.isFinite(Number(id)))
+        .map((id) => Number(id)),
+    ),
+  ];
+  const leads =
+    leadIds.length > 0
+      ? await Lead.findAll({
+          where: { id: leadIds },
+          attributes: ["id", "campaignName"],
+        })
+      : [];
+  const leadById = new Map(leads.map((l) => [l.id as number, l]));
+
+  const enrichedRows = rows.map((row) => {
+    const plain = row.get({ plain: true }) as unknown as Record<string, unknown>;
+    const u = userById.get(Number(row.userId));
+    const lead = row.leadId != null ? leadById.get(Number(row.leadId)) : undefined;
+    const canonical =
+      lead != null
+        ? buildLeadCodeFromCampaignAndId(
+            String(lead.campaignName || ""),
+            Number(lead.id),
+          )
+        : null;
+    const leadDisplayCode =
+      canonical && canonical.length > 0 ? canonical : null;
+
+    return {
+      ...plain,
+      leadDisplayCode,
+      user:
+        u && u.id != null
+          ? {
+              id: u.id as number,
+              firstname: u.firstname ?? null,
+              lastname: u.lastname ?? null,
+              email: u.email ?? null,
+            }
+          : null,
+    };
+  });
+
   return {
-    rows,
+    rows: enrichedRows,
     totalItems: count,
     totalPages: Math.ceil(count / limit) || 0,
     currentPage: page,
@@ -616,7 +794,8 @@ export async function getCallReportByUserPage(opts: {
   const { sql: whereSql, replacements } = buildWhereReplacements(
     opts.from,
     opts.to,
-    null
+    null,
+    null,
   );
 
   const countSql = `

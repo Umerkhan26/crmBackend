@@ -11,6 +11,10 @@ import db from "../../db";
 import { buildDateFilter, FilterType } from "../utils/dateFilters";
 import { getManagerBrandUserIds } from "../utils/brandUtils";
 import { PERMISSIONS } from "../constants/permissions";
+import {
+  countOutboundCallsInRange,
+  parseIsoDateRange,
+} from "./callReport.service";
 // Notes are loaded via a separate endpoint for performance.
 
 interface DashboardStatsParams {
@@ -126,6 +130,12 @@ export const getDashboardStats = async ({
   notesLimit = 5,
 }: DashboardStatsParams = {}) => {
   try {
+    const { from: outboundFrom, to: outboundTo } = parseIsoDateRange(
+      undefined,
+      undefined,
+      60,
+    );
+
     const dateFilter =
       filterType && filterType.trim() !== ""
         ? buildDateFilter(filterType, startDate, endDate)
@@ -210,6 +220,7 @@ export const getDashboardStats = async ({
         // Promise.resolve([{ count: 0 }]),
         // Total Sales - count all converted sales (optionally date-filtered)
 
+        // Leads with work — org-wide: any lead that has at least one note or lead_activity.
         db.query(
           `
   SELECT COUNT(DISTINCT l.id) AS count
@@ -242,6 +253,12 @@ export const getDashboardStats = async ({
       // Extract count from raw query result
       const leadsWithWorkCount = (leadsWithWorkResult[0] as any)?.count || 0;
 
+      const outbound60dTotal = await countOutboundCallsInRange(
+        outboundFrom,
+        outboundTo,
+        {},
+      );
+
       return {
         users: {
           total: totalUsers,
@@ -267,6 +284,10 @@ export const getDashboardStats = async ({
         },
         campaigns: {
           total: totalCampaigns,
+        },
+        outbound60d: {
+          totalCalls: outbound60dTotal,
+          periodDays: 60,
         },
         // recentNotes: {
         //   notes: [],
@@ -322,7 +343,7 @@ export const getDashboardStats = async ({
           col: "campaignName",
           where: dateWhereClause as any,
         }),
-        // Leads with Work: only leads where work (notes/activities) done by manager's users
+        // Leads with work — manager: only when a brand team member created the note or performed the activity.
         brandUserIds.length > 0
           ? db.query(
               `SELECT COUNT(DISTINCT l.id) AS count FROM leads l
@@ -350,6 +371,13 @@ export const getDashboardStats = async ({
 
       const leadsWithWorkCount = (leadsWithWorkResult[0] as any)?.count || 0;
 
+      const outbound60dTotal =
+        brandUserIds.length > 0
+          ? await countOutboundCallsInRange(outboundFrom, outboundTo, {
+              userIds: brandUserIds,
+            })
+          : 0;
+
       return {
         users: {
           total: totalUsers,
@@ -370,6 +398,10 @@ export const getDashboardStats = async ({
         products: { total: totalProducts },
         sales: { total: totalSales },
         campaigns: { total: totalCampaigns },
+        outbound60d: {
+          totalCalls: outbound60dTotal,
+          periodDays: 60,
+        },
       };
     } else {
       // Non-admin users: get user-specific stats
@@ -592,6 +624,12 @@ export const getDashboardStats = async ({
         }
       }
 
+      const outbound60dTotal = await countOutboundCallsInRange(
+        outboundFrom,
+        outboundTo,
+        { userId: userId },
+      );
+
       return {
         users: {
           total: 0, // Not shown for non-admin
@@ -616,6 +654,10 @@ export const getDashboardStats = async ({
         },
         campaigns: {
           total: myCampaignsCount,
+        },
+        outbound60d: {
+          totalCalls: outbound60dTotal,
+          periodDays: 60,
         },
         recentNotes: {
           notes: [],

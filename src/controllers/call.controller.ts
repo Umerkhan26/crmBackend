@@ -1,5 +1,8 @@
 import { Request, Response } from "express";
 import * as CallService from "../services/call.service";
+import User from "../models/user.model";
+import Role from "../models/role.model";
+import { getManagerBrandUserIds, isUserManager } from "../utils/brandUtils";
 
 const parseId = (raw: string) => {
   const n = Number(raw);
@@ -112,7 +115,21 @@ export const getCallByIdController = async (req: Request, res: Response): Promis
       return res.status(400).json({ success: false, message: "Invalid call id" });
     }
 
-    const call = await CallService.getCallById(userId, callId);
+    const requester = (await User.findByPk(userId, {
+      include: [{ model: Role, as: "role" }],
+    })) as any;
+    const roleName = String(requester?.role?.name || "")
+      .toLowerCase()
+      .trim();
+    const isStrictAdmin = roleName === "admin" || roleName === "adminn";
+
+    const isMgr = !isStrictAdmin && (await isUserManager(userId));
+    const teamIds = isMgr ? await getManagerBrandUserIds(userId) : [];
+
+    const call = await CallService.getCallById(userId, callId, {
+      allowAnyUser: isStrictAdmin,
+      ...(isMgr ? { managedUserIds: teamIds } : {}),
+    });
     if (!call) {
       return res.status(404).json({ success: false, message: "Call not found" });
     }

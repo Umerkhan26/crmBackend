@@ -1,3 +1,4 @@
+import { Op } from "sequelize";
 import Call, { CallDirection, CallStatus } from "../models/call.model";
 
 export interface StartCallInput {
@@ -145,7 +146,28 @@ export const updateTranscript = async (
   return call;
 };
 
-export const getCallById = async (userId: number, callId: number) => {
+/**
+ * Fetch a single call. By default scoped to `userId` (owner).
+ * When `allowAnyUser` is true (strict admin viewing org reports), any call id may be loaded.
+ * When `managedUserIds` is set (brand manager), call may belong to requester or any of those users.
+ */
+export const getCallById = async (
+  userId: number,
+  callId: number,
+  opts?: { allowAnyUser?: boolean; managedUserIds?: number[] }
+) => {
+  if (opts?.allowAnyUser) {
+    return await Call.findOne({ where: { id: callId } });
+  }
+  if (opts?.managedUserIds != null) {
+    const extra = opts.managedUserIds
+      .map((id) => Number(id))
+      .filter((n) => Number.isFinite(n) && n > 0);
+    const allowed = [...new Set([userId, ...extra])];
+    return await Call.findOne({
+      where: { id: callId, userId: { [Op.in]: allowed } },
+    });
+  }
   return await Call.findOne({ where: { id: callId, userId } });
 };
 

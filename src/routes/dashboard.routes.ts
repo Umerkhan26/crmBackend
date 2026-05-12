@@ -4,6 +4,7 @@ import {
   getAdminCallReportByUserController,
   getAdminCallReportCallsController,
   getAdminCallReportController,
+  getCallReportAssigneesController,
   getMyCallReportCallsController,
   getMyCallReportController,
 } from "../controllers/callReport.controller";
@@ -18,6 +19,13 @@ router.get(
   "/stats",
   verifyToken,
   getDashboardStatsController
+);
+
+/** Brand managers: user ids for call-report filter (admins use client user list). */
+router.get(
+  "/dashboard/calls/report/assignees",
+  verifyToken,
+  getCallReportAssigneesController,
 );
 
 /** User outbound call summary: optional `period=today|yesterday` (UTC), else `from` / `to` (default last 60 days) */

@@ -1,5 +1,6 @@
 import db from "../../db";
 import { Op, QueryTypes } from "sequelize";
+import { DateTime } from "luxon";
 import Call from "../models/call.model";
 import User from "../models/user.model";
 import Lead from "../models/lead.model";
@@ -452,25 +453,76 @@ export function dayRangeUtc(dateStr: string): { from: Date; to: Date } {
   return { from, to };
 }
 
-/** Current UTC calendar day 00:00:00.000Z … 23:59:59.999Z */
-export function todayRangeUtc(now = new Date()): { from: Date; to: Date } {
-  const y = now.getUTCFullYear();
-  const m = now.getUTCMonth();
-  const d = now.getUTCDate();
-  const from = new Date(Date.UTC(y, m, d, 0, 0, 0, 0));
-  const to = new Date(Date.UTC(y, m, d, 23, 59, 59, 999));
-  return { from, to };
+/** Reporting "day" for night operations: 18:00 PKT through next calendar day 07:00 PKT (inclusive end). */
+const REPORT_NIGHT_SHIFT_ZONE = "Asia/Karachi";
+const NIGHT_SHIFT_START_HOUR = 18;
+const NIGHT_SHIFT_END_HOUR = 7;
+
+function nightShiftStartForNowPkt(nowPkt: DateTime): DateTime {
+  const h = nowPkt.hour;
+  if (h >= NIGHT_SHIFT_START_HOUR) {
+    return nowPkt.startOf("day").set({
+      hour: NIGHT_SHIFT_START_HOUR,
+      minute: 0,
+      second: 0,
+      millisecond: 0,
+    });
+  }
+  if (h < NIGHT_SHIFT_END_HOUR) {
+    return nowPkt
+      .minus({ days: 1 })
+      .startOf("day")
+      .set({
+        hour: NIGHT_SHIFT_START_HOUR,
+        minute: 0,
+        second: 0,
+        millisecond: 0,
+      });
+  }
+  return nowPkt
+    .minus({ days: 1 })
+    .startOf("day")
+    .set({
+      hour: NIGHT_SHIFT_START_HOUR,
+      minute: 0,
+      second: 0,
+      millisecond: 0,
+    });
 }
 
-/** Previous UTC calendar day (full day bounds). */
-export function yesterdayRangeUtc(now = new Date()): { from: Date; to: Date } {
-  const y = now.getUTCFullYear();
-  const m = now.getUTCMonth();
-  const d = now.getUTCDate();
-  const prev = new Date(Date.UTC(y, m, d - 1, 0, 0, 0, 0));
-  const from = new Date(prev);
-  const to = new Date(Date.UTC(prev.getUTCFullYear(), prev.getUTCMonth(), prev.getUTCDate(), 23, 59, 59, 999));
-  return { from, to };
+function boundsFromNightShiftStart(startPkt: DateTime): { from: Date; to: Date } {
+  const endPkt = startPkt
+    .plus({ days: 1 })
+    .set({
+      hour: NIGHT_SHIFT_END_HOUR,
+      minute: 0,
+      second: 0,
+      millisecond: 0,
+    })
+    .minus({ milliseconds: 1 });
+  return {
+    from: startPkt.toUTC().toJSDate(),
+    to: endPkt.toUTC().toJSDate(),
+  };
+}
+
+/** Current operational "today" (PKT night window). Between 07:00–18:00 PKT, this is the shift that ended at 07:00 this morning. */
+export function todayNightShiftKarachiRange(now = new Date()): {
+  from: Date;
+  to: Date;
+} {
+  const nowPkt = DateTime.fromJSDate(now, { zone: REPORT_NIGHT_SHIFT_ZONE });
+  return boundsFromNightShiftStart(nightShiftStartForNowPkt(nowPkt));
+}
+
+/** Previous PKT night window before {@link todayNightShiftKarachiRange}. */
+export function yesterdayNightShiftKarachiRange(now = new Date()): {
+  from: Date;
+  to: Date;
+} {
+  const nowPkt = DateTime.fromJSDate(now, { zone: REPORT_NIGHT_SHIFT_ZONE });
+  const todayStart = nightShiftStartForNowPkt(nowPkt);
+  return boundsFromNightShiftStart(todayStart.minus({ days: 1 }));
 }
 
 export function weekRangeUtc(weekStartStr: string): { from: Date; to: Date } {
@@ -515,11 +567,11 @@ export function resolveUserReportRange(query: {
 }): { from: Date; to: Date; requestedPeriod: "today" | "yesterday" | "range" } {
   const raw = query.period?.toLowerCase().trim() || "";
   if (raw === "today") {
-    const { from, to } = todayRangeUtc();
+    const { from, to } = todayNightShiftKarachiRange();
     return { from, to, requestedPeriod: "today" };
   }
   if (raw === "yesterday") {
-    const { from, to } = yesterdayRangeUtc();
+    const { from, to } = yesterdayNightShiftKarachiRange();
     return { from, to, requestedPeriod: "yesterday" };
   }
   const { from, to } = parseIsoDateRange(query.from, query.to, 60);
@@ -543,11 +595,11 @@ export function resolveAdminReportRange(query: Record<string, unknown>): {
   }
 
   if (raw === "today") {
-    const { from, to } = todayRangeUtc();
+    const { from, to } = todayNightShiftKarachiRange();
     return { from, to, period: "today" };
   }
   if (raw === "yesterday") {
-    const { from, to } = yesterdayRangeUtc();
+    const { from, to } = yesterdayNightShiftKarachiRange();
     return { from, to, period: "yesterday" };
   }
 

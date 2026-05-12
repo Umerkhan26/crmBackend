@@ -361,9 +361,13 @@ export const getLeadById = async (leadId: number): Promise<LeadAttributes> => {
       assigneesRaw = lead.assignees;
     }
 
-    const userIds = assigneesRaw
-      .map((a) => a.userId)
-      .filter((id): id is number => typeof id === "number");
+    const userIds = [
+      ...new Set(
+        assigneesRaw
+          .map((a) => Number(a.userId))
+          .filter((id) => Number.isFinite(id) && id > 0),
+      ),
+    ];
 
     let assigneesData: any[] = [];
 
@@ -374,10 +378,23 @@ export const getLeadById = async (leadId: number): Promise<LeadAttributes> => {
       });
 
       assigneesData = users.map((user) => {
-        const assignment = assigneesRaw.find((a) => a.userId === user.id);
+        const assignment = assigneesRaw.find(
+          (a) => Number(a.userId) === Number(user.id),
+        );
+        const profile = user.toJSON();
+        if (!assignment) {
+          return {
+            ...profile,
+            userId: user.id,
+            status: "pending",
+          };
+        }
+        // Keep full assignee payload (hot lead review, comments, etc.); profile fills names/email.
         return {
-          ...user.toJSON(),
-          status: assignment?.status || "pending",
+          ...assignment,
+          ...profile,
+          userId: user.id,
+          status: assignment.status || profile.status || "pending",
         };
       });
     }

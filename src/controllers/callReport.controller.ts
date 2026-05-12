@@ -20,6 +20,13 @@ function parseOptionalUserId(raw: unknown): number | null {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
+function callReportWindowLabel(period: string): string {
+  if (period === "today" || period === "yesterday") {
+    return "Asia/Karachi night shift (18:00–07:00)";
+  }
+  return "UTC calendar window";
+}
+
 /** Same role gate as `requireAdmin`: org-wide report on user-scoped routes if misrouted. */
 async function isSuperAdminUser(uid: number): Promise<boolean> {
   const user = (await User.findByPk(uid, {
@@ -294,7 +301,7 @@ export const getMyCallReportCallsController = async (
  * - day: `date=YYYY-MM-DD`
  * - week: `weekStart=YYYY-MM-DD`
  * - month: `month=YYYY-MM`
- * - today / yesterday: no extra params (UTC calendar day)
+ * - today / yesterday: no extra params (Asia/Karachi night shift 18:00–07:00)
  * - range: optional `from` / `to` ISO (default last 60 days)
  * Optional `userId` for any period.
  */
@@ -327,7 +334,7 @@ export const getAdminCallReportController = async (
 
     res.status(200).json({
       success: true,
-      message: `Admin call report (${range.period}, UTC window)`,
+      message: `Admin call report (${range.period}, ${callReportWindowLabel(range.period)})`,
       data: {
         ...data,
         requestedPeriod: range.period,
@@ -371,7 +378,7 @@ export const getAdminCallReportByUserController = async (
 
     res.status(200).json({
       success: true,
-      message: `Admin call report by user (${range.period}, UTC window)`,
+      message: `Admin call report by user (${range.period}, ${callReportWindowLabel(range.period)})`,
       data: {
         ...result,
         requestedPeriod: range.period,
@@ -422,7 +429,7 @@ export const getAdminCallReportCallsController = async (
 
     res.status(200).json({
       success: true,
-      message: `Admin call report calls (${range.period}, UTC window)`,
+      message: `Admin call report calls (${range.period}, ${callReportWindowLabel(range.period)})`,
       data: {
         period: { from: range.from.toISOString(), to: range.to.toISOString() },
         requestedPeriod: range.period,

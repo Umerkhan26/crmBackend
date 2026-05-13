@@ -125,21 +125,20 @@ export const deleteLeadActivity = async (id: number, deletedBy: number) => {
   return { message: "Lead activity deleted and logged" };
 };
 
-
-
-export const getLeadActivityReportByUser = async (
-  userId: number,
+/** Same window as `LeadreportByUser` (PKT shift presets or raw custom dates). */
+export function resolveActivityReportRangeForUser(
   period: "daily" | "weekly" | "monthly" | "custom",
-  customFilter: Record<string, any> = {}
-) => {
+  customFilter: Record<string, any> = {},
+): { startDate: Date; endDate: Date; restFilter: Record<string, any> } {
   let startDate: Date;
   let endDate: Date;
   const hasCustomDates = customFilter.startDate && customFilter.endDate;
+  let restFilter: Record<string, any> = { ...customFilter };
   if (hasCustomDates) {
-    startDate = new Date(customFilter.startDate);
-    endDate = new Date(customFilter.endDate);
-    const { startDate: _, endDate: __, ...cleanCustomFilter } = customFilter;
-    customFilter = cleanCustomFilter;
+    startDate = new Date(customFilter.startDate as string);
+    endDate = new Date(customFilter.endDate as string);
+    const { startDate: _s, endDate: _e, ...clean } = restFilter;
+    restFilter = clean;
   } else {
     const now = DateTime.now().setZone(PKT_ZONE);
 
@@ -157,12 +156,69 @@ export const getLeadActivityReportByUser = async (
       endDate = end.toJSDate();
     }
   }
+  return { startDate, endDate, restFilter };
+}
+
+/** Distinct lead IDs the user touched via activities or notes in the range (matches activity report). */
+export async function getTouchedLeadIdsForUserInDateRange(
+  userId: number,
+  startDate: Date,
+  endDate: Date,
+  restFilter: Record<string, any> = {},
+): Promise<number[]> {
   const activities = await LeadActivity.findAll({
     where: {
       entityType: { [Op.in]: ["lead", "lead_status", "status_change"] },
       createdAt: { [Op.between]: [startDate, endDate] },
       performedBy: userId,
-      ...customFilter,
+      ...restFilter,
+    },
+    attributes: ["entityType", "entityId"],
+    include: [{ model: Lead, as: "LeadById", attributes: ["id"] }],
+  });
+  const notes = await Note.findAll({
+    where: {
+      notebleType: "lead",
+      createdAt: { [Op.between]: [startDate, endDate] },
+      createdBy: userId,
+      ...restFilter,
+    },
+    attributes: ["notebleId"],
+  });
+
+  const touchedLeadIds = new Set<number>();
+  for (const act of activities) {
+    const a = act as any;
+    const lid =
+      a.LeadById?.id ??
+      a.Lead?.id ??
+      (a.entityType === "lead" && typeof a.entityId === "number"
+        ? a.entityId
+        : undefined);
+    if (typeof lid === "number" && !Number.isNaN(lid)) touchedLeadIds.add(lid);
+  }
+  for (const note of notes) {
+    const nid = Number((note as any).notebleId);
+    if (!Number.isNaN(nid)) touchedLeadIds.add(nid);
+  }
+  return Array.from(touchedLeadIds);
+}
+
+export const getLeadActivityReportByUser = async (
+  userId: number,
+  period: "daily" | "weekly" | "monthly" | "custom",
+  customFilter: Record<string, any> = {},
+) => {
+  const { startDate, endDate, restFilter } = resolveActivityReportRangeForUser(
+    period,
+    customFilter,
+  );
+  const activities = await LeadActivity.findAll({
+    where: {
+      entityType: { [Op.in]: ["lead", "lead_status", "status_change"] },
+      createdAt: { [Op.between]: [startDate, endDate] },
+      performedBy: userId,
+      ...restFilter,
     },
     include: [
       {
@@ -179,7 +235,7 @@ export const getLeadActivityReportByUser = async (
       notebleType: "lead",
       createdAt: { [Op.between]: [startDate, endDate] },
       createdBy: userId,
-      ...customFilter,
+      ...restFilter,
     },
     include: [
       {
@@ -209,7 +265,7 @@ export const getLeadActivityReportByUser = async (
   // period (activities + notes). A blanket updatedAt filter would count every
   // assigned lead whose row changed for any reason (bulk ops, imports, others).
   const statusUpdatesWhere: any = {
-    ...customFilter,
+    ...restFilter,
     [Op.and]: [
       Sequelize.literal(
         `JSON_CONTAINS(assignees, JSON_OBJECT('userId', ${userId}))`,

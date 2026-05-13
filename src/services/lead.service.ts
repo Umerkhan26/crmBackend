@@ -32,6 +32,10 @@ import Note from "../models/note.model";
 import LeadActivity from "../models/leadActivity.model";
 import Role from "../models/role.model";
 import { Permission } from "../models/permission.model";
+import {
+  getTouchedLeadIdsForUserInDateRange,
+  resolveActivityReportRangeForUser,
+} from "./leadActivity.service";
 import LeadRotationState from "../models/leadRotationState.model";
 import { getBrandManagerIdsForUser, getManagerBrandUserIds } from "../utils/brandUtils";
 import LeadLock from "../models/leadLock.model";
@@ -1889,6 +1893,95 @@ export const getLeadStatusSummary = async (
     ];
     const statusCounts: Record<string, number> = {};
     const leadsByStatus: Record<string, any[]> = {};
+
+    const periodLower = period?.trim().toLowerCase() ?? "";
+    const activityAlignedPeriods = [
+      "daily",
+      "weekly",
+      "monthly",
+      "custom",
+    ] as const;
+
+    if (
+      assigneeId &&
+      periodLower &&
+      (activityAlignedPeriods as readonly string[]).includes(periodLower)
+    ) {
+      const filterArgs: Record<string, any> =
+        periodLower === "custom" && startDate && endDate
+          ? { startDate, endDate }
+          : {};
+
+      const { startDate: rangeStart, endDate: rangeEnd, restFilter } =
+        resolveActivityReportRangeForUser(
+          periodLower as (typeof activityAlignedPeriods)[number],
+          filterArgs,
+        );
+
+      const touchedIds = await getTouchedLeadIdsForUserInDateRange(
+        assigneeId,
+        rangeStart,
+        rangeEnd,
+        restFilter,
+      );
+
+      if (touchedIds.length === 0) {
+        for (const status of statuses) {
+          statusCounts[status] = 0;
+          leadsByStatus[status] = [];
+        }
+        return { statusCounts, leadsByStatus };
+      }
+
+      const touchWhereParts: any[] = [{ id: { [Op.in]: touchedIds } }];
+      if (normalizedCampaignFilter) {
+        touchWhereParts.push(
+          Sequelize.where(
+            Sequelize.fn(
+              "LOWER",
+              Sequelize.fn("TRIM", Sequelize.col("campaignName")),
+            ),
+            normalizedCampaignFilter,
+          ),
+        );
+      }
+
+      const touchedLeads = await Lead.findAll({
+        where:
+          touchWhereParts.length === 1
+            ? touchWhereParts[0]
+            : { [Op.and]: touchWhereParts },
+        order: [["createdAt", "DESC"]],
+      });
+
+      for (const status of statuses) {
+        const filteredLeads = touchedLeads.filter((lead: any) => {
+          let assignees: any[] = [];
+          try {
+            assignees =
+              typeof lead.assignees === "string"
+                ? JSON.parse(lead.assignees)
+                : Array.isArray(lead.assignees)
+                  ? lead.assignees
+                  : [];
+          } catch {
+            assignees = [];
+          }
+          const entry = assignees.find(
+            (a: any) =>
+              Number(a?.userId) === Number(assigneeId) &&
+              String(a?.status || "").toLowerCase() === status,
+          );
+          return !!entry;
+        });
+        statusCounts[status] = filteredLeads.length;
+        leadsByStatus[status] = filteredLeads.map((lead) => ({
+          ...(lead.toJSON() as any),
+        }));
+      }
+
+      return { statusCounts, leadsByStatus };
+    }
 
     const resolvePeriodRange = () => {
       const now = DateTime.now().setZone(PKT_ZONE);

@@ -1101,6 +1101,10 @@ export const getManagerHotLeadRequests = async (
         ? parseInt(String(userIdRaw), 10)
         : NaN;
     const filterUserId = Number.isFinite(parsedUserId) ? parsedUserId : undefined;
+    const search =
+      req.query.search != null && String(req.query.search).trim() !== ""
+        ? String(req.query.search).trim()
+        : undefined;
     const perms = req.user?.permissions || [];
     const scopeAll =
       perms.includes(PERMISSIONS.LEAD_GET_ALL) ||
@@ -1118,6 +1122,7 @@ export const getManagerHotLeadRequests = async (
       startDate,
       endDate,
       filterUserId,
+      search,
     });
     return res.status(200).json({
       success: true,
@@ -1229,6 +1234,10 @@ export const getMyHotLeadRequests = async (
     const filterType = req.query.filterType as string | undefined;
     const startDate = req.query.startDate as string | undefined;
     const endDate = req.query.endDate as string | undefined;
+    const search =
+      req.query.search != null && String(req.query.search).trim() !== ""
+        ? String(req.query.search).trim()
+        : undefined;
     const result = await LeadService.getMyHotLeadRequests({
       userId,
       page,
@@ -1240,6 +1249,7 @@ export const getMyHotLeadRequests = async (
       filterType,
       startDate,
       endDate,
+      search,
     });
     return res.status(200).json({
       success: true,

@@ -2417,6 +2417,39 @@ const inHotLeadDateRange = (
   return true;
 };
 
+/** Substring match (case-insensitive) on visible hot-lead row fields. */
+const filterHotLeadRowsBySearch = <
+  T extends {
+    campaignName?: string | null;
+    leadCode?: string | null;
+    leadId?: number | null;
+    hotLeadRequestComment?: string | null;
+    hotLeadReviewReason?: string | null;
+    hotLeadRejectReason?: string | null;
+    user?: { firstname?: string; lastname?: string; email?: string } | null;
+  },
+>(
+  rows: T[],
+  search?: string | null,
+): T[] => {
+  const q = String(search ?? "").trim().toLowerCase();
+  if (!q) return rows;
+  return rows.filter((row) => {
+    const blobs = [
+      row.campaignName,
+      row.leadCode,
+      row.leadId != null ? String(row.leadId) : "",
+      row.hotLeadRequestComment,
+      row.hotLeadReviewReason,
+      row.hotLeadRejectReason,
+      row.user?.firstname,
+      row.user?.lastname,
+      row.user?.email,
+    ];
+    return blobs.some((b) => String(b || "").toLowerCase().includes(q));
+  });
+};
+
 export const getManagerHotLeadRequests = async ({
   managerId,
   page = 1,
@@ -2431,6 +2464,7 @@ export const getManagerHotLeadRequests = async ({
   startDate,
   endDate,
   filterUserId,
+  search,
 }: {
   managerId: number;
   page?: number;
@@ -2444,6 +2478,7 @@ export const getManagerHotLeadRequests = async ({
   startDate?: string;
   endDate?: string;
   filterUserId?: number;
+  search?: string | null;
 }) => {
   const managedUserIds = scopeAll ? [] : await getManagerBrandUserIds(managerId);
   if (!scopeAll && managedUserIds.length === 0) {
@@ -2567,10 +2602,12 @@ export const getManagerHotLeadRequests = async ({
     ? enriched.filter((row) => inHotLeadDateRange(row, dateRange))
     : enriched;
 
-  const totalItems = dateFiltered.length;
+  const searchFiltered = filterHotLeadRowsBySearch(dateFiltered, search);
+
+  const totalItems = searchFiltered.length;
   const totalPages = totalItems === 0 ? 0 : Math.ceil(totalItems / limit);
   const start = (page - 1) * limit;
-  const statusCounts = dateFiltered.reduce(
+  const statusCounts = searchFiltered.reduce(
     (acc, item) => {
       const status = String(item?.hotLeadRequestStatus || "").toLowerCase().trim();
       if (status === "approved") acc.approved += 1;
@@ -2582,7 +2619,7 @@ export const getManagerHotLeadRequests = async ({
   );
   return {
     reviewState,
-    rows: dateFiltered.slice(start, start + limit),
+    rows: searchFiltered.slice(start, start + limit),
     totalItems,
     totalPages,
     currentPage: page,
@@ -2702,6 +2739,7 @@ export const getMyHotLeadRequests = async ({
   filterType,
   startDate,
   endDate,
+  search,
 }: {
   userId: number;
   page?: number;
@@ -2713,6 +2751,7 @@ export const getMyHotLeadRequests = async ({
   filterType?: string;
   startDate?: string;
   endDate?: string;
+  search?: string | null;
 }) => {
   const effectiveCampaignName = await resolveEffectiveCampaignNameFromQuery(
     campaignName,
@@ -2791,10 +2830,12 @@ export const getMyHotLeadRequests = async ({
     ? rows.filter((row) => inHotLeadDateRange(row, dateRange))
     : rows;
 
-  const totalItems = dateFilteredRows.length;
+  const searchFiltered = filterHotLeadRowsBySearch(dateFilteredRows, search);
+
+  const totalItems = searchFiltered.length;
   const totalPages = totalItems === 0 ? 0 : Math.ceil(totalItems / limit);
   const start = (page - 1) * limit;
-  const statusCounts = dateFilteredRows.reduce(
+  const statusCounts = searchFiltered.reduce(
     (acc, item) => {
       const status = String(item?.hotLeadRequestStatus || "").toLowerCase().trim();
       if (status === "approved") acc.approved += 1;
@@ -2805,7 +2846,7 @@ export const getMyHotLeadRequests = async ({
     { pending: 0, approved: 0, rejected: 0 },
   );
   return {
-    rows: dateFilteredRows.slice(start, start + limit),
+    rows: searchFiltered.slice(start, start + limit),
     totalItems,
     totalPages,
     currentPage: page,
@@ -3435,7 +3476,7 @@ export const getLeadsWithWork = async ({
       ${userScopeSql}
       ${searchSql}
       GROUP BY l.id
-      ORDER BY l.createdAt DESC
+      ORDER BY lastWorkDate DESC, l.id DESC
       LIMIT :limit OFFSET :offset
       `,
       { type: QueryTypes.SELECT, replacements },

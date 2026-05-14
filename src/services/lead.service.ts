@@ -1881,18 +1881,52 @@ export const getLeadStatusSummary = async (
       ? normalizeCampaignNameForApi(effectiveCampaignName)
       : "";
 
+    /** Must match assignee `status` values on Lead (see `lead.model` ALLOWED_STATUSES). */
     const statuses = [
       "pending",
-      "sold",
-      "most_interested",
       "to_call",
+      "interested",
+      "most_interested",
+      "sold",
       "not_answered",
       "not_interested",
       "hot_lead",
       "lead_rejected",
-    ];
+    ] as const;
     const statusCounts: Record<string, number> = {};
     const leadsByStatus: Record<string, any[]> = {};
+
+    const parseAssigneesFromLeadRow = (lead: any): any[] => {
+      try {
+        if (typeof lead.assignees === "string") {
+          const t = lead.assignees.trim();
+          if (!t) return [];
+          const p = JSON.parse(lead.assignees);
+          return Array.isArray(p) ? p : [];
+        }
+        return Array.isArray(lead.assignees) ? lead.assignees : [];
+      } catch {
+        return [];
+      }
+    };
+
+    /** Empty assignee `status` → `pending`. Leads with no assignee row for this user are omitted from all buckets. */
+    const effectiveAssigneeStatusForActivitySummary = (
+      lead: any,
+      aid: number,
+    ): (typeof statuses)[number] | null => {
+      const assignees = parseAssigneesFromLeadRow(lead);
+      const entry = assignees.find(
+        (a: any) => Number(a?.userId) === Number(aid),
+      );
+      if (!entry) return null;
+      const raw = String(entry.status ?? "")
+        .toLowerCase()
+        .trim();
+      const eff = raw || "pending";
+      if (!(statuses as readonly string[]).includes(eff)) return null;
+      return eff as (typeof statuses)[number];
+    };
 
     const periodLower = period?.trim().toLowerCase() ?? "";
     const activityAlignedPeriods = [
@@ -1955,25 +1989,11 @@ export const getLeadStatusSummary = async (
       });
 
       for (const status of statuses) {
-        const filteredLeads = touchedLeads.filter((lead: any) => {
-          let assignees: any[] = [];
-          try {
-            assignees =
-              typeof lead.assignees === "string"
-                ? JSON.parse(lead.assignees)
-                : Array.isArray(lead.assignees)
-                  ? lead.assignees
-                  : [];
-          } catch {
-            assignees = [];
-          }
-          const entry = assignees.find(
-            (a: any) =>
-              Number(a?.userId) === Number(assigneeId) &&
-              String(a?.status || "").toLowerCase() === status,
-          );
-          return !!entry;
-        });
+        const filteredLeads = touchedLeads.filter(
+          (lead: any) =>
+            effectiveAssigneeStatusForActivitySummary(lead, assigneeId) ===
+            status,
+        );
         statusCounts[status] = filteredLeads.length;
         leadsByStatus[status] = filteredLeads.map((lead) => ({
           ...(lead.toJSON() as any),
@@ -3322,6 +3342,30 @@ export const getLeadsWithWorkFilterUsers = async ({
 };
 
 /**
+ * Raw SQL `DATETIME` (e.g. `GREATEST(MAX(...))`) often reaches Node as a string without `Z`.
+ * Sequelize / MySQL for this project stores instants in UTC; without an offset, browsers parse
+ * `YYYY-MM-DD HH:mm:ss` as *local* wall time → ~5h skew vs lead detail (`updatedAt` with `Z`).
+ */
+const lastWorkDateSqlValueToUtcIso = (value: unknown): string | null => {
+  if (value == null) return null;
+  if (value instanceof Date) {
+    const t = value.getTime();
+    if (!Number.isFinite(t) || t <= 0) return null;
+    return value.toISOString();
+  }
+  const s = String(value).trim();
+  if (!s || s.startsWith("1970-01-01")) return null;
+  const hasOffset = /Z$|[+-]\d{2}:?\d{2}$/.test(s);
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/.test(s) && !hasOffset) {
+    const d = new Date(`${s.replace(" ", "T")}Z`);
+    return Number.isNaN(d.getTime()) ? null : d.toISOString();
+  }
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString();
+};
+
+/**
  * Get leads with work done (notes, comments, activities, reminders)
  * Admin: all leads with work. Manager: only leads where work done by their brand users.
  */
@@ -3500,7 +3544,12 @@ export const getLeadsWithWork = async ({
           activitiesCount,
           totalWorkCount: notesCount + activitiesCount,
           latestNote: row.latestNote || "",
-          lastWorkDate: row.lastWorkDate && row.lastWorkDate !== "1970-01-01" ? row.lastWorkDate : null,
+          lastWorkDate: (() => {
+            const raw = row.lastWorkDate;
+            if (raw == null) return null;
+            if (String(raw).trim().startsWith("1970-01-01")) return null;
+            return lastWorkDateSqlValueToUtcIso(raw);
+          })(),
         },
       };
     });

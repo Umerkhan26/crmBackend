@@ -33,8 +33,7 @@ import LeadActivity from "../models/leadActivity.model";
 import Role from "../models/role.model";
 import { Permission } from "../models/permission.model";
 import {
-  getTouchedLeadIdsForUserInDateRange,
-  resolveActivityReportRangeForUser,
+  getStatusCountsForUserActivityPeriod,
 } from "./leadActivity.service";
 import LeadRotationState from "../models/leadRotationState.model";
 import { getBrandManagerIdsForUser, getManagerBrandUserIds } from "../utils/brandUtils";
@@ -1896,38 +1895,6 @@ export const getLeadStatusSummary = async (
     const statusCounts: Record<string, number> = {};
     const leadsByStatus: Record<string, any[]> = {};
 
-    const parseAssigneesFromLeadRow = (lead: any): any[] => {
-      try {
-        if (typeof lead.assignees === "string") {
-          const t = lead.assignees.trim();
-          if (!t) return [];
-          const p = JSON.parse(lead.assignees);
-          return Array.isArray(p) ? p : [];
-        }
-        return Array.isArray(lead.assignees) ? lead.assignees : [];
-      } catch {
-        return [];
-      }
-    };
-
-    /** Empty assignee `status` → `pending`. Leads with no assignee row for this user are omitted from all buckets. */
-    const effectiveAssigneeStatusForActivitySummary = (
-      lead: any,
-      aid: number,
-    ): (typeof statuses)[number] | null => {
-      const assignees = parseAssigneesFromLeadRow(lead);
-      const entry = assignees.find(
-        (a: any) => Number(a?.userId) === Number(aid),
-      );
-      if (!entry) return null;
-      const raw = String(entry.status ?? "")
-        .toLowerCase()
-        .trim();
-      const eff = raw || "pending";
-      if (!(statuses as readonly string[]).includes(eff)) return null;
-      return eff as (typeof statuses)[number];
-    };
-
     const periodLower = period?.trim().toLowerCase() ?? "";
     const activityAlignedPeriods = [
       "daily",
@@ -1946,61 +1913,31 @@ export const getLeadStatusSummary = async (
           ? { startDate, endDate }
           : {};
 
-      const { startDate: rangeStart, endDate: rangeEnd, restFilter } =
-        resolveActivityReportRangeForUser(
-          periodLower as (typeof activityAlignedPeriods)[number],
-          filterArgs,
-        );
-
-      const touchedIds = await getTouchedLeadIdsForUserInDateRange(
+      const periodCounts = await getStatusCountsForUserActivityPeriod(
         assigneeId,
-        rangeStart,
-        rangeEnd,
-        restFilter,
+        periodLower as (typeof activityAlignedPeriods)[number],
+        filterArgs,
       );
 
-      if (touchedIds.length === 0) {
-        for (const status of statuses) {
-          statusCounts[status] = 0;
-          leadsByStatus[status] = [];
-        }
-        return { statusCounts, leadsByStatus };
-      }
+      let { statusCounts: alignedCounts, leadsByStatus: alignedLeads } =
+        periodCounts;
 
-      const touchWhereParts: any[] = [{ id: { [Op.in]: touchedIds } }];
       if (normalizedCampaignFilter) {
-        touchWhereParts.push(
-          Sequelize.where(
-            Sequelize.fn(
-              "LOWER",
-              Sequelize.fn("TRIM", Sequelize.col("campaignName")),
-            ),
-            normalizedCampaignFilter,
-          ),
-        );
+        for (const status of statuses) {
+          alignedLeads[status] = (alignedLeads[status] || []).filter((lead) => {
+            const name = String(lead?.campaignName ?? "")
+              .trim()
+              .toLowerCase();
+            return name === normalizedCampaignFilter;
+          });
+          alignedCounts[status] = alignedLeads[status].length;
+        }
       }
 
-      const touchedLeads = await Lead.findAll({
-        where:
-          touchWhereParts.length === 1
-            ? touchWhereParts[0]
-            : { [Op.and]: touchWhereParts },
-        order: [["createdAt", "DESC"]],
-      });
-
-      for (const status of statuses) {
-        const filteredLeads = touchedLeads.filter(
-          (lead: any) =>
-            effectiveAssigneeStatusForActivitySummary(lead, assigneeId) ===
-            status,
-        );
-        statusCounts[status] = filteredLeads.length;
-        leadsByStatus[status] = filteredLeads.map((lead) => ({
-          ...(lead.toJSON() as any),
-        }));
-      }
-
-      return { statusCounts, leadsByStatus };
+      return {
+        statusCounts: alignedCounts,
+        leadsByStatus: alignedLeads,
+      };
     }
 
     const resolvePeriodRange = () => {

@@ -204,6 +204,103 @@ export async function getTouchedLeadIdsForUserInDateRange(
   return Array.from(touchedLeadIds);
 }
 
+/** Status keys on assignee rows (must match Lead model / user reports UI). */
+export const REPORT_STATUS_KEYS = [
+  "pending",
+  "to_call",
+  "interested",
+  "most_interested",
+  "sold",
+  "not_answered",
+  "not_interested",
+  "hot_lead",
+  "lead_rejected",
+] as const;
+
+const parseAssigneesFromLeadRow = (lead: any): any[] => {
+  try {
+    if (typeof lead.assignees === "string") {
+      const t = lead.assignees.trim();
+      if (!t) return [];
+      const p = JSON.parse(lead.assignees);
+      return Array.isArray(p) ? p : [];
+    }
+    return Array.isArray(lead.assignees) ? lead.assignees : [];
+  } catch {
+    return [];
+  }
+};
+
+/** Current assignee status for this user on a lead (empty status → pending). */
+export const effectiveAssigneeStatusForUser = (
+  lead: any,
+  userId: number,
+): (typeof REPORT_STATUS_KEYS)[number] | null => {
+  const entry = parseAssigneesFromLeadRow(lead).find(
+    (a: any) => Number(a?.userId) === Number(userId),
+  );
+  if (!entry) return null;
+  const raw = String(entry.status ?? "")
+    .toLowerCase()
+    .trim();
+  const eff = raw || "pending";
+  if (!(REPORT_STATUS_KEYS as readonly string[]).includes(eff)) return null;
+  return eff as (typeof REPORT_STATUS_KEYS)[number];
+};
+
+/**
+ * Status breakdown for leads the user touched in the period (activities + notes),
+ * bucketed by current assignee status — same basis as `totalLeadsWorkedOn`.
+ */
+export async function getStatusCountsForUserActivityPeriod(
+  userId: number,
+  period: "daily" | "weekly" | "monthly" | "custom",
+  customFilter: Record<string, any> = {},
+): Promise<{
+  statusCounts: Record<string, number>;
+  leadsByStatus: Record<string, any[]>;
+}> {
+  const { startDate, endDate, restFilter } = resolveActivityReportRangeForUser(
+    period,
+    customFilter,
+  );
+  const touchedIds = await getTouchedLeadIdsForUserInDateRange(
+    userId,
+    startDate,
+    endDate,
+    restFilter,
+  );
+
+  const statusCounts: Record<string, number> = {};
+  const leadsByStatus: Record<string, any[]> = {};
+  for (const status of REPORT_STATUS_KEYS) {
+    statusCounts[status] = 0;
+    leadsByStatus[status] = [];
+  }
+
+  if (touchedIds.length === 0) {
+    return { statusCounts, leadsByStatus };
+  }
+
+  const touchedLeads = await Lead.findAll({
+    where: { id: { [Op.in]: touchedIds } },
+    order: [["createdAt", "DESC"]],
+  });
+
+  for (const lead of touchedLeads) {
+    const status = effectiveAssigneeStatusForUser(lead, userId);
+    if (!status) continue;
+    statusCounts[status]++;
+    leadsByStatus[status].push(
+      typeof (lead as any).toJSON === "function"
+        ? (lead as any).toJSON()
+        : lead,
+    );
+  }
+
+  return { statusCounts, leadsByStatus };
+}
+
 export const getLeadActivityReportByUser = async (
   userId: number,
   period: "daily" | "weekly" | "monthly" | "custom",
@@ -320,18 +417,9 @@ export const getLeadActivityReportByUser = async (
     }
   }
   for (const lead of statusUpdates) {
-    let assignees: any[] = [];
-    try {
-      assignees =
-        typeof lead.assignees === "string"
-          ? JSON.parse(lead.assignees)
-          : Array.isArray(lead.assignees)
-            ? lead.assignees
-            : [];
-    } catch {
-      assignees = [];
-    }
-    const assignee = assignees.find((a: any) => a.userId === userId);
+    const assignee = parseAssigneesFromLeadRow(lead).find(
+      (a: any) => Number(a?.userId) === Number(userId),
+    );
     if (assignee) {
       const leadName =
         lead.leadData?.name || lead.leadData?.fullName || lead.leadCode || `Lead #${lead.id}`;
@@ -347,6 +435,13 @@ export const getLeadActivityReportByUser = async (
       }
     }
   }
+
+  const { statusCounts } = await getStatusCountsForUserActivityPeriod(
+    userId,
+    period,
+    customFilter,
+  );
+
   return {
     user: report.user,
     totalActivities: report.totalActivities,
@@ -358,6 +453,7 @@ export const getLeadActivityReportByUser = async (
       name,
     })),
     statusChangeHistory: report.statusChangeHistory,
+    statusCounts,
     lastActivityAt: report.lastActivityAt,
   };
 };

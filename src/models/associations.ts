@@ -20,6 +20,7 @@ import LeadAssignmentBatch from "./leadAssignmentBatch.model";
 import TeamRotationConfig from "./teamRotationConfig.model";
 import LeadRotationState from "./leadRotationState.model";
 import LeadAssignmentState from "./leadAssignmentState.model";
+import CustomerAccount from "./customerAccount.model";
 
 Role.belongsToMany(Permission, {
   through: RolePermission,
@@ -58,6 +59,21 @@ Campaign.hasMany(ClientLead, { foreignKey: "campaign_id", as: "clientLeads", onD
 
 Lead.hasOne(ProductSale, { foreignKey: "leadId", onDelete: "CASCADE" });
 ProductSale.belongsTo(Lead, { foreignKey: "leadId", onDelete: "CASCADE" });
+
+Lead.belongsTo(Brand, { foreignKey: "brandId", as: "brand", onDelete: "SET NULL" });
+Brand.hasMany(Lead, { foreignKey: "brandId", as: "leads", onDelete: "SET NULL" });
+
+ProductSale.belongsTo(Brand, { foreignKey: "brandId", as: "brand", onDelete: "SET NULL" });
+Brand.hasMany(ProductSale, { foreignKey: "brandId", as: "sales", onDelete: "SET NULL" });
+
+User.hasMany(CustomerAccount, { foreignKey: "userId", as: "customerAccounts", onDelete: "CASCADE" });
+CustomerAccount.belongsTo(User, { foreignKey: "userId", as: "user", onDelete: "CASCADE" });
+
+Brand.hasMany(CustomerAccount, { foreignKey: "brandId", as: "customerAccounts", onDelete: "CASCADE" });
+CustomerAccount.belongsTo(Brand, { foreignKey: "brandId", as: "brand", onDelete: "CASCADE" });
+
+CustomerAccount.belongsTo(Lead, { foreignKey: "leadId", as: "lead", onDelete: "SET NULL" });
+CustomerAccount.belongsTo(ProductSale, { foreignKey: "saleId", as: "sale", onDelete: "SET NULL" });
 
 User.hasMany(ProductSale, { foreignKey: "createdBy", onDelete: "CASCADE" });
 ProductSale.belongsTo(User, { foreignKey: "createdBy", onDelete: "CASCADE" });

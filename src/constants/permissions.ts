@@ -107,6 +107,10 @@ export const PERMISSIONS = {
   BRAND_ASSIGN_MANAGERS: "brand:assignManagers",
   BRAND_REMOVE_MANAGERS: "brand:removeManagers",
 
+  // Customer account (portal customers created from sales)
+  CUSTOMER_ACCOUNT_GET: "customerAccount:get",
+  CUSTOMER_ACCOUNT_CREATE: "customerAccount:create",
+
   // Team permissions
   TEAM_CREATE: "team:create",
   TEAM_GET: "team:get",

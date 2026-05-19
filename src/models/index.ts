@@ -35,4 +35,6 @@ import "./leadRotationState.model";
 import "./leadAssignmentState.model";
 import "./incomingLead.model";
 import "./leadMemberHistory.model";
+import "./customerAccount.model";
+import "./client.model";
 associateModels();

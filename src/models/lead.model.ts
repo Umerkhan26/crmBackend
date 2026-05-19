@@ -27,6 +27,7 @@ export interface LeadAttributes {
   leadData: any;
   assignees?: AssigneeWithStatus[];
   createdBy?: number; // User ID who created the lead
+  brandId?: number | null;
 }
 
 export interface LeadCreationAttributes
@@ -39,6 +40,7 @@ export class Lead
   public campaignName!: string;
   public leadData!: any;
   public assignees?: AssigneeWithStatus[];
+  public brandId?: number | null;
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
@@ -77,6 +79,15 @@ Lead.init(
         model: "users",
         key: "id",
       },
+    },
+    brandId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      references: {
+        model: "brands",
+        key: "id",
+      },
+      onDelete: "SET NULL",
     },
   },
   {

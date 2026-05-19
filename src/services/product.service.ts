@@ -21,11 +21,14 @@ interface SaleQueryParams extends PaginationParams {
 }
 
 export const convertLeadToSale = async (
-  data: ProductSaleCreationAttributes,
+  data: ProductSaleCreationAttributes & {
+    autoProvisionCustomer?: boolean;
+  },
   userId?: number
 ): Promise<any> => {
   try {
-    const { leadId, campaignId, assigneeId, products } = data;
+    const { leadId, campaignId, assigneeId, products, brandId, autoProvisionCustomer } =
+      data;
 
     const lead = await Lead.findByPk(leadId);
     if (!lead) throw new Error("Lead not found");
@@ -33,8 +36,14 @@ export const convertLeadToSale = async (
     const existingSale = await ProductSale.findOne({ where: { leadId } });
     if (existingSale) throw new Error("Lead is already converted to a sale");
 
+    const resolvedBrandId = brandId ?? lead.brandId ?? undefined;
+    if (resolvedBrandId && !lead.brandId) {
+      await lead.update({ brandId: resolvedBrandId });
+    }
+
     const sale = await ProductSale.create({
       ...data,
+      brandId: resolvedBrandId,
       products: products ?? null,
       status: "converted",
       conversionDate: new Date(),
@@ -42,6 +51,24 @@ export const convertLeadToSale = async (
       campaignId,
       assigneeId,
     });
+
+    let customerProvisioning: Awaited<
+      ReturnType<
+        typeof import("./customerProvisioning.service").provisionCustomerFromSale
+      >
+    > | null = null;
+
+    if (autoProvisionCustomer !== false && userId && sale.id) {
+      const { provisionCustomerFromSale } = await import(
+        "./customerProvisioning.service"
+      );
+      customerProvisioning = await provisionCustomerFromSale({
+        saleId: sale.id,
+        leadId: leadId!,
+        brandId: resolvedBrandId ?? null,
+        agentUserId: userId,
+      });
+    }
 
     if (userId) {
       // Fetch user to get full name for activity log
@@ -57,7 +84,10 @@ export const convertLeadToSale = async (
       );
     }
 
-    return sale.get();
+    return {
+      ...sale.get(),
+      customerProvisioning,
+    };
   } catch (error: any) {
     throw new Error(`Error converting lead to sale: ${error.message}`);
   }

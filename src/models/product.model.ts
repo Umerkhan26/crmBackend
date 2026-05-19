@@ -16,8 +16,8 @@ export interface ProductSaleAttributes {
   campaignId?: number;
   assigneeId?: number;
   products?: any[] | null;
-
-
+  brandId?: number | null;
+  customerProvisionedAt?: Date | null;
 }
 
 export interface ProductSaleCreationAttributes
@@ -33,6 +33,8 @@ export interface ProductSaleCreationAttributes
     | "price"
     | "products"
     | "campaignId"
+    | "brandId"
+    | "customerProvisionedAt"
   > { }
 
 class ProductSale
@@ -49,6 +51,8 @@ class ProductSale
   public campaignId?: number;
   public assigneeId?: number;
   public products?: any[];
+  public brandId?: number | null;
+  public customerProvisionedAt?: Date | null;
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
@@ -124,6 +128,19 @@ ProductSale.init(
     },
     products: {
       type: DataTypes.JSON,
+      allowNull: true,
+    },
+    brandId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      references: {
+        model: "brands",
+        key: "id",
+      },
+      onDelete: "SET NULL",
+    },
+    customerProvisionedAt: {
+      type: DataTypes.DATE,
       allowNull: true,
     },
   },

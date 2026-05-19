@@ -38,6 +38,8 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 // so /api/brands is not caught by a router with /api/:id
 const ROUTE_PRIORITY: Record<string, { mount?: string; order?: number }> = {
   "brand.routes": { mount: "/api/brands", order: 0 },  // must be first - /api/brands before /api
+  "customerArea.routes": { mount: "/api/customer-area", order: 0 },
+  "customerAccount.routes": { mount: "/api/customer-accounts", order: 0 },
   "user.routes": { order: 1 },  // login, register
   "role.routes": { order: 2 },  // /all
   "permission.routes": { order: 3 },

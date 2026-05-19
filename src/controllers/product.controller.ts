@@ -15,6 +15,8 @@ export const convertLeadToSale = async (
       campaignId,
       assigneeId,
       products,
+      brandId,
+      autoProvisionCustomer,
     } = req.body;
     const createdBy = req.user?.id;
 
@@ -39,6 +41,9 @@ export const convertLeadToSale = async (
         createdBy: createdBy ?? undefined,
         campaignId,
         assigneeId,
+        brandId: brandId ? Number(brandId) : undefined,
+        autoProvisionCustomer:
+          autoProvisionCustomer !== undefined ? Boolean(autoProvisionCustomer) : true,
       },
       createdBy
     );

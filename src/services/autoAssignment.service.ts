@@ -141,12 +141,13 @@ const recordLeadHistory = async ({
   } as any);
 };
 
-/** Chunk size for assign-by-date / cron-assign-last-24h (limits row lock duration). */
-const ASSIGN_BY_DATE_CHUNK_SIZE = 50;
-const ASSIGN_BY_DATE_CHUNK_MAX_RETRIES = 3;
-const ASSIGN_BY_DATE_IDLE_CHUNK_LIMIT = 30;
-const ASSIGN_BY_DATE_IDLE_SLEEP_MS = 2000;
+/** One incoming row per transaction for assign-by-date (minimizes lock contention). */
+const ASSIGN_BY_DATE_ROW_MAX_RETRIES = 3;
 const ASSIGN_BY_DATE_RETRY_SLEEP_MS = 3000;
+const ASSIGN_BY_DATE_PROGRESS_EVERY = 100;
+/** MySQL advisory lock — assign waits; rebalance/rotate skip if held. */
+const AUTO_ASSIGNMENT_JOB_LOCK = "crm_auto_assignment_job";
+const AUTO_ASSIGNMENT_LOCK_WAIT_ASSIGN_SEC = 7200;
 
 const sleepMs = (ms: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -154,6 +155,38 @@ const sleepMs = (ms: number) =>
 const isLockWaitTimeoutError = (err: any): boolean => {
   const msg = String(err?.message || err || "").toLowerCase();
   return msg.includes("lock wait timeout");
+};
+
+const parseGetLockResult = (rows: unknown): number | null => {
+  const row = Array.isArray(rows) ? (rows as any[])[0] : null;
+  if (!row || typeof row !== "object") return null;
+  const v =
+    (row as any).acquired ??
+    (row as any).ACQUIRED ??
+    Object.values(row as object)[0];
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+};
+
+const acquireAutoAssignmentJobLock = async (
+  waitSeconds: number,
+): Promise<boolean> => {
+  const [rows] = await db.query(
+    "SELECT GET_LOCK(:lockName, :waitSec) AS acquired",
+    {
+      replacements: {
+        lockName: AUTO_ASSIGNMENT_JOB_LOCK,
+        waitSec: Math.max(0, Math.floor(waitSeconds)),
+      },
+    },
+  );
+  return parseGetLockResult(rows) === 1;
+};
+
+const releaseAutoAssignmentJobLock = async (): Promise<void> => {
+  await db.query("SELECT RELEASE_LOCK(:lockName) AS released", {
+    replacements: { lockName: AUTO_ASSIGNMENT_JOB_LOCK },
+  });
 };
 
 /** DB requires unique `lead_assignment_batches.runId` — never reuse import batch ids here. */
@@ -1086,6 +1119,7 @@ export const assignByDateToTeamA = async ({
   let newAssignedCount = 0;
   let globalFirstLeadId = 0;
   let processedInRun = 0;
+  let jobLockHeld = false;
 
   const incomingWhere = {
     status: { [Op.ne]: "promoted" },
@@ -1093,6 +1127,15 @@ export const assignByDateToTeamA = async ({
   };
 
   try {
+    jobLockHeld = await acquireAutoAssignmentJobLock(
+      AUTO_ASSIGNMENT_LOCK_WAIT_ASSIGN_SEC,
+    );
+    if (!jobLockHeld) {
+      throw new Error(
+        "Could not acquire auto-assignment job lock (another assign/rebalance/rotate may be running).",
+      );
+    }
+
     const teamA = await getTeamByCodeA();
     const members = await getActiveMemberUserIds(teamA.id);
     if (members.length === 0) throw new Error("No active members in Team A");
@@ -1118,168 +1161,138 @@ export const assignByDateToTeamA = async ({
       batchId: (batch as any).id,
       teamAId: teamA.id,
       incomingCount: incomingTotal,
-      chunkSize: ASSIGN_BY_DATE_CHUNK_SIZE,
+      mode: "one-row-per-transaction",
       activeMemberCount: members.length,
       memberUserIds: members,
     });
-
-    let idleChunks = 0;
 
     while (true) {
       const remaining = await IncomingLead.count({ where: incomingWhere });
       if (remaining === 0) break;
 
-      const idCandidates = await IncomingLead.findAll({
+      const nextIncoming = await IncomingLead.findOne({
         where: incomingWhere,
         order: [["id", "ASC"]],
-        limit: ASSIGN_BY_DATE_CHUNK_SIZE,
         attributes: ["id"],
       });
-      if (idCandidates.length === 0) break;
+      if (!nextIncoming) break;
 
-      const candidateIds = idCandidates.map((r) => r.get("id") as number);
+      const incomingId = nextIncoming.get("id") as number;
+      let rowAttempts = 0;
+      let rowDone = false;
 
-      let chunkAttempts = 0;
-      let chunkDone = false;
-
-      while (!chunkDone && chunkAttempts < ASSIGN_BY_DATE_CHUNK_MAX_RETRIES) {
-        chunkAttempts++;
+      while (!rowDone && rowAttempts < ASSIGN_BY_DATE_ROW_MAX_RETRIES) {
+        rowAttempts++;
         const t = await db.transaction();
         try {
-          const rows: InstanceType<typeof IncomingLead>[] =
-            await IncomingLead.findAll({
-              where: {
-                id: { [Op.in]: candidateIds },
-                ...incomingWhere,
-              },
-              order: [["id", "ASC"]],
-              transaction: t,
-              lock: t.LOCK.UPDATE,
-              skipLocked: true,
-            });
-
-          if (rows.length === 0) {
+          const rec = await IncomingLead.findByPk(incomingId, {
+            transaction: t,
+            lock: t.LOCK.UPDATE,
+          });
+          if (!rec || (rec.get("status") as string) === "promoted") {
             await t.commit();
-            idleChunks++;
-            if (idleChunks >= ASSIGN_BY_DATE_IDLE_CHUNK_LIMIT) {
-              throw new Error(
-                `Assign stalled: ${remaining} incoming rows still locked by another process (e.g. rebalance cron or bulk import). Stop cron-rebalance-rotate during assign, then retry.`,
-              );
-            }
-            console.warn(
-              "[auto-assignment:assign-by-date] chunk skipped — rows locked, waiting",
-              { batchId: (batch as any).id, remaining, idleChunks },
-            );
-            await sleepMs(ASSIGN_BY_DATE_IDLE_SLEEP_MS);
-            chunkDone = true;
+            rowDone = true;
             break;
           }
 
-          idleChunks = 0;
+          const payload: any = rec.get("payload") || {};
+          const campaignName: string =
+            (rec.get("campaignName") as any) || payload.campaignName || "General";
+          const lead = await Lead.create(
+            {
+              campaignName,
+              leadData: normalizeLeadDataInput(payload),
+              assignees: [],
+              createdBy: triggeredByUserId || null,
+            } as any,
+            { transaction: t },
+          );
+          const leadId = (lead as any).id as number;
+          await rec.update(
+            {
+              status: "promoted",
+              promotedAt: new Date(),
+              targetLeadId: leadId,
+            } as any,
+            { transaction: t },
+          );
 
-          const leadIds: number[] = [];
-          for (const rec of rows) {
-            const payload: any = rec.get("payload") || {};
-            const campaignName: string =
-              (rec.get("campaignName") as any) || payload.campaignName || "General";
-            const lead = await Lead.create(
-              {
-                campaignName,
-                leadData: normalizeLeadDataInput(payload),
-                assignees: [],
-                createdBy: triggeredByUserId || null,
-              } as any,
-              { transaction: t },
-            );
-            leadIds.push((lead as any).id);
-            await rec.update(
-              {
-                status: "promoted",
-                promotedAt: new Date(),
-                targetLeadId: (lead as any).id,
-              } as any,
-              { transaction: t },
-            );
-          }
+          if (globalFirstLeadId === 0) globalFirstLeadId = leadId;
 
-          if (globalFirstLeadId === 0) globalFirstLeadId = leadIds[0] ?? 0;
-
-          const plan = chooseAssigneesEqualSplit(
-            leadIds,
+          const assigneeId = chooseAssigneesEqualSplit(
+            [leadId],
             members,
             globalFirstLeadId + processedInRun,
-          );
-          for (const leadId of leadIds) {
-            const assigneeId = plan.get(leadId)!;
-            const lead = await Lead.findByPk(leadId, {
-              transaction: t,
-              lock: t.LOCK.UPDATE,
-            });
-            if (!lead) continue;
-            const assignedAt = new Date().toISOString();
-            const assignees = [
-              {
-                userId: assigneeId,
-                status: deriveStatusForNextAssignee((lead as any).assignees),
-                assignedAt,
-              },
-            ];
-            await lead.update({ assignees } as any, { transaction: t });
-            await LeadAssignmentState.upsert(
-              {
-                leadId,
-                teamId: teamA.id,
-                currentAssigneeUserId: assigneeId,
-                lastAssignedAt: new Date(),
-                seenUserIds: [assigneeId],
-                cycleStep: 1,
-                cycleNo: 1,
-              } as any,
-              { transaction: t },
-            );
-            await recordLeadHistory({
+          ).get(leadId)!;
+          const assignedAt = new Date().toISOString();
+          const assignees = [
+            {
+              userId: assigneeId,
+              status: deriveStatusForNextAssignee((lead as any).assignees),
+              assignedAt,
+            },
+          ];
+          await lead.update({ assignees } as any, { transaction: t });
+          await LeadAssignmentState.upsert(
+            {
               leadId,
               teamId: teamA.id,
-              userId: assigneeId,
+              currentAssigneeUserId: assigneeId,
+              lastAssignedAt: new Date(),
+              seenUserIds: [assigneeId],
+              cycleStep: 1,
               cycleNo: 1,
-              source: "assign",
-              transaction: t,
-            });
-            await LeadRotationState.upsert(
-              { leadId, teamId: teamA.id, enteredTeamAt: new Date() } as any,
-              { transaction: t },
-            );
-          }
-
-          processedInRun += leadIds.length;
-          newAssignedCount += leadIds.length;
-          await t.commit();
-
-          console.log("[auto-assignment:assign-by-date] chunk committed", {
-            batchId: (batch as any).id,
-            chunkRows: rows.length,
-            processedInRun,
-            newAssignedCount,
+            } as any,
+            { transaction: t },
+          );
+          await recordLeadHistory({
+            leadId,
+            teamId: teamA.id,
+            userId: assigneeId,
+            cycleNo: 1,
+            source: "assign",
+            transaction: t,
           });
-          chunkDone = true;
-        } catch (chunkErr: any) {
+          await LeadRotationState.upsert(
+            { leadId, teamId: teamA.id, enteredTeamAt: new Date() } as any,
+            { transaction: t },
+          );
+
+          await t.commit();
+          processedInRun += 1;
+          newAssignedCount += 1;
+          rowDone = true;
+
+          if (
+            processedInRun % ASSIGN_BY_DATE_PROGRESS_EVERY === 0 ||
+            processedInRun === incomingTotal
+          ) {
+            console.log("[auto-assignment:assign-by-date] progress", {
+              batchId: (batch as any).id,
+              processedInRun,
+              newAssignedCount,
+              remaining: Math.max(0, incomingTotal - processedInRun),
+            });
+          }
+        } catch (rowErr: any) {
           await t.rollback();
           if (
-            isLockWaitTimeoutError(chunkErr) &&
-            chunkAttempts < ASSIGN_BY_DATE_CHUNK_MAX_RETRIES
+            isLockWaitTimeoutError(rowErr) &&
+            rowAttempts < ASSIGN_BY_DATE_ROW_MAX_RETRIES
           ) {
             console.warn(
-              "[auto-assignment:assign-by-date] chunk lock timeout, retrying",
+              "[auto-assignment:assign-by-date] row lock timeout, retrying",
               {
                 batchId: (batch as any).id,
-                chunkAttempts,
+                incomingId,
+                rowAttempts,
                 processedInRun,
               },
             );
             await sleepMs(ASSIGN_BY_DATE_RETRY_SLEEP_MS);
             continue;
           }
-          throw chunkErr;
+          throw rowErr;
         }
       }
     }
@@ -1293,7 +1306,6 @@ export const assignByDateToTeamA = async ({
       batchId: (batch as any).id,
       teamAId: teamA.id,
       newAssignedCount,
-      chunkSize: ASSIGN_BY_DATE_CHUNK_SIZE,
       globalFirstLeadId: globalFirstLeadId || null,
     });
     return { batchId: (batch as any).id, newAssignedCount };
@@ -1311,6 +1323,10 @@ export const assignByDateToTeamA = async ({
       errorMessage: e.message,
     } as any);
     throw e;
+  } finally {
+    if (jobLockHeld) {
+      await releaseAutoAssignmentJobLock();
+    }
   }
 };
 
@@ -1352,6 +1368,22 @@ export const rebalanceTeam = async ({
     );
   }
 
+  if (!(await acquireAutoAssignmentJobLock(0))) {
+    console.log(
+      "[auto-assignment:rebalance-team] skipped — assign or another auto-assignment job holds the lock",
+      { teamId, labelRunId: labelRunId?.trim() || null },
+    );
+    return {
+      rebalanced: 0,
+      skippedBecauseBusy: true,
+      trackedForTeam: 0,
+      skippedLocked: 0,
+      batchId: null,
+    };
+  }
+
+  let jobLockHeld = true;
+  try {
   const hint = labelRunId?.trim() || `team${teamId}`;
   const batch = await LeadAssignmentBatch.create({
     runId: makeAuditBatchRunId("rebal", hint),
@@ -1578,6 +1610,9 @@ export const rebalanceTeam = async ({
     } as any);
     throw e;
   }
+  } finally {
+    if (jobLockHeld) await releaseAutoAssignmentJobLock();
+  }
 };
 
 /** tenureHours 0 → cutoff is “now”, so every rotation row with enteredTeamAt ≤ now is eligible (typical testing). */
@@ -1594,6 +1629,21 @@ export const rotateByTenure = async ({
     Number.isFinite(Number(tenureHours)) && Number(tenureHours) >= 0
       ? Number(tenureHours)
       : 24;
+  if (!(await acquireAutoAssignmentJobLock(0))) {
+    console.log(
+      "[auto-assignment:rotate] skipped — assign or another auto-assignment job holds the lock",
+      { tenureHours: th, labelRunId: labelRunId?.trim() || null },
+    );
+    return {
+      rotated: 0,
+      skippedBecauseBusy: true,
+      tenureHours: th,
+      batchId: null,
+    };
+  }
+
+  let jobLockHeld = true;
+  try {
   const hint = labelRunId?.trim() || `h${String(th).replace(/\./g, "p")}`;
   const batch = await LeadAssignmentBatch.create({
     runId: makeAuditBatchRunId("rot", hint),
@@ -1797,6 +1847,9 @@ export const rotateByTenure = async ({
       errorMessage: e.message,
     } as any);
     throw e;
+  }
+  } finally {
+    if (jobLockHeld) await releaseAutoAssignmentJobLock();
   }
 };
 

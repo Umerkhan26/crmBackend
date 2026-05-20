@@ -108,11 +108,17 @@ const run = async () => {
       continue;
     }
 
-    await rebalanceTeam({
+    const rebalanceResult = await rebalanceTeam({
       teamId,
       triggeredByUserId: undefined,
       labelRunId,
     });
+    if ((rebalanceResult as any)?.skippedBecauseBusy) {
+      console.log(
+        `[cron-rebalance-rotate] Skipping team ${teamId} — assign job is running (advisory lock).`,
+      );
+      continue;
+    }
     ranAnyRebalance = true;
 
     const key = String(teamId);

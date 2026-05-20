@@ -142,7 +142,19 @@ const recordLeadHistory = async ({
 };
 
 /** Chunk size for assign-by-date / cron-assign-last-24h (limits row lock duration). */
-const ASSIGN_BY_DATE_CHUNK_SIZE = 100;
+const ASSIGN_BY_DATE_CHUNK_SIZE = 50;
+const ASSIGN_BY_DATE_CHUNK_MAX_RETRIES = 3;
+const ASSIGN_BY_DATE_IDLE_CHUNK_LIMIT = 30;
+const ASSIGN_BY_DATE_IDLE_SLEEP_MS = 2000;
+const ASSIGN_BY_DATE_RETRY_SLEEP_MS = 3000;
+
+const sleepMs = (ms: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+const isLockWaitTimeoutError = (err: any): boolean => {
+  const msg = String(err?.message || err || "").toLowerCase();
+  return msg.includes("lock wait timeout");
+};
 
 /** DB requires unique `lead_assignment_batches.runId` — never reuse import batch ids here. */
 const makeAuditBatchRunId = (prefix: string, hint?: string): string => {
@@ -1111,109 +1123,164 @@ export const assignByDateToTeamA = async ({
       memberUserIds: members,
     });
 
+    let idleChunks = 0;
+
     while (true) {
-      const t = await db.transaction();
-      try {
-        const rows: InstanceType<typeof IncomingLead>[] =
-          await IncomingLead.findAll({
-            where: incomingWhere,
-            order: [["id", "ASC"]],
-            limit: ASSIGN_BY_DATE_CHUNK_SIZE,
-            transaction: t,
-            lock: t.LOCK.UPDATE,
-          });
-        if (rows.length === 0) {
-          await t.commit();
-          break;
-        }
+      const remaining = await IncomingLead.count({ where: incomingWhere });
+      if (remaining === 0) break;
 
-        const leadIds: number[] = [];
-        for (const rec of rows) {
-          const payload: any = rec.get("payload") || {};
-          const campaignName: string =
-            (rec.get("campaignName") as any) || payload.campaignName || "General";
-          const lead = await Lead.create(
-            {
-              campaignName,
-              leadData: normalizeLeadDataInput(payload),
-              assignees: [],
-              createdBy: triggeredByUserId || null,
-            } as any,
-            { transaction: t },
+      const idCandidates = await IncomingLead.findAll({
+        where: incomingWhere,
+        order: [["id", "ASC"]],
+        limit: ASSIGN_BY_DATE_CHUNK_SIZE,
+        attributes: ["id"],
+      });
+      if (idCandidates.length === 0) break;
+
+      const candidateIds = idCandidates.map((r) => r.get("id") as number);
+
+      let chunkAttempts = 0;
+      let chunkDone = false;
+
+      while (!chunkDone && chunkAttempts < ASSIGN_BY_DATE_CHUNK_MAX_RETRIES) {
+        chunkAttempts++;
+        const t = await db.transaction();
+        try {
+          const rows: InstanceType<typeof IncomingLead>[] =
+            await IncomingLead.findAll({
+              where: {
+                id: { [Op.in]: candidateIds },
+                ...incomingWhere,
+              },
+              order: [["id", "ASC"]],
+              transaction: t,
+              lock: t.LOCK.UPDATE,
+              skipLocked: true,
+            });
+
+          if (rows.length === 0) {
+            await t.commit();
+            idleChunks++;
+            if (idleChunks >= ASSIGN_BY_DATE_IDLE_CHUNK_LIMIT) {
+              throw new Error(
+                `Assign stalled: ${remaining} incoming rows still locked by another process (e.g. rebalance cron or bulk import). Stop cron-rebalance-rotate during assign, then retry.`,
+              );
+            }
+            console.warn(
+              "[auto-assignment:assign-by-date] chunk skipped — rows locked, waiting",
+              { batchId: (batch as any).id, remaining, idleChunks },
+            );
+            await sleepMs(ASSIGN_BY_DATE_IDLE_SLEEP_MS);
+            chunkDone = true;
+            break;
+          }
+
+          idleChunks = 0;
+
+          const leadIds: number[] = [];
+          for (const rec of rows) {
+            const payload: any = rec.get("payload") || {};
+            const campaignName: string =
+              (rec.get("campaignName") as any) || payload.campaignName || "General";
+            const lead = await Lead.create(
+              {
+                campaignName,
+                leadData: normalizeLeadDataInput(payload),
+                assignees: [],
+                createdBy: triggeredByUserId || null,
+              } as any,
+              { transaction: t },
+            );
+            leadIds.push((lead as any).id);
+            await rec.update(
+              {
+                status: "promoted",
+                promotedAt: new Date(),
+                targetLeadId: (lead as any).id,
+              } as any,
+              { transaction: t },
+            );
+          }
+
+          if (globalFirstLeadId === 0) globalFirstLeadId = leadIds[0] ?? 0;
+
+          const plan = chooseAssigneesEqualSplit(
+            leadIds,
+            members,
+            globalFirstLeadId + processedInRun,
           );
-          leadIds.push((lead as any).id);
-          await rec.update(
-            {
-              status: "promoted",
-              promotedAt: new Date(),
-              targetLeadId: (lead as any).id,
-            } as any,
-            { transaction: t },
-          );
-        }
-
-        if (globalFirstLeadId === 0) globalFirstLeadId = leadIds[0] ?? 0;
-
-        const plan = chooseAssigneesEqualSplit(
-          leadIds,
-          members,
-          globalFirstLeadId + processedInRun,
-        );
-        for (const leadId of leadIds) {
-          const assigneeId = plan.get(leadId)!;
-          const lead = await Lead.findByPk(leadId, {
-            transaction: t,
-            lock: t.LOCK.UPDATE,
-          });
-          if (!lead) continue;
-          const assignedAt = new Date().toISOString();
-          const assignees = [
-            {
-              userId: assigneeId,
-              status: deriveStatusForNextAssignee((lead as any).assignees),
-              assignedAt,
-            },
-          ];
-          await lead.update({ assignees } as any, { transaction: t });
-          await LeadAssignmentState.upsert(
-            {
+          for (const leadId of leadIds) {
+            const assigneeId = plan.get(leadId)!;
+            const lead = await Lead.findByPk(leadId, {
+              transaction: t,
+              lock: t.LOCK.UPDATE,
+            });
+            if (!lead) continue;
+            const assignedAt = new Date().toISOString();
+            const assignees = [
+              {
+                userId: assigneeId,
+                status: deriveStatusForNextAssignee((lead as any).assignees),
+                assignedAt,
+              },
+            ];
+            await lead.update({ assignees } as any, { transaction: t });
+            await LeadAssignmentState.upsert(
+              {
+                leadId,
+                teamId: teamA.id,
+                currentAssigneeUserId: assigneeId,
+                lastAssignedAt: new Date(),
+                seenUserIds: [assigneeId],
+                cycleStep: 1,
+                cycleNo: 1,
+              } as any,
+              { transaction: t },
+            );
+            await recordLeadHistory({
               leadId,
               teamId: teamA.id,
-              currentAssigneeUserId: assigneeId,
-              lastAssignedAt: new Date(),
-              seenUserIds: [assigneeId],
-              cycleStep: 1,
+              userId: assigneeId,
               cycleNo: 1,
-            } as any,
-            { transaction: t },
-          );
-          await recordLeadHistory({
-            leadId,
-            teamId: teamA.id,
-            userId: assigneeId,
-            cycleNo: 1,
-            source: "assign",
-            transaction: t,
+              source: "assign",
+              transaction: t,
+            });
+            await LeadRotationState.upsert(
+              { leadId, teamId: teamA.id, enteredTeamAt: new Date() } as any,
+              { transaction: t },
+            );
+          }
+
+          processedInRun += leadIds.length;
+          newAssignedCount += leadIds.length;
+          await t.commit();
+
+          console.log("[auto-assignment:assign-by-date] chunk committed", {
+            batchId: (batch as any).id,
+            chunkRows: rows.length,
+            processedInRun,
+            newAssignedCount,
           });
-          await LeadRotationState.upsert(
-            { leadId, teamId: teamA.id, enteredTeamAt: new Date() } as any,
-            { transaction: t },
-          );
+          chunkDone = true;
+        } catch (chunkErr: any) {
+          await t.rollback();
+          if (
+            isLockWaitTimeoutError(chunkErr) &&
+            chunkAttempts < ASSIGN_BY_DATE_CHUNK_MAX_RETRIES
+          ) {
+            console.warn(
+              "[auto-assignment:assign-by-date] chunk lock timeout, retrying",
+              {
+                batchId: (batch as any).id,
+                chunkAttempts,
+                processedInRun,
+              },
+            );
+            await sleepMs(ASSIGN_BY_DATE_RETRY_SLEEP_MS);
+            continue;
+          }
+          throw chunkErr;
         }
-
-        processedInRun += leadIds.length;
-        newAssignedCount += leadIds.length;
-        await t.commit();
-
-        console.log("[auto-assignment:assign-by-date] chunk committed", {
-          batchId: (batch as any).id,
-          chunkRows: rows.length,
-          processedInRun,
-          newAssignedCount,
-        });
-      } catch (chunkErr: any) {
-        await t.rollback();
-        throw chunkErr;
       }
     }
 

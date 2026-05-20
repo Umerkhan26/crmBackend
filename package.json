@@ -10,7 +10,9 @@
     "pm2:cron": "pm2 start ecosystem.cron.config.cjs",
     "pm2:cron:delete": "pm2 delete cron-assign-last-24h cron-rebalance-rotate || exit 0",
     "sync:database": "npx ts-node src/scripts/sync-database.ts",
-    "patch:schema-columns": "npx ts-node src/scripts/patch-missing-schema-columns.ts"
+    "patch:schema-columns": "npx ts-node src/scripts/patch-missing-schema-columns.ts",
+    "sync:customer-area": "npx ts-node src/scripts/sync-customer-area.ts",
+    "seed:customer-role": "npx ts-node src/scripts/seed-customer-role.ts"
   },
   "keywords": [],
   "author": "",

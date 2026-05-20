@@ -13,25 +13,44 @@ const app: Application = express();
 const requestBodyLimit = process.env.REQUEST_BODY_LIMIT || "50mb";
 app.use(express.json({ limit: requestBodyLimit }));
 app.use(express.urlencoded({ extended: true, limit: requestBodyLimit }));
-app.use(cors());
-app.use((req: Request, res: Response, next: NextFunction) => {
-  const allowedOrigin = process.env.FRONT_END_URL || "http://localhost:3001";
-  res.setHeader("Access-Control-Allow-Origin", allowedOrigin);
-  res.setHeader("Access-Control-Allow-Credentials", "true");
-  res.setHeader("Access-Control-Max-Age", "1800");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-  res.setHeader(
-    "Access-Control-Allow-Methods",
-    "PUT, POST, GET, DELETE, PATCH, OPTIONS"
-  );
+export const buildAllowedOrigins = (): string[] => {
+  const origins = new Set<string>([
+    "http://localhost:3001",
+    "http://127.0.0.1:3001",
+    "http://localhost:3100",
+    "http://127.0.0.1:3100",
+  ]);
+  const frontEnd = process.env.FRONT_END_URL?.trim();
+  if (frontEnd) origins.add(frontEnd);
+  const extra = process.env.CORS_ORIGINS || "";
+  extra.split(",").forEach((o) => {
+    const trimmed = o.trim();
+    if (trimmed) origins.add(trimmed);
+  });
+  return [...origins];
+};
 
-  if (req.method === "OPTIONS") {
-    res.sendStatus(204);
-    return;
-  }
+const allowedOrigins = buildAllowedOrigins();
 
-  next();
-});
+app.use(
+  cors({
+    origin(origin, callback) {
+      if (!origin) {
+        callback(null, true);
+        return;
+      }
+      if (allowedOrigins.includes(origin)) {
+        callback(null, origin);
+        return;
+      }
+      callback(null, false);
+    },
+    credentials: true,
+    allowedHeaders: ["Content-Type", "Authorization", "x-customer-host"],
+    methods: ["PUT", "POST", "GET", "DELETE", "PATCH", "OPTIONS"],
+    maxAge: 1800,
+  })
+);
 
 // Route files that need specific mount paths or load order
 // IMPORTANT: More specific paths (e.g. /api/brands) must load BEFORE generic /api

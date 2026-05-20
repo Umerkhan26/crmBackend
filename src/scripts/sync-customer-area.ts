@@ -53,6 +53,11 @@ const run = async () => {
   await CustomerAccount.sync({ alter: true });
   console.log("   ✓ customer_accounts table synced");
 
+  const CustomerEngagement = (await import("../models/customerEngagement.model"))
+    .default;
+  await CustomerEngagement.sync({ alter: true });
+  console.log("   ✓ customer_engagements table synced");
+
   const { syncPermissionsToDB } = await import("../utils/syncPermissions");
   await syncPermissionsToDB();
   console.log("   ✓ permissions synced (includes customerAccount:get/create)");

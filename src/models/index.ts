@@ -36,5 +36,6 @@ import "./leadAssignmentState.model";
 import "./incomingLead.model";
 import "./leadMemberHistory.model";
 import "./customerAccount.model";
+import "./customerEngagement.model";
 import "./client.model";
 associateModels();

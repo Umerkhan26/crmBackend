@@ -1,6 +1,8 @@
 import { Response } from "express";
 import { CustomRequest } from "../types/custom";
 import * as CustomerAccountService from "../services/customerAccount.service";
+import { getCustomerAccountInsights } from "../services/customerAccountInsights.service";
+import * as CustomerEngagementService from "../services/customerEngagement.service";
 
 export const listCustomerAccountsController = async (
   req: CustomRequest,
@@ -44,6 +46,122 @@ export const getCustomerAccountByIdController = async (
     return res.status(200).json({ success: true, data: account });
   } catch (error: any) {
     const status = error.message.includes("not found") ? 404 : 500;
+    return res.status(status).json({ success: false, message: error.message });
+  }
+};
+
+export const getCustomerAccountInsightsController = async (
+  req: CustomRequest,
+  res: Response
+): Promise<any> => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) {
+      return res.status(400).json({ success: false, message: "Invalid ID" });
+    }
+    const data = await getCustomerAccountInsights(id);
+    return res.status(200).json({ success: true, data });
+  } catch (error: any) {
+    const msg = error?.message || "Failed to load customer insights";
+    const status = /not found/i.test(msg) ? 404 : 500;
+    return res.status(status).json({ success: false, message: msg });
+  }
+};
+
+const parseAccountId = (req: CustomRequest) => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) throw new Error("Invalid customer account ID");
+  return id;
+};
+
+export const sendCustomerEmailController = async (
+  req: CustomRequest,
+  res: Response
+): Promise<any> => {
+  try {
+    const accountId = parseAccountId(req);
+    const { subject, body, category } = req.body;
+    if (!subject?.trim() || !body?.trim()) {
+      return res.status(400).json({ success: false, message: "Subject and body required" });
+    }
+    const data = await CustomerEngagementService.sendEmailToCustomerAccount({
+      accountId,
+      subject: subject.trim(),
+      body: body.trim(),
+      category: category || "promotional",
+      createdBy: req.user!.id,
+    });
+    return res.status(200).json({ success: true, message: "Email sent", data });
+  } catch (error: any) {
+    const status = /not found/i.test(error.message) ? 404 : 500;
+    return res.status(status).json({ success: false, message: error.message });
+  }
+};
+
+export const applyCustomerDiscountController = async (
+  req: CustomRequest,
+  res: Response
+): Promise<any> => {
+  try {
+    const accountId = parseAccountId(req);
+    const data = await CustomerEngagementService.applyCustomerDiscount({
+      accountId,
+      discountPercent: req.body.discountPercent,
+      discountCode: req.body.discountCode,
+      note: req.body.note,
+      validUntil: req.body.validUntil,
+      createdBy: req.user!.id,
+    });
+    return res.status(200).json({ success: true, message: "Discount applied", data });
+  } catch (error: any) {
+    const status = /not found/i.test(error.message) ? 404 : 500;
+    return res.status(status).json({ success: false, message: error.message });
+  }
+};
+
+export const createCustomerUpsellController = async (
+  req: CustomRequest,
+  res: Response
+): Promise<any> => {
+  try {
+    const accountId = parseAccountId(req);
+    const { productName, price, description } = req.body;
+    if (!productName?.trim()) {
+      return res.status(400).json({ success: false, message: "Product name required" });
+    }
+    const data = await CustomerEngagementService.createUpsellOffer({
+      accountId,
+      productName: productName.trim(),
+      price,
+      description,
+      createdBy: req.user!.id,
+    });
+    return res.status(200).json({ success: true, message: "Upsell offer created", data });
+  } catch (error: any) {
+    const status = /not found/i.test(error.message) ? 404 : 500;
+    return res.status(status).json({ success: false, message: error.message });
+  }
+};
+
+export const sendCustomerNotificationController = async (
+  req: CustomRequest,
+  res: Response
+): Promise<any> => {
+  try {
+    const accountId = parseAccountId(req);
+    const { message, sendEmailAlso } = req.body;
+    if (!message?.trim()) {
+      return res.status(400).json({ success: false, message: "Message required" });
+    }
+    const data = await CustomerEngagementService.sendCustomerNotification({
+      accountId,
+      message: message.trim(),
+      sendEmailAlso: !!sendEmailAlso,
+      createdBy: req.user!.id,
+    });
+    return res.status(200).json({ success: true, message: "Notification sent", data });
+  } catch (error: any) {
+    const status = /not found/i.test(error.message) ? 404 : 500;
     return res.status(status).json({ success: false, message: error.message });
   }
 };

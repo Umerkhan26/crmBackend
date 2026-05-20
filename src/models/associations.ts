@@ -21,6 +21,7 @@ import TeamRotationConfig from "./teamRotationConfig.model";
 import LeadRotationState from "./leadRotationState.model";
 import LeadAssignmentState from "./leadAssignmentState.model";
 import CustomerAccount from "./customerAccount.model";
+import CustomerEngagement from "./customerEngagement.model";
 
 Role.belongsToMany(Permission, {
   through: RolePermission,
@@ -74,6 +75,22 @@ CustomerAccount.belongsTo(Brand, { foreignKey: "brandId", as: "brand", onDelete:
 
 CustomerAccount.belongsTo(Lead, { foreignKey: "leadId", as: "lead", onDelete: "SET NULL" });
 CustomerAccount.belongsTo(ProductSale, { foreignKey: "saleId", as: "sale", onDelete: "SET NULL" });
+
+CustomerAccount.hasMany(CustomerEngagement, {
+  foreignKey: "customerAccountId",
+  as: "engagements",
+  onDelete: "CASCADE",
+});
+CustomerEngagement.belongsTo(CustomerAccount, {
+  foreignKey: "customerAccountId",
+  as: "customerAccount",
+  onDelete: "CASCADE",
+});
+CustomerEngagement.belongsTo(User, {
+  foreignKey: "createdBy",
+  as: "createdByUser",
+  onDelete: "CASCADE",
+});
 
 User.hasMany(ProductSale, { foreignKey: "createdBy", onDelete: "CASCADE" });
 ProductSale.belongsTo(User, { foreignKey: "createdBy", onDelete: "CASCADE" });

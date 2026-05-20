@@ -6,6 +6,8 @@ import {
   listCustomerAccountsController,
   getCustomerAccountByIdController,
   getCustomerAccountInsightsController,
+  getCustomerEngagementsFeedController,
+  getCustomerTimelineFeedController,
   sendCustomerEmailController,
   applyCustomerDiscountController,
   createCustomerUpsellController,
@@ -27,6 +29,18 @@ router.get(
   "/:id/insights",
   checkPermission(PERMISSIONS.CUSTOMER_ACCOUNT_GET),
   getCustomerAccountInsightsController
+);
+
+router.get(
+  "/:id/engagements",
+  checkPermission(PERMISSIONS.CUSTOMER_ACCOUNT_GET),
+  getCustomerEngagementsFeedController
+);
+
+router.get(
+  "/:id/timeline",
+  checkPermission(PERMISSIONS.CUSTOMER_ACCOUNT_GET),
+  getCustomerTimelineFeedController
 );
 
 router.post(

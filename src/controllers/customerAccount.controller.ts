@@ -1,7 +1,11 @@
 import { Response } from "express";
 import { CustomRequest } from "../types/custom";
 import * as CustomerAccountService from "../services/customerAccount.service";
-import { getCustomerAccountInsights } from "../services/customerAccountInsights.service";
+import {
+  getCustomerAccountInsights,
+  getCustomerEngagementsFeed,
+  getCustomerTimelineFeed,
+} from "../services/customerAccountInsights.service";
 import * as CustomerEngagementService from "../services/customerEngagement.service";
 
 export const listCustomerAccountsController = async (
@@ -59,10 +63,72 @@ export const getCustomerAccountInsightsController = async (
     if (isNaN(id)) {
       return res.status(400).json({ success: false, message: "Invalid ID" });
     }
-    const data = await getCustomerAccountInsights(id);
+    const parseIntQ = (v: unknown, fallback: number) => {
+      const n = parseInt(String(v || ""), 10);
+      return Number.isNaN(n) ? fallback : n;
+    };
+    const data = await getCustomerAccountInsights(id, {
+      emailsPage: parseIntQ(req.query.emailsPage, 1),
+      emailsLimit: parseIntQ(req.query.emailsLimit, 30),
+      engagementsPage: parseIntQ(req.query.engagementsPage, 1),
+      engagementsLimit: parseIntQ(req.query.engagementsLimit, 30),
+      timelinePage: parseIntQ(req.query.timelinePage, 1),
+      timelineLimit: parseIntQ(req.query.timelineLimit, 30),
+      activitiesPage: parseIntQ(req.query.activitiesPage, 1),
+      activitiesLimit: parseIntQ(req.query.activitiesLimit, 30),
+    });
     return res.status(200).json({ success: true, data });
   } catch (error: any) {
     const msg = error?.message || "Failed to load customer insights";
+    const status = /not found/i.test(msg) ? 404 : 500;
+    return res.status(status).json({ success: false, message: msg });
+  }
+};
+
+const parsePageLimit = (req: CustomRequest, defaultLimit = 30) => {
+  const parseIntQ = (v: unknown, fallback: number) => {
+    const n = parseInt(String(v || ""), 10);
+    return Number.isNaN(n) ? fallback : n;
+  };
+  return {
+    page: parseIntQ(req.query.page, 1),
+    limit: parseIntQ(req.query.limit, defaultLimit),
+  };
+};
+
+export const getCustomerEngagementsFeedController = async (
+  req: CustomRequest,
+  res: Response
+): Promise<any> => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) {
+      return res.status(400).json({ success: false, message: "Invalid ID" });
+    }
+    const { page, limit } = parsePageLimit(req, 30);
+    const data = await getCustomerEngagementsFeed(id, page, limit);
+    return res.status(200).json({ success: true, data });
+  } catch (error: any) {
+    const msg = error?.message || "Failed to load engagements";
+    const status = /not found/i.test(msg) ? 404 : 500;
+    return res.status(status).json({ success: false, message: msg });
+  }
+};
+
+export const getCustomerTimelineFeedController = async (
+  req: CustomRequest,
+  res: Response
+): Promise<any> => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) {
+      return res.status(400).json({ success: false, message: "Invalid ID" });
+    }
+    const { page, limit } = parsePageLimit(req, 30);
+    const data = await getCustomerTimelineFeed(id, page, limit);
+    return res.status(200).json({ success: true, data });
+  } catch (error: any) {
+    const msg = error?.message || "Failed to load timeline";
     const status = /not found/i.test(msg) ? 404 : 500;
     return res.status(status).json({ success: false, message: msg });
   }

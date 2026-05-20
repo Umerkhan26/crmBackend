@@ -2,6 +2,7 @@ import "../models/associations";
 import "../models/index";
 import { Op } from "sequelize";
 import CustomerAccount from "../models/customerAccount.model";
+import CustomerEngagement from "../models/customerEngagement.model";
 import User from "../models/user.model";
 import Brand from "../models/brand.model";
 import Lead from "../models/lead.model";
@@ -9,7 +10,6 @@ import ProductSale from "../models/product.model";
 import EmailLog from "../models/emailLog.model";
 import LeadActivity from "../models/leadActivity.model";
 import { getNotesForEntity } from "./note.service";
-import { listCustomerEngagements } from "./customerEngagement.service";
 
 const accountIncludes = [
   {
@@ -44,96 +44,37 @@ const emailDeliveryLabel = (status?: string) => {
   return s;
 };
 
-export const getCustomerAccountInsights = async (accountId: number) => {
-  const account = await fetchCustomerAccountById(accountId);
-  const userId = account.userId;
-  const email = (account as any).user?.email?.trim();
+const pagingMeta = (page: number, limit: number, total: number) => ({
+  currentPage: page,
+  pageSize: limit,
+  totalItems: total,
+  totalPages: Math.max(1, Math.ceil(total / limit) || 1),
+});
 
-  const relatedAccounts = await CustomerAccount.findAll({
-    where: { userId },
-    order: [["createdAt", "DESC"]],
-    include: accountIncludes,
-  });
+export type InsightsQuery = {
+  emailsPage?: number;
+  emailsLimit?: number;
+  engagementsPage?: number;
+  engagementsLimit?: number;
+  timelinePage?: number;
+  timelineLimit?: number;
+  activitiesPage?: number;
+  activitiesLimit?: number;
+};
 
-  const saleIds = [
-    ...new Set(
-      relatedAccounts.map((a) => a.saleId).filter((id): id is number => id != null),
-    ),
-  ];
-  const leadIds = [
-    ...new Set(
-      relatedAccounts.map((a) => a.leadId).filter((id): id is number => id != null),
-    ),
-  ];
+const enrichEmail = (row: any) => ({
+  ...row,
+  category: classifyEmail(row),
+  deliveryStatus: emailDeliveryLabel(row.status),
+});
 
-  const sales =
-    saleIds.length > 0
-      ? await ProductSale.findAll({
-          where: { id: { [Op.in]: saleIds } },
-          order: [["conversionDate", "DESC"]],
-        })
-      : [];
-
-  const emailLogs = email
-    ? await EmailLog.findAll({
-        where: {
-          [Op.or]: [
-            { to: email },
-            { to: { [Op.like]: `%${email}%` } },
-          ],
-        },
-        order: [["sentAt", "DESC"]],
-        limit: 150,
-      })
-      : [];
-
-  let activities: InstanceType<typeof LeadActivity>[] = [];
-  if (leadIds.length > 0) {
-    const activityQuery = {
-      where: { entityId: { [Op.in]: leadIds }, entityType: "lead" as const },
-      order: [["createdAt", "DESC"]] as [string, string][],
-      limit: 150,
-    };
-    try {
-      activities = await LeadActivity.findAll({
-        ...activityQuery,
-        include: [
-          {
-            model: User,
-            as: "performedByUser",
-            attributes: ["id", "firstname", "lastname", "email"],
-            required: false,
-          },
-        ],
-      });
-    } catch {
-      activities = await LeadActivity.findAll(activityQuery);
-    }
-  }
-
-  const notesByLead: Record<number, unknown[]> = {};
-  for (const lid of leadIds) {
-    try {
-      const notes = await getNotesForEntity({ notebleId: lid, notebleType: "lead" });
-      notesByLead[lid] = notes.map((n) => {
-        const plain = n.get({ plain: true }) as any;
-        if (plain.creator && !plain.User) plain.User = plain.creator;
-        return plain;
-      });
-    } catch {
-      notesByLead[lid] = [];
-    }
-  }
-
-  const emailsEnriched = emailLogs.map((row) => {
-    const plain = row.get({ plain: true }) as any;
-    return {
-      ...plain,
-      category: classifyEmail(plain),
-      deliveryStatus: emailDeliveryLabel(plain.status),
-    };
-  });
-
+const buildTimelineEvents = (
+  relatedAccounts: any[],
+  sales: any[],
+  emailsEnriched: any[],
+  activities: any[],
+  engagements: any[]
+) => {
   const timeline: Array<{
     type: string;
     at: string;
@@ -142,8 +83,7 @@ export const getCustomerAccountInsights = async (accountId: number) => {
     meta?: Record<string, unknown>;
   }> = [];
 
-  relatedAccounts.forEach((acc) => {
-    const plain = acc.get({ plain: true }) as any;
+  relatedAccounts.forEach((plain) => {
     timeline.push({
       type: "account",
       at: plain.createdAt,
@@ -153,8 +93,7 @@ export const getCustomerAccountInsights = async (accountId: number) => {
     });
   });
 
-  sales.forEach((sale) => {
-    const plain = sale.get({ plain: true }) as any;
+  sales.forEach((plain) => {
     timeline.push({
       type: "order",
       at: plain.conversionDate || plain.createdAt,
@@ -169,17 +108,12 @@ export const getCustomerAccountInsights = async (accountId: number) => {
       type: "email",
       at: e.sentAt,
       title: e.subject || "(no subject)",
-      detail: `Delivery: ${e.deliveryStatus || e.status || "unknown"}`,
-      meta: {
-        category: e.category,
-        to: e.to,
-        serviceName: e.serviceName,
-      },
+      detail: e.deliveryStatus || e.status || "unknown",
+      meta: { category: e.category, to: e.to, serviceName: e.serviceName },
     });
   });
 
-  activities.forEach((act) => {
-    const plain = act.get({ plain: true }) as any;
+  activities.forEach((plain) => {
     timeline.push({
       type: "activity",
       at: plain.createdAt,
@@ -193,9 +127,7 @@ export const getCustomerAccountInsights = async (accountId: number) => {
     });
   });
 
-  const engagements = await listCustomerEngagements(accountId);
-  engagements.forEach((eng) => {
-    const plain = eng.get({ plain: true }) as any;
+  engagements.forEach((plain) => {
     timeline.push({
       type: "engagement",
       at: plain.createdAt,
@@ -211,29 +143,356 @@ export const getCustomerAccountInsights = async (accountId: number) => {
     return tb - ta;
   });
 
+  return timeline;
+};
+
+export const getCustomerAccountInsights = async (
+  accountId: number,
+  query: InsightsQuery = {}
+) => {
+  const emailsPage = Math.max(1, query.emailsPage || 1);
+  const emailsLimit = Math.min(50, Math.max(5, query.emailsLimit || 30));
+  const engagementsPage = Math.max(1, query.engagementsPage || 1);
+  const engagementsLimit = Math.min(50, Math.max(5, query.engagementsLimit || 30));
+  const timelinePage = Math.max(1, query.timelinePage || 1);
+  const timelineLimit = Math.min(50, Math.max(5, query.timelineLimit || 30));
+  const activitiesPage = Math.max(1, query.activitiesPage || 1);
+  const activitiesLimit = Math.min(50, Math.max(5, query.activitiesLimit || 30));
+
+  const account = await fetchCustomerAccountById(accountId);
+  const userId = account.userId;
+  const email = (account as any).user?.email?.trim();
+
+  const relatedAccounts = await CustomerAccount.findAll({
+    where: { userId },
+    order: [["createdAt", "DESC"]],
+    include: accountIncludes,
+  });
+  const relatedPlain = relatedAccounts.map((a) => a.get({ plain: true }));
+
+  const saleIds = [
+    ...new Set(relatedPlain.map((a) => a.saleId).filter((id): id is number => id != null)),
+  ];
+  const leadIds = [
+    ...new Set(relatedPlain.map((a) => a.leadId).filter((id): id is number => id != null)),
+  ];
+
+  const sales =
+    saleIds.length > 0
+      ? await ProductSale.findAll({
+          where: { id: { [Op.in]: saleIds } },
+          order: [["conversionDate", "DESC"]],
+        })
+      : [];
+  const salesPlain = sales.map((s) => s.get({ plain: true }));
+
+  const emailWhere = email
+    ? { [Op.or]: [{ to: email }, { to: { [Op.like]: `%${email}%` } }] }
+    : { id: -1 };
+
+  const emailResult = await EmailLog.findAndCountAll({
+    where: emailWhere,
+    order: [["sentAt", "DESC"]],
+    offset: (emailsPage - 1) * emailsLimit,
+    limit: emailsLimit,
+  });
+  const emailsEnriched = emailResult.rows.map((row) =>
+    enrichEmail(row.get({ plain: true }) as any)
+  );
+
+  const engagementResult = await CustomerEngagement.findAndCountAll({
+    where: { customerAccountId: accountId },
+    order: [["createdAt", "DESC"]],
+    offset: (engagementsPage - 1) * engagementsLimit,
+    limit: engagementsLimit,
+    include: [
+      {
+        model: User,
+        as: "createdByUser",
+        attributes: ["id", "firstname", "lastname", "email"],
+        required: false,
+      },
+    ],
+  });
+  const engagementsPlain = engagementResult.rows.map((e) => e.get({ plain: true }));
+
+  const activityWhere =
+    leadIds.length > 0
+      ? { entityId: { [Op.in]: leadIds }, entityType: "lead" as const }
+      : { id: -1 };
+
+  let activityResult = { rows: [] as InstanceType<typeof LeadActivity>[], count: 0 };
+  try {
+    activityResult = await LeadActivity.findAndCountAll({
+      where: activityWhere,
+      order: [["createdAt", "DESC"]],
+      offset: (activitiesPage - 1) * activitiesLimit,
+      limit: activitiesLimit,
+      include: [
+        {
+          model: User,
+          as: "performedByUser",
+          attributes: ["id", "firstname", "lastname", "email"],
+          required: false,
+        },
+      ],
+    });
+  } catch {
+    activityResult = await LeadActivity.findAndCountAll({
+      where: activityWhere,
+      order: [["createdAt", "DESC"]],
+      offset: (activitiesPage - 1) * activitiesLimit,
+      limit: activitiesLimit,
+    });
+  }
+  const activitiesPlain = activityResult.rows.map((a) => a.get({ plain: true }));
+
+  const notesByLead: Record<number, unknown[]> = {};
+  for (const lid of leadIds) {
+    try {
+      const notes = await getNotesForEntity({ notebleId: lid, notebleType: "lead" });
+      notesByLead[lid] = notes.map((n) => {
+        const plain = n.get({ plain: true }) as any;
+        if (plain.creator && !plain.User) plain.User = plain.creator;
+        return plain;
+      });
+    } catch {
+      notesByLead[lid] = [];
+    }
+  }
+
+  const emailTotal = emailResult.count;
+  const engagementTotal = engagementResult.count;
+  const activityTotal = activityResult.count;
+
+  const timelineFetchCap = Math.min(500, timelinePage * timelineLimit * 3);
+  const [emailsForTimeline, activitiesForTimeline, engagementsForTimeline] =
+    await Promise.all([
+      EmailLog.findAll({
+        where: emailWhere,
+        order: [["sentAt", "DESC"]],
+        limit: timelineFetchCap,
+      }),
+      leadIds.length > 0
+        ? LeadActivity.findAll({
+            where: { entityId: { [Op.in]: leadIds }, entityType: "lead" },
+            order: [["createdAt", "DESC"]],
+            limit: timelineFetchCap,
+            include: [
+              {
+                model: User,
+                as: "performedByUser",
+                attributes: ["id", "firstname", "lastname", "email"],
+                required: false,
+              },
+            ],
+          })
+        : Promise.resolve([]),
+      CustomerEngagement.findAll({
+        where: { customerAccountId: accountId },
+        order: [["createdAt", "DESC"]],
+        limit: timelineFetchCap,
+      }),
+    ]);
+
+  const emailsTimeline = emailsForTimeline.map((r) =>
+    enrichEmail(r.get({ plain: true }) as any)
+  );
+  const activitiesTimeline = activitiesForTimeline.map((a) => a.get({ plain: true }));
+  const engagementsTimeline = engagementsForTimeline.map((e) => e.get({ plain: true }));
+
+  const fullTimeline = buildTimelineEvents(
+    relatedPlain,
+    salesPlain,
+    emailsTimeline,
+    activitiesTimeline,
+    engagementsTimeline
+  );
+
+  const timelineTotal =
+    relatedPlain.length +
+    salesPlain.length +
+    emailTotal +
+    activityTotal +
+    engagementTotal;
+
+  const timelineOffset = (timelinePage - 1) * timelineLimit;
+  const timelinePageItems = fullTimeline.slice(
+    timelineOffset,
+    timelineOffset + timelineLimit
+  );
+
+  const allEmailsForSummary = await EmailLog.findAll({
+    where: emailWhere,
+    order: [["sentAt", "DESC"]],
+    limit: 500,
+    attributes: ["status", "subject", "serviceName", "body"],
+  });
+  const summaryEmails = allEmailsForSummary.map((r) =>
+    enrichEmail(r.get({ plain: true }) as any)
+  );
+
   const summary = {
-    brandsCount: new Set(relatedAccounts.map((a) => a.brandId).filter(Boolean)).size,
-    accountsCount: relatedAccounts.length,
-    ordersCount: sales.length,
-    emailsCount: emailsEnriched.length,
-    emailsOpened: emailsEnriched.filter((e) => e.deliveryStatus === "opened").length,
-    promotionalEmails: emailsEnriched.filter((e) => e.category === "promotional").length,
-    activitiesCount: activities.length,
+    brandsCount: new Set(relatedPlain.map((a) => a.brandId).filter(Boolean)).size,
+    accountsCount: relatedPlain.length,
+    ordersCount: salesPlain.length,
+    emailsCount: emailTotal,
+    emailsOpened: summaryEmails.filter((e) => e.deliveryStatus === "opened").length,
+    promotionalEmails: summaryEmails.filter((e) => e.category === "promotional").length,
+    activitiesCount: activityTotal,
     notesCount: Object.values(notesByLead).reduce((n, arr) => n + arr.length, 0),
-    engagementsCount: engagements.length,
-    upsellOffers: engagements.filter((e) => e.type === "upsell").length,
-    discountsApplied: engagements.filter((e) => e.type === "discount").length,
+    engagementsCount: engagementTotal,
+    upsellOffers: await CustomerEngagement.count({
+      where: { customerAccountId: accountId, type: "upsell" },
+    }),
+    discountsApplied: await CustomerEngagement.count({
+      where: { customerAccountId: accountId, type: "discount" },
+    }),
   };
 
   return {
     account: account.get({ plain: true }),
-    relatedAccounts: relatedAccounts.map((a) => a.get({ plain: true })),
-    sales: sales.map((s) => s.get({ plain: true })),
+    relatedAccounts: relatedPlain,
+    sales: salesPlain,
     emailLogs: emailsEnriched,
-    activities: activities.map((a) => a.get({ plain: true })),
-    engagements: engagements.map((e) => e.get({ plain: true })),
+    emailPagination: pagingMeta(emailsPage, emailsLimit, emailTotal),
+    engagements: engagementsPlain,
+    engagementPagination: pagingMeta(engagementsPage, engagementsLimit, engagementTotal),
+    activities: activitiesPlain,
+    activityPagination: pagingMeta(activitiesPage, activitiesLimit, activityTotal),
     notesByLead,
-    timeline: timeline.slice(0, 200),
+    timeline: timelinePageItems,
+    timelinePagination: pagingMeta(timelinePage, timelineLimit, timelineTotal),
     summary,
+  };
+};
+
+/** Overview / infinite scroll — latest engagements only */
+export const getCustomerEngagementsFeed = async (
+  accountId: number,
+  page = 1,
+  limit = 30
+) => {
+  const safePage = Math.max(1, page);
+  const safeLimit = Math.min(50, Math.max(5, limit));
+  await fetchCustomerAccountById(accountId);
+
+  const result = await CustomerEngagement.findAndCountAll({
+    where: { customerAccountId: accountId },
+    order: [["createdAt", "DESC"]],
+    offset: (safePage - 1) * safeLimit,
+    limit: safeLimit,
+    include: [
+      {
+        model: User,
+        as: "createdByUser",
+        attributes: ["id", "firstname", "lastname", "email"],
+        required: false,
+      },
+    ],
+  });
+
+  return {
+    engagements: result.rows.map((e) => e.get({ plain: true })),
+    pagination: pagingMeta(safePage, safeLimit, result.count),
+  };
+};
+
+/** Overview / infinite scroll — merged timeline (latest first) */
+export const getCustomerTimelineFeed = async (
+  accountId: number,
+  page = 1,
+  limit = 30
+) => {
+  const safePage = Math.max(1, page);
+  const safeLimit = Math.min(50, Math.max(5, limit));
+  const account = await fetchCustomerAccountById(accountId);
+  const userId = account.userId;
+  const email = (account as any).user?.email?.trim();
+
+  const relatedAccounts = await CustomerAccount.findAll({
+    where: { userId },
+    order: [["createdAt", "DESC"]],
+    include: accountIncludes,
+  });
+  const relatedPlain = relatedAccounts.map((a) => a.get({ plain: true }));
+
+  const saleIds = [
+    ...new Set(relatedPlain.map((a) => a.saleId).filter((id): id is number => id != null)),
+  ];
+  const leadIds = [
+    ...new Set(relatedPlain.map((a) => a.leadId).filter((id): id is number => id != null)),
+  ];
+
+  const sales =
+    saleIds.length > 0
+      ? await ProductSale.findAll({
+          where: { id: { [Op.in]: saleIds } },
+          order: [["conversionDate", "DESC"]],
+        })
+      : [];
+  const salesPlain = sales.map((s) => s.get({ plain: true }));
+
+  const emailWhere = email
+    ? { [Op.or]: [{ to: email }, { to: { [Op.like]: `%${email}%` } }] }
+    : { id: -1 };
+
+  const [emailTotal, activityTotal, engagementTotal] = await Promise.all([
+    EmailLog.count({ where: emailWhere }),
+    leadIds.length > 0
+      ? LeadActivity.count({
+          where: { entityId: { [Op.in]: leadIds }, entityType: "lead" },
+        })
+      : Promise.resolve(0),
+    CustomerEngagement.count({ where: { customerAccountId: accountId } }),
+  ]);
+
+  const timelineTotal =
+    relatedPlain.length + salesPlain.length + emailTotal + activityTotal + engagementTotal;
+
+  const timelineFetchCap = Math.min(500, safePage * safeLimit * 3);
+  const [emailsForTimeline, activitiesForTimeline, engagementsForTimeline] =
+    await Promise.all([
+      EmailLog.findAll({
+        where: emailWhere,
+        order: [["sentAt", "DESC"]],
+        limit: timelineFetchCap,
+      }),
+      leadIds.length > 0
+        ? LeadActivity.findAll({
+            where: { entityId: { [Op.in]: leadIds }, entityType: "lead" },
+            order: [["createdAt", "DESC"]],
+            limit: timelineFetchCap,
+            include: [
+              {
+                model: User,
+                as: "performedByUser",
+                attributes: ["id", "firstname", "lastname", "email"],
+                required: false,
+              },
+            ],
+          })
+        : Promise.resolve([]),
+      CustomerEngagement.findAll({
+        where: { customerAccountId: accountId },
+        order: [["createdAt", "DESC"]],
+        limit: timelineFetchCap,
+      }),
+    ]);
+
+  const fullTimeline = buildTimelineEvents(
+    relatedPlain,
+    salesPlain,
+    emailsForTimeline.map((r) => enrichEmail(r.get({ plain: true }) as any)),
+    activitiesForTimeline.map((a) => a.get({ plain: true })),
+    engagementsForTimeline.map((e) => e.get({ plain: true }))
+  );
+
+  const timelineOffset = (safePage - 1) * safeLimit;
+  const timeline = fullTimeline.slice(timelineOffset, timelineOffset + safeLimit);
+
+  return {
+    timeline,
+    pagination: pagingMeta(safePage, safeLimit, timelineTotal),
   };
 };

@@ -141,6 +141,9 @@ const recordLeadHistory = async ({
   } as any);
 };
 
+/** Chunk size for assign-by-date / cron-assign-last-24h (limits row lock duration). */
+const ASSIGN_BY_DATE_CHUNK_SIZE = 100;
+
 /** DB requires unique `lead_assignment_batches.runId` — never reuse import batch ids here. */
 const makeAuditBatchRunId = (prefix: string, hint?: string): string => {
   const ts = Date.now().toString(36);
@@ -1069,23 +1072,21 @@ export const assignByDateToTeamA = async ({
   } as any);
 
   let newAssignedCount = 0;
-  const t = await db.transaction();
+  let globalFirstLeadId = 0;
+  let processedInRun = 0;
+
+  const incomingWhere = {
+    status: { [Op.ne]: "promoted" },
+    createdAt: { [Op.between]: [start, end] },
+  };
+
   try {
     const teamA = await getTeamByCodeA();
     const members = await getActiveMemberUserIds(teamA.id);
     if (members.length === 0) throw new Error("No active members in Team A");
 
-    const rows: InstanceType<typeof IncomingLead>[] =
-      await IncomingLead.findAll({
-        where: {
-          status: { [Op.ne]: "promoted" },
-          createdAt: { [Op.between]: [start, end] },
-        },
-        order: [["id", "ASC"]],
-        transaction: t,
-        lock: t.LOCK.UPDATE,
-      });
-    if (rows.length === 0) {
+    const incomingTotal = await IncomingLead.count({ where: incomingWhere });
+    if (incomingTotal === 0) {
       console.log(
         "[auto-assignment:assign-by-date] no incoming rows matched window",
         {
@@ -1093,7 +1094,6 @@ export const assignByDateToTeamA = async ({
           teamAId: teamA.id,
         },
       );
-      await t.commit();
       await batch.update({
         status: "completed",
         finishedAt: new Date(),
@@ -1101,81 +1101,122 @@ export const assignByDateToTeamA = async ({
       } as any);
       return { batchId: (batch as any).id, newAssignedCount: 0 };
     }
+
     console.log("[auto-assignment:assign-by-date] promoting incoming rows", {
       batchId: (batch as any).id,
       teamAId: teamA.id,
-      incomingCount: rows.length,
+      incomingCount: incomingTotal,
+      chunkSize: ASSIGN_BY_DATE_CHUNK_SIZE,
       activeMemberCount: members.length,
       memberUserIds: members,
     });
-    const leadIds: number[] = [];
-    for (const rec of rows) {
-      const payload: any = rec.get("payload") || {};
-      const campaignName: string =
-        (rec.get("campaignName") as any) || payload.campaignName || "General";
-      const lead = await Lead.create(
-        {
-          campaignName,
-          leadData: normalizeLeadDataInput(payload),
-          assignees: [],
-          createdBy: triggeredByUserId || null,
-        } as any,
-        { transaction: t },
-      );
-      leadIds.push((lead as any).id);
-      await rec.update(
-        {
-          status: "promoted",
-          promotedAt: new Date(),
-          targetLeadId: (lead as any).id,
-        } as any,
-        { transaction: t },
-      );
+
+    while (true) {
+      const t = await db.transaction();
+      try {
+        const rows: InstanceType<typeof IncomingLead>[] =
+          await IncomingLead.findAll({
+            where: incomingWhere,
+            order: [["id", "ASC"]],
+            limit: ASSIGN_BY_DATE_CHUNK_SIZE,
+            transaction: t,
+            lock: t.LOCK.UPDATE,
+          });
+        if (rows.length === 0) {
+          await t.commit();
+          break;
+        }
+
+        const leadIds: number[] = [];
+        for (const rec of rows) {
+          const payload: any = rec.get("payload") || {};
+          const campaignName: string =
+            (rec.get("campaignName") as any) || payload.campaignName || "General";
+          const lead = await Lead.create(
+            {
+              campaignName,
+              leadData: normalizeLeadDataInput(payload),
+              assignees: [],
+              createdBy: triggeredByUserId || null,
+            } as any,
+            { transaction: t },
+          );
+          leadIds.push((lead as any).id);
+          await rec.update(
+            {
+              status: "promoted",
+              promotedAt: new Date(),
+              targetLeadId: (lead as any).id,
+            } as any,
+            { transaction: t },
+          );
+        }
+
+        if (globalFirstLeadId === 0) globalFirstLeadId = leadIds[0] ?? 0;
+
+        const plan = chooseAssigneesEqualSplit(
+          leadIds,
+          members,
+          globalFirstLeadId + processedInRun,
+        );
+        for (const leadId of leadIds) {
+          const assigneeId = plan.get(leadId)!;
+          const lead = await Lead.findByPk(leadId, {
+            transaction: t,
+            lock: t.LOCK.UPDATE,
+          });
+          if (!lead) continue;
+          const assignedAt = new Date().toISOString();
+          const assignees = [
+            {
+              userId: assigneeId,
+              status: deriveStatusForNextAssignee((lead as any).assignees),
+              assignedAt,
+            },
+          ];
+          await lead.update({ assignees } as any, { transaction: t });
+          await LeadAssignmentState.upsert(
+            {
+              leadId,
+              teamId: teamA.id,
+              currentAssigneeUserId: assigneeId,
+              lastAssignedAt: new Date(),
+              seenUserIds: [assigneeId],
+              cycleStep: 1,
+              cycleNo: 1,
+            } as any,
+            { transaction: t },
+          );
+          await recordLeadHistory({
+            leadId,
+            teamId: teamA.id,
+            userId: assigneeId,
+            cycleNo: 1,
+            source: "assign",
+            transaction: t,
+          });
+          await LeadRotationState.upsert(
+            { leadId, teamId: teamA.id, enteredTeamAt: new Date() } as any,
+            { transaction: t },
+          );
+        }
+
+        processedInRun += leadIds.length;
+        newAssignedCount += leadIds.length;
+        await t.commit();
+
+        console.log("[auto-assignment:assign-by-date] chunk committed", {
+          batchId: (batch as any).id,
+          chunkRows: rows.length,
+          processedInRun,
+          newAssignedCount,
+        });
+      } catch (chunkErr: any) {
+        await t.rollback();
+        throw chunkErr;
+      }
     }
-    const plan = chooseAssigneesEqualSplit(leadIds, members, leadIds[0] ?? 0);
-    for (const leadId of leadIds) {
-      const assigneeId = plan.get(leadId)!;
-      const lead = await Lead.findByPk(leadId, {
-        transaction: t,
-        lock: t.LOCK.UPDATE,
-      });
-      if (!lead) continue;
-      const assignedAt = new Date().toISOString();
-      const assignees = [
-        {
-          userId: assigneeId,
-          status: deriveStatusForNextAssignee((lead as any).assignees),
-          assignedAt,
-        },
-      ];
-      await lead.update({ assignees } as any, { transaction: t });
-      await LeadAssignmentState.upsert(
-        {
-          leadId,
-          teamId: teamA.id,
-          currentAssigneeUserId: assigneeId,
-          lastAssignedAt: new Date(),
-          seenUserIds: [assigneeId],
-          cycleStep: 1,
-          cycleNo: 1,
-        } as any,
-        { transaction: t },
-      );
-      await recordLeadHistory({
-        leadId,
-        teamId: teamA.id,
-        userId: assigneeId,
-        cycleNo: 1,
-        source: "assign",
-        transaction: t,
-      });
-      await LeadRotationState.upsert(
-        { leadId, teamId: teamA.id, enteredTeamAt: new Date() } as any,
-        { transaction: t },
-      );
-    }
-    newAssignedCount = leadIds.length;
-    await t.commit();
+
     await batch.update({
       status: "completed",
       finishedAt: new Date(),
@@ -1185,19 +1226,21 @@ export const assignByDateToTeamA = async ({
       batchId: (batch as any).id,
       teamAId: teamA.id,
       newAssignedCount,
-      leadIds,
-      assigneePlan: Object.fromEntries(plan),
+      chunkSize: ASSIGN_BY_DATE_CHUNK_SIZE,
+      globalFirstLeadId: globalFirstLeadId || null,
     });
     return { batchId: (batch as any).id, newAssignedCount };
   } catch (e: any) {
     console.error("[auto-assignment:assign-by-date] failed", {
       message: e?.message,
       batchId: (batch as any)?.id,
+      newAssignedCount,
+      processedInRun,
     });
-    await t.rollback();
     await batch.update({
       status: "failed",
       finishedAt: new Date(),
+      newAssignedCount,
       errorMessage: e.message,
     } as any);
     throw e;

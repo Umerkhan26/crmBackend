@@ -1,18 +1,15 @@
+root@eraxon:/home/backendCrm/crmBackend# cat ecosystem.cron.config.cjs 
 /**
  * PM2 scheduled workers (one-shot scripts; autorestart: false; PM2 cron_restart runs the next invocation).
  *
- * - cron-assign-last-24h: daily 7:00 PM Asia/Karachi (same as your previous crontab).
- * - cron-rebalance-rotate: every 15 min — script reads rebalanceDays / tenure / rotationOrder from DB.
+ * - cron-assign-last-24h: daily 7:00 PM Asia/Karachi
+ * - cron-rebalance-rotate: every 15 min — script reads rebalanceDays / DB
  *
  * Start:  npm run pm2:cron
- *          (or: pm2 start ecosystem.cron.config.cjs)
  * Save:   pm2 save
- *
- * IMPORTANT: Remove the two auto-assignment lines from `crontab -e` so jobs do not run twice.
  */
 const path = require("path");
 
-/** Logs next to repo: ../logs (e.g. /home/backendCrm/logs when app is in .../crmBackend) */
 const logDir = path.join(__dirname, "..", "logs");
 
 module.exports = {
@@ -22,8 +19,12 @@ module.exports = {
       cwd: __dirname,
       script: "npm",
       args: "run cron:assign-last-24h",
-      autorestart: false,
-      cron_restart: "0 19 * * *",
+ 
+     autorestart: false,
+cron_restart: "0 14 * * 1-5",
+//  cron_restart: "0 14 * * *", 
+
+//      cron_restart: "0 19 * * *",
       env: {
         TZ: "Asia/Karachi",
         NODE_ENV: "production",
@@ -39,8 +40,9 @@ module.exports = {
       script: "npm",
       args: "run cron:rebalance-rotate",
       autorestart: false,
-      cron_restart: "*/15 * * * *",
-      env: {
+//      cron_restart: "*/15 * * * *",
+cron_restart: "*/15 * * * 1-5",  
+    env: {
         TZ: "Asia/Karachi",
         NODE_ENV: "production",
       },

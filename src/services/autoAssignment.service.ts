@@ -1073,13 +1073,17 @@ export const assignByDateToTeamA = async ({
   customStart,
   customEnd,
   runId,
+  importRunId,
   triggeredByUserId,
 }: {
   window?: "today" | "yesterday" | "day_before_yesterday" | "custom";
   tz?: string;
   customStart?: string;
   customEnd?: string;
+  /** Optional label stored on the audit batch (not a filter). */
   runId?: string;
+  /** When set, only non-promoted incoming rows with this import `runId` are assigned. */
+  importRunId?: string;
   triggeredByUserId?: number;
 }) => {
   const cfg = await getOrCreateSettings();
@@ -1098,9 +1102,13 @@ export const assignByDateToTeamA = async ({
     start: start.toISOString?.() ?? start,
     end: end.toISOString?.() ?? end,
     runId: runId?.trim() || null,
+    importRunId: importRunId?.trim() || null,
     triggeredByUserId: triggeredByUserId ?? null,
   });
-  const hint = runId?.trim() || DateTime.fromJSDate(start).toFormat("yyyyLLdd");
+  const hint =
+    importRunId?.trim() ||
+    runId?.trim() ||
+    DateTime.fromJSDate(start).toFormat("yyyyLLdd");
   const batch = await LeadAssignmentBatch.create({
     runId: makeAuditBatchRunId("asg", hint),
     triggerType: "manual",
@@ -1113,6 +1121,7 @@ export const assignByDateToTeamA = async ({
       start,
       end,
       ...(runId?.trim() ? { labelRunId: runId.trim() } : {}),
+      ...(importRunId?.trim() ? { importRunId: importRunId.trim() } : {}),
     } as any,
   } as any);
 
@@ -1121,10 +1130,13 @@ export const assignByDateToTeamA = async ({
   let processedInRun = 0;
   let jobLockHeld = false;
 
-  const incomingWhere = {
+  const incomingWhere: Record<string, unknown> = {
     status: { [Op.ne]: "promoted" },
     createdAt: { [Op.between]: [start, end] },
   };
+  if (importRunId?.trim()) {
+    incomingWhere.runId = importRunId.trim();
+  }
 
   try {
     jobLockHeld = await acquireAutoAssignmentJobLock(

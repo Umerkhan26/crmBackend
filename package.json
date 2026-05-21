@@ -7,6 +7,7 @@
     "sync:auto-assignment": "npx ts-node src/scripts/sync-auto-assignment.ts",
     "cron:rebalance-rotate": "npx ts-node src/scripts/cron-rebalance-rotate.ts",
     "cron:assign-last-24h": "npx ts-node src/scripts/cron-assign-last-24h.ts",
+    "assign:interactive-7d": "npx ts-node src/scripts/interactive-assign-last-7d.ts",
     "pm2:cron": "pm2 start ecosystem.cron.config.cjs",
     "pm2:cron:delete": "pm2 delete cron-assign-last-24h cron-rebalance-rotate || exit 0",
     "sync:database": "npx ts-node src/scripts/sync-database.ts",

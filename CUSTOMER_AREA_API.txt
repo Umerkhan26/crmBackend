@@ -1,41 +1,69 @@
 ================================================================================
-CUSTOMER AREA - API REFERENCE (Backend)
+CUSTOMER AREA + CUSTOMER ACCOUNTS — API REFERENCE
 Base: {API_HOST}/api
 ================================================================================
 
 ONE backend (crmBackend) for xCRM staff + customer portal apps.
-Separate project = customer frontend only (deploy later on customer.* domains).
+Separate portal project = customer frontend only (deploy later on customer.* domains).
 
---- LOCAL DEV (before real subdomains) ---
+--- HOW IT WORKS ---
 
-  .env examples:
+On sale submit, backend creates:
+  1. users row (email + password, userrole = customer)
+  2. customer_accounts row (links user + lead + sale + optional brand)
+
+Portal app logs in via /api/customer-area/login.
+
+--- SETUP (once, in crmBackend folder) ---
+
+  npm run sync:customer-area
+  npm run seed:customer-role
+  npx ts-node src/scripts/seed-portal-brands.ts
+
+  .env (backend, for local portal dev):
     CUSTOMER_PORTAL_LOCAL_BRAND_SLUG=emrills
     CUSTOMER_PORTAL_URL=http://localhost:3100
     CORS_ORIGINS=http://localhost:3100,http://localhost:5173
 
   Resolve brand on localhost using ANY of:
-    ?brandSlug=emrills
-    ?brandId=1
-    ?portalHost=customer.emrills.com
+    ?brandSlug=emrills | ?brandId=1 | ?portalHost=customer.emrills.com
     Header: x-customer-host: customer.emrills.com
 
   Production: host customer.emrills.com resolves brand via brands.subdomain
 
-  Setup (once):
-    npm run sync:customer-area
-    npx ts-node src/scripts/seed-customer-role.ts
-    npx ts-node src/scripts/seed-portal-brands.ts
-
---- xCRM STAFF (unchanged + portal content) ---
+================================================================================
+xCRM STAFF APIs
+================================================================================
 
 POST /convertLeadToSale
-GET  /customer-accounts
-GET  /customer-accounts/:id
-GET  /customer-accounts/:id/insights
+  Create sale + auto-create customer account (default).
+  Body: { leadId, campaignId, assigneeId, products OR productType+price,
+          brandId (optional), autoProvisionCustomer (optional, default true) }
+  Response: customerProvisioning { provisioned, emailSent, userId, reason }
+
+GET /customer-accounts?page=1&limit=10&search=&brandId=
+  List all customer accounts. Auth: Staff JWT + customerAccount:get
+
+GET /customer-accounts/:id
+  One customer with user, brand, lead, sale. Auth: customerAccount:get
+
+GET /customer-accounts/:id/insights
+  Emails, engagements, timeline. Auth: customerAccount:get
+
 POST /customer-accounts/:id/send-email | /upsell | /discount | /notify
+  Customer engagement actions. Auth: customerAccount:create
+
 POST /customer-accounts/provision-from-sale/:saleId
-GET  /brands/portal/list
-GET  /brands/portal/:brandId/sales-form
+  Retry account creation for existing sale. Body: { brandId? }
+
+GET /brands/portal/list
+  Brands for agent selector (GWB, Emrills, Dnova). Auth: brand:get
+
+GET /brands/portal/:brandId/sales-form
+  Sales form config per brand. Auth: brand:get
+
+GET /getleadByid/:id
+  Load lead on sales form (existing endpoint).
 
 Portal content (staff JWT + portalContent:* permission):
 GET    /portal-content/brands
@@ -50,18 +78,19 @@ DELETE /portal-content/popups/:id
 PATCH  /portal-content/sales/:saleId/progress
        Body: { label, percent, steps: [{ name, done }] }
 
---- CUSTOMER PORTAL (public + customer JWT) ---
+================================================================================
+CUSTOMER PORTAL APIs (separate app — customer JWT)
+================================================================================
 
 GET  /customer-area/resolve-brand?brandSlug=emrills
-GET  /customer-area/brand-config          (same as resolve-brand)
+GET  /customer-area/brand-config          (same; theme, logo, colors)
 POST /customer-area/login
-     Body: { email, password, brandId? }
-     Optional: ?brandSlug= | header x-customer-host
+     Body: { email, password, brandId? } — add ?brandSlug= or x-customer-host locally
 
-GET  /customer-area/me                    (Bearer customer token)
-GET  /customer-area/stats                 (dashboard counts — orders, offers, notifications, etc.)
+GET  /customer-area/me
+GET  /customer-area/stats                 (dashboard counts)
 GET  /customer-area/my-sales              (legacy summary)
-GET  /customer-area/orders                (requires brand on token or query)
+GET  /customer-area/orders
 GET  /customer-area/orders/:saleId/progress
 GET  /customer-area/invoices
 GET  /customer-area/offers
@@ -70,13 +99,60 @@ GET  /customer-area/popups
 POST /customer-area/popups/:popupId/dismiss
 GET  /customer-area/notifications
 
-All authenticated portal routes need:
-  Authorization: Bearer <customer token>
-  Plus brand: from JWT brandId OR ?brandSlug= OR x-customer-host
+Auth: Authorization: Bearer <customer token>
+Brand (local): JWT brandId OR ?brandSlug= OR x-customer-host
 
---- BRAND THEME (in DB) ---
+Brand theme in DB: brands.salesFormConfig.portalTheme
+  { logoUrl, primaryColor, supportEmail, supportPhone }
 
-  brands.salesFormConfig.portalTheme JSON:
-    { logoUrl, primaryColor, supportEmail, supportPhone }
+================================================================================
+FLOWS — WHICH ENDPOINT FOR WHAT
+================================================================================
+
+FLOW 1: xCRM AGENT — SALES FORM
+  GET  /brands/portal/list
+  GET  /brands/portal/:brandId/sales-form
+  GET  /getleadByid/:id
+  PUT  /leads/:id  (optional, update lead before sale)
+  POST /convertLeadToSale
+
+FLOW 2: xCRM STAFF — CUSTOMER MANAGEMENT
+  GET  /customer-accounts
+  GET  /customer-accounts/:id
+  GET  /customer-accounts/:id/insights
+  POST /customer-accounts/provision-from-sale/:saleId
+
+FLOW 3: CUSTOMER PORTAL APP
+  GET  /customer-area/brand-config
+  POST /customer-area/login
+  GET  /customer-area/stats
+  GET  /customer-area/me
+  GET  /customer-area/orders
+  GET  /customer-area/invoices
+  GET  /customer-area/offers
+  GET  /customer-area/popups + POST dismiss
+
+================================================================================
+QUICK MAP (one line per endpoint)
+================================================================================
+
+  GET  /brands/portal/list
+  GET  /brands/portal/:brandId/sales-form
+  GET  /getleadByid/:id
+  POST /convertLeadToSale
+  GET  /customer-accounts
+  GET  /customer-accounts/:id
+  GET  /customer-accounts/:id/insights
+  POST /customer-accounts/provision-from-sale/:saleId
+  GET  /portal-content/announcements
+  POST /portal-content/announcements
+  GET  /customer-area/brand-config
+  POST /customer-area/login
+  GET  /customer-area/me
+  GET  /customer-area/stats
+  GET  /customer-area/orders
+  GET  /customer-area/my-sales
+
+Frontend portal guide: CUSTOMER_AREA_FRONTEND_STEPS.txt
 
 ================================================================================

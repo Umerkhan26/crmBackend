@@ -141,6 +141,54 @@ const recordLeadHistory = async ({
   } as any);
 };
 
+/** One incoming row per transaction for assign-by-date (minimizes lock contention). */
+const ASSIGN_BY_DATE_ROW_MAX_RETRIES = 3;
+const ASSIGN_BY_DATE_RETRY_SLEEP_MS = 3000;
+const ASSIGN_BY_DATE_PROGRESS_EVERY = 100;
+/** MySQL advisory lock — assign waits; rebalance/rotate skip if held. */
+const AUTO_ASSIGNMENT_JOB_LOCK = "crm_auto_assignment_job";
+const AUTO_ASSIGNMENT_LOCK_WAIT_ASSIGN_SEC = 7200;
+
+const sleepMs = (ms: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+const isLockWaitTimeoutError = (err: any): boolean => {
+  const msg = String(err?.message || err || "").toLowerCase();
+  return msg.includes("lock wait timeout");
+};
+
+const parseGetLockResult = (rows: unknown): number | null => {
+  const row = Array.isArray(rows) ? (rows as any[])[0] : null;
+  if (!row || typeof row !== "object") return null;
+  const v =
+    (row as any).acquired ??
+    (row as any).ACQUIRED ??
+    Object.values(row as object)[0];
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+};
+
+const acquireAutoAssignmentJobLock = async (
+  waitSeconds: number,
+): Promise<boolean> => {
+  const [rows] = await db.query(
+    "SELECT GET_LOCK(:lockName, :waitSec) AS acquired",
+    {
+      replacements: {
+        lockName: AUTO_ASSIGNMENT_JOB_LOCK,
+        waitSec: Math.max(0, Math.floor(waitSeconds)),
+      },
+    },
+  );
+  return parseGetLockResult(rows) === 1;
+};
+
+const releaseAutoAssignmentJobLock = async (): Promise<void> => {
+  await db.query("SELECT RELEASE_LOCK(:lockName) AS released", {
+    replacements: { lockName: AUTO_ASSIGNMENT_JOB_LOCK },
+  });
+};
+
 /** DB requires unique `lead_assignment_batches.runId` — never reuse import batch ids here. */
 const makeAuditBatchRunId = (prefix: string, hint?: string): string => {
   const ts = Date.now().toString(36);
@@ -1025,13 +1073,17 @@ export const assignByDateToTeamA = async ({
   customStart,
   customEnd,
   runId,
+  importRunId,
   triggeredByUserId,
 }: {
   window?: "today" | "yesterday" | "day_before_yesterday" | "custom";
   tz?: string;
   customStart?: string;
   customEnd?: string;
+  /** Optional label stored on the audit batch (not a filter). */
   runId?: string;
+  /** When set, only non-promoted incoming rows with this import `runId` are assigned. */
+  importRunId?: string;
   triggeredByUserId?: number;
 }) => {
   const cfg = await getOrCreateSettings();
@@ -1050,9 +1102,13 @@ export const assignByDateToTeamA = async ({
     start: start.toISOString?.() ?? start,
     end: end.toISOString?.() ?? end,
     runId: runId?.trim() || null,
+    importRunId: importRunId?.trim() || null,
     triggeredByUserId: triggeredByUserId ?? null,
   });
-  const hint = runId?.trim() || DateTime.fromJSDate(start).toFormat("yyyyLLdd");
+  const hint =
+    importRunId?.trim() ||
+    runId?.trim() ||
+    DateTime.fromJSDate(start).toFormat("yyyyLLdd");
   const batch = await LeadAssignmentBatch.create({
     runId: makeAuditBatchRunId("asg", hint),
     triggerType: "manual",
@@ -1065,27 +1121,39 @@ export const assignByDateToTeamA = async ({
       start,
       end,
       ...(runId?.trim() ? { labelRunId: runId.trim() } : {}),
+      ...(importRunId?.trim() ? { importRunId: importRunId.trim() } : {}),
     } as any,
   } as any);
 
   let newAssignedCount = 0;
-  const t = await db.transaction();
+  let globalFirstLeadId = 0;
+  let processedInRun = 0;
+  let jobLockHeld = false;
+
+  const incomingWhere: Record<string, unknown> = {
+    status: { [Op.ne]: "promoted" },
+    createdAt: { [Op.between]: [start, end] },
+  };
+  if (importRunId?.trim()) {
+    incomingWhere.runId = importRunId.trim();
+  }
+
   try {
+    jobLockHeld = await acquireAutoAssignmentJobLock(
+      AUTO_ASSIGNMENT_LOCK_WAIT_ASSIGN_SEC,
+    );
+    if (!jobLockHeld) {
+      throw new Error(
+        "Could not acquire auto-assignment job lock (another assign/rebalance/rotate may be running).",
+      );
+    }
+
     const teamA = await getTeamByCodeA();
     const members = await getActiveMemberUserIds(teamA.id);
     if (members.length === 0) throw new Error("No active members in Team A");
 
-    const rows: InstanceType<typeof IncomingLead>[] =
-      await IncomingLead.findAll({
-        where: {
-          status: { [Op.ne]: "promoted" },
-          createdAt: { [Op.between]: [start, end] },
-        },
-        order: [["id", "ASC"]],
-        transaction: t,
-        lock: t.LOCK.UPDATE,
-      });
-    if (rows.length === 0) {
+    const incomingTotal = await IncomingLead.count({ where: incomingWhere });
+    if (incomingTotal === 0) {
       console.log(
         "[auto-assignment:assign-by-date] no incoming rows matched window",
         {
@@ -1093,7 +1161,6 @@ export const assignByDateToTeamA = async ({
           teamAId: teamA.id,
         },
       );
-      await t.commit();
       await batch.update({
         status: "completed",
         finishedAt: new Date(),
@@ -1101,81 +1168,147 @@ export const assignByDateToTeamA = async ({
       } as any);
       return { batchId: (batch as any).id, newAssignedCount: 0 };
     }
+
     console.log("[auto-assignment:assign-by-date] promoting incoming rows", {
       batchId: (batch as any).id,
       teamAId: teamA.id,
-      incomingCount: rows.length,
+      incomingCount: incomingTotal,
+      mode: "one-row-per-transaction",
       activeMemberCount: members.length,
       memberUserIds: members,
     });
-    const leadIds: number[] = [];
-    for (const rec of rows) {
-      const payload: any = rec.get("payload") || {};
-      const campaignName: string =
-        (rec.get("campaignName") as any) || payload.campaignName || "General";
-      const lead = await Lead.create(
-        {
-          campaignName,
-          leadData: normalizeLeadDataInput(payload),
-          assignees: [],
-          createdBy: triggeredByUserId || null,
-        } as any,
-        { transaction: t },
-      );
-      leadIds.push((lead as any).id);
-      await rec.update(
-        {
-          status: "promoted",
-          promotedAt: new Date(),
-          targetLeadId: (lead as any).id,
-        } as any,
-        { transaction: t },
-      );
-    }
-    const plan = chooseAssigneesEqualSplit(leadIds, members, leadIds[0] ?? 0);
-    for (const leadId of leadIds) {
-      const assigneeId = plan.get(leadId)!;
-      const lead = await Lead.findByPk(leadId, {
-        transaction: t,
-        lock: t.LOCK.UPDATE,
+
+    while (true) {
+      const remaining = await IncomingLead.count({ where: incomingWhere });
+      if (remaining === 0) break;
+
+      const nextIncoming = await IncomingLead.findOne({
+        where: incomingWhere,
+        order: [["id", "ASC"]],
+        attributes: ["id"],
       });
-      if (!lead) continue;
-      const assignedAt = new Date().toISOString();
-      const assignees = [
-        {
-          userId: assigneeId,
-          status: deriveStatusForNextAssignee((lead as any).assignees),
-          assignedAt,
-        },
-      ];
-      await lead.update({ assignees } as any, { transaction: t });
-      await LeadAssignmentState.upsert(
-        {
-          leadId,
-          teamId: teamA.id,
-          currentAssigneeUserId: assigneeId,
-          lastAssignedAt: new Date(),
-          seenUserIds: [assigneeId],
-          cycleStep: 1,
-          cycleNo: 1,
-        } as any,
-        { transaction: t },
-      );
-      await recordLeadHistory({
-        leadId,
-        teamId: teamA.id,
-        userId: assigneeId,
-        cycleNo: 1,
-        source: "assign",
-        transaction: t,
-      });
-      await LeadRotationState.upsert(
-        { leadId, teamId: teamA.id, enteredTeamAt: new Date() } as any,
-        { transaction: t },
-      );
+      if (!nextIncoming) break;
+
+      const incomingId = nextIncoming.get("id") as number;
+      let rowAttempts = 0;
+      let rowDone = false;
+
+      while (!rowDone && rowAttempts < ASSIGN_BY_DATE_ROW_MAX_RETRIES) {
+        rowAttempts++;
+        const t = await db.transaction();
+        try {
+          const rec = await IncomingLead.findByPk(incomingId, {
+            transaction: t,
+            lock: t.LOCK.UPDATE,
+          });
+          if (!rec || (rec.get("status") as string) === "promoted") {
+            await t.commit();
+            rowDone = true;
+            break;
+          }
+
+          const payload: any = rec.get("payload") || {};
+          const campaignName: string =
+            (rec.get("campaignName") as any) || payload.campaignName || "General";
+          const lead = await Lead.create(
+            {
+              campaignName,
+              leadData: normalizeLeadDataInput(payload),
+              assignees: [],
+              createdBy: triggeredByUserId || null,
+            } as any,
+            { transaction: t },
+          );
+          const leadId = (lead as any).id as number;
+          await rec.update(
+            {
+              status: "promoted",
+              promotedAt: new Date(),
+              targetLeadId: leadId,
+            } as any,
+            { transaction: t },
+          );
+
+          if (globalFirstLeadId === 0) globalFirstLeadId = leadId;
+
+          const assigneeId = chooseAssigneesEqualSplit(
+            [leadId],
+            members,
+            globalFirstLeadId + processedInRun,
+          ).get(leadId)!;
+          const assignedAt = new Date().toISOString();
+          const assignees = [
+            {
+              userId: assigneeId,
+              status: deriveStatusForNextAssignee((lead as any).assignees),
+              assignedAt,
+            },
+          ];
+          await lead.update({ assignees } as any, { transaction: t });
+          await LeadAssignmentState.upsert(
+            {
+              leadId,
+              teamId: teamA.id,
+              currentAssigneeUserId: assigneeId,
+              lastAssignedAt: new Date(),
+              seenUserIds: [assigneeId],
+              cycleStep: 1,
+              cycleNo: 1,
+            } as any,
+            { transaction: t },
+          );
+          await recordLeadHistory({
+            leadId,
+            teamId: teamA.id,
+            userId: assigneeId,
+            cycleNo: 1,
+            source: "assign",
+            transaction: t,
+          });
+          await LeadRotationState.upsert(
+            { leadId, teamId: teamA.id, enteredTeamAt: new Date() } as any,
+            { transaction: t },
+          );
+
+          await t.commit();
+          processedInRun += 1;
+          newAssignedCount += 1;
+          rowDone = true;
+
+          if (
+            processedInRun % ASSIGN_BY_DATE_PROGRESS_EVERY === 0 ||
+            processedInRun === incomingTotal
+          ) {
+            console.log("[auto-assignment:assign-by-date] progress", {
+              batchId: (batch as any).id,
+              processedInRun,
+              newAssignedCount,
+              remaining: Math.max(0, incomingTotal - processedInRun),
+            });
+          }
+        } catch (rowErr: any) {
+          await t.rollback();
+          if (
+            isLockWaitTimeoutError(rowErr) &&
+            rowAttempts < ASSIGN_BY_DATE_ROW_MAX_RETRIES
+          ) {
+            console.warn(
+              "[auto-assignment:assign-by-date] row lock timeout, retrying",
+              {
+                batchId: (batch as any).id,
+                incomingId,
+                rowAttempts,
+                processedInRun,
+              },
+            );
+            await sleepMs(ASSIGN_BY_DATE_RETRY_SLEEP_MS);
+            continue;
+          }
+          throw rowErr;
+        }
+      }
     }
-    newAssignedCount = leadIds.length;
-    await t.commit();
+
     await batch.update({
       status: "completed",
       finishedAt: new Date(),
@@ -1185,22 +1318,27 @@ export const assignByDateToTeamA = async ({
       batchId: (batch as any).id,
       teamAId: teamA.id,
       newAssignedCount,
-      leadIds,
-      assigneePlan: Object.fromEntries(plan),
+      globalFirstLeadId: globalFirstLeadId || null,
     });
     return { batchId: (batch as any).id, newAssignedCount };
   } catch (e: any) {
     console.error("[auto-assignment:assign-by-date] failed", {
       message: e?.message,
       batchId: (batch as any)?.id,
+      newAssignedCount,
+      processedInRun,
     });
-    await t.rollback();
     await batch.update({
       status: "failed",
       finishedAt: new Date(),
+      newAssignedCount,
       errorMessage: e.message,
     } as any);
     throw e;
+  } finally {
+    if (jobLockHeld) {
+      await releaseAutoAssignmentJobLock();
+    }
   }
 };
 
@@ -1242,6 +1380,22 @@ export const rebalanceTeam = async ({
     );
   }
 
+  if (!(await acquireAutoAssignmentJobLock(0))) {
+    console.log(
+      "[auto-assignment:rebalance-team] skipped — assign or another auto-assignment job holds the lock",
+      { teamId, labelRunId: labelRunId?.trim() || null },
+    );
+    return {
+      rebalanced: 0,
+      skippedBecauseBusy: true,
+      trackedForTeam: 0,
+      skippedLocked: 0,
+      batchId: null,
+    };
+  }
+
+  let jobLockHeld = true;
+  try {
   const hint = labelRunId?.trim() || `team${teamId}`;
   const batch = await LeadAssignmentBatch.create({
     runId: makeAuditBatchRunId("rebal", hint),
@@ -1468,6 +1622,9 @@ export const rebalanceTeam = async ({
     } as any);
     throw e;
   }
+  } finally {
+    if (jobLockHeld) await releaseAutoAssignmentJobLock();
+  }
 };
 
 /** tenureHours 0 → cutoff is “now”, so every rotation row with enteredTeamAt ≤ now is eligible (typical testing). */
@@ -1484,6 +1641,21 @@ export const rotateByTenure = async ({
     Number.isFinite(Number(tenureHours)) && Number(tenureHours) >= 0
       ? Number(tenureHours)
       : 24;
+  if (!(await acquireAutoAssignmentJobLock(0))) {
+    console.log(
+      "[auto-assignment:rotate] skipped — assign or another auto-assignment job holds the lock",
+      { tenureHours: th, labelRunId: labelRunId?.trim() || null },
+    );
+    return {
+      rotated: 0,
+      skippedBecauseBusy: true,
+      tenureHours: th,
+      batchId: null,
+    };
+  }
+
+  let jobLockHeld = true;
+  try {
   const hint = labelRunId?.trim() || `h${String(th).replace(/\./g, "p")}`;
   const batch = await LeadAssignmentBatch.create({
     runId: makeAuditBatchRunId("rot", hint),
@@ -1687,6 +1859,9 @@ export const rotateByTenure = async ({
       errorMessage: e.message,
     } as any);
     throw e;
+  }
+  } finally {
+    if (jobLockHeld) await releaseAutoAssignmentJobLock();
   }
 };
 

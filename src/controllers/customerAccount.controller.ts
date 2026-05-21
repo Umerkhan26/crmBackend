@@ -140,6 +140,51 @@ const parseAccountId = (req: CustomRequest) => {
   return id;
 };
 
+export const updateCustomerAccountController = async (
+  req: CustomRequest,
+  res: Response
+): Promise<any> => {
+  try {
+    const id = parseAccountId(req);
+    const body = req.body || {};
+    const data = await CustomerAccountService.updateCustomerAccount(id, {
+      status: body.status,
+      firstname: body.firstname,
+      lastname: body.lastname,
+      email: body.email,
+      phone: body.phone,
+      brandId: body.brandId,
+      leadStatus: body.leadStatus,
+      businessName: body.businessName,
+      saleStatus: body.saleStatus,
+      saleNotes: body.saleNotes,
+      productType: body.productType,
+      salePrice: body.salePrice,
+      products: body.products,
+    });
+    return res.status(200).json({ success: true, data, message: "Customer updated" });
+  } catch (error: any) {
+    const msg = error?.message || "Failed to update customer";
+    const status = /not found/i.test(msg) ? 404 : 400;
+    return res.status(status).json({ success: false, message: msg });
+  }
+};
+
+export const deleteCustomerAccountController = async (
+  req: CustomRequest,
+  res: Response
+): Promise<any> => {
+  try {
+    const id = parseAccountId(req);
+    const data = await CustomerAccountService.deleteCustomerAccount(id);
+    return res.status(200).json({ success: true, data, message: "Customer account removed" });
+  } catch (error: any) {
+    const msg = error?.message || "Failed to delete customer";
+    const status = /not found/i.test(msg) ? 404 : 500;
+    return res.status(status).json({ success: false, message: msg });
+  }
+};
+
 export const sendCustomerEmailController = async (
   req: CustomRequest,
   res: Response

@@ -110,6 +110,8 @@ export const PERMISSIONS = {
   // Customer account (portal customers created from sales)
   CUSTOMER_ACCOUNT_GET: "customerAccount:get",
   CUSTOMER_ACCOUNT_CREATE: "customerAccount:create",
+  CUSTOMER_ACCOUNT_UPDATE: "customerAccount:update",
+  CUSTOMER_ACCOUNT_DELETE: "customerAccount:delete",
 
   // Team permissions
   TEAM_CREATE: "team:create",

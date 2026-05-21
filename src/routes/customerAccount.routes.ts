@@ -8,6 +8,8 @@ import {
   getCustomerAccountInsightsController,
   getCustomerEngagementsFeedController,
   getCustomerTimelineFeedController,
+  updateCustomerAccountController,
+  deleteCustomerAccountController,
   sendCustomerEmailController,
   applyCustomerDiscountController,
   createCustomerUpsellController,
@@ -65,6 +67,18 @@ router.post(
   "/:id/notify",
   checkPermission(PERMISSIONS.CUSTOMER_ACCOUNT_CREATE),
   sendCustomerNotificationController
+);
+
+router.patch(
+  "/:id",
+  checkPermission(PERMISSIONS.CUSTOMER_ACCOUNT_UPDATE),
+  updateCustomerAccountController
+);
+
+router.delete(
+  "/:id",
+  checkPermission(PERMISSIONS.CUSTOMER_ACCOUNT_DELETE),
+  deleteCustomerAccountController
 );
 
 router.get(

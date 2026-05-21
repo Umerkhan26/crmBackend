@@ -113,6 +113,12 @@ export const PERMISSIONS = {
   CUSTOMER_ACCOUNT_UPDATE: "customerAccount:update",
   CUSTOMER_ACCOUNT_DELETE: "customerAccount:delete",
 
+  // Portal content (announcements, popups — managed in xCRM, shown in customer portal)
+  PORTAL_CONTENT_GET: "portalContent:get",
+  PORTAL_CONTENT_CREATE: "portalContent:create",
+  PORTAL_CONTENT_UPDATE: "portalContent:update",
+  PORTAL_CONTENT_DELETE: "portalContent:delete",
+
   // Team permissions
   TEAM_CREATE: "team:create",
   TEAM_GET: "team:get",

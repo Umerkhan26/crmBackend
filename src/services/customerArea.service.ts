@@ -6,21 +6,17 @@ import CustomerAccount from "../models/customerAccount.model";
 import Role from "../models/role.model";
 import ProductSale from "../models/product.model";
 import Lead from "../models/lead.model";
+import { resolvePortalBrand } from "../utils/portalHost";
 
 export const resolveBrandByHost = async (
-  host: string
+  host: string,
+  opts?: { brandId?: number; brandSlug?: string }
 ): Promise<Brand | null> => {
-  const normalized = (host || "").toLowerCase().split(":")[0]!;
-  const subdomain = normalized.startsWith("customer.")
-    ? normalized.replace(/^customer\./, "").split(".")[0]
-    : normalized.split(".")[0];
-
-  if (!subdomain) return null;
-
-  const brand = await Brand.findOne({
-    where: { subdomain, status: "active" },
+  return resolvePortalBrand({
+    host,
+    brandId: opts?.brandId,
+    brandSlug: opts?.brandSlug,
   });
-  return brand;
 };
 
 export const getPortalBrands = async () => {
@@ -60,16 +56,17 @@ export const customerLogin = async (params: {
   password: string;
   brandId?: number;
   host?: string;
+  brandSlug?: string;
 }) => {
-  const { email, password, brandId, host } = params;
+  const { email, password, brandId, host, brandSlug } = params;
 
   if (!email || !password) {
     throw new Error("Email and password are required");
   }
 
   let resolvedBrandId = brandId;
-  if (!resolvedBrandId && host) {
-    const brand = await resolveBrandByHost(host);
+  if (!resolvedBrandId) {
+    const brand = await resolveBrandByHost(host || "", { brandSlug });
     resolvedBrandId = brand?.id;
   }
 

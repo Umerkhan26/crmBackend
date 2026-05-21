@@ -13,15 +13,23 @@ const app: Application = express();
 const requestBodyLimit = process.env.REQUEST_BODY_LIMIT || "50mb";
 app.use(express.json({ limit: requestBodyLimit }));
 app.use(express.urlencoded({ extended: true, limit: requestBodyLimit }));
+import { isAllowedPortalOrigin } from "./src/utils/portalHost";
+
 export const buildAllowedOrigins = (): string[] => {
   const origins = new Set<string>([
     "http://localhost:3001",
     "http://127.0.0.1:3001",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
     "http://localhost:3100",
     "http://127.0.0.1:3100",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
   ]);
   const frontEnd = process.env.FRONT_END_URL?.trim();
   if (frontEnd) origins.add(frontEnd);
+  const portalUrl = process.env.CUSTOMER_PORTAL_URL?.trim();
+  if (portalUrl) origins.add(portalUrl);
   const extra = process.env.CORS_ORIGINS || "";
   extra.split(",").forEach((o) => {
     const trimmed = o.trim();
@@ -43,6 +51,10 @@ app.use(
         callback(null, origin);
         return;
       }
+      if (isAllowedPortalOrigin(origin)) {
+        callback(null, origin);
+        return;
+      }
       callback(null, false);
     },
     credentials: true,
@@ -59,6 +71,7 @@ const ROUTE_PRIORITY: Record<string, { mount?: string; order?: number }> = {
   "brand.routes": { mount: "/api/brands", order: 0 },  // must be first - /api/brands before /api
   "customerArea.routes": { mount: "/api/customer-area", order: 0 },
   "customerAccount.routes": { mount: "/api/customer-accounts", order: 0 },
+  "portalContent.routes": { mount: "/api/portal-content", order: 0 },
   "user.routes": { order: 1 },  // login, register
   "role.routes": { order: 2 },  // /all
   "permission.routes": { order: 3 },

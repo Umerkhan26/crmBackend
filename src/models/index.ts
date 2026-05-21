@@ -37,5 +37,8 @@ import "./incomingLead.model";
 import "./leadMemberHistory.model";
 import "./customerAccount.model";
 import "./customerEngagement.model";
+import "./portalAnnouncement.model";
+import "./portalPopup.model";
+import "./portalPopupDismissal.model";
 import "./client.model";
 associateModels();

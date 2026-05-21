@@ -1,7 +1,12 @@
 import { Response, NextFunction } from "express";
+import jwt from "jsonwebtoken";
 import { extractUserIdFromToken } from "../utils/authHelper";
 import { CustomRequest } from "../types/custom";
 import User from "../models/user.model";
+import {
+  readPortalHostFromRequest,
+  resolvePortalBrand,
+} from "../utils/portalHost";
 
 export const verifyCustomerToken = async (
   req: CustomRequest,
@@ -36,6 +41,25 @@ export const verifyCustomerToken = async (
 
     req.user = { id: user.id!, permissions: [] };
     (req as any).customerUser = user;
+
+    let brandId: number | undefined;
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET as string) as {
+        brandId?: number;
+      };
+      if (decoded?.brandId) brandId = Number(decoded.brandId);
+    } catch {
+      /* ignore */
+    }
+    if (!brandId) {
+      const hostInput = readPortalHostFromRequest(req);
+      const brand = await resolvePortalBrand(hostInput);
+      brandId = brand?.id;
+    }
+    if (brandId) {
+      (req as any).portalBrandId = brandId;
+    }
+
     next();
   } catch {
     res.status(500).json({ message: "Server error" });

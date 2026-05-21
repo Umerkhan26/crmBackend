@@ -1,148 +1,82 @@
 ================================================================================
-CUSTOMER ACCOUNTS - API REFERENCE (Frontend)
+CUSTOMER AREA - API REFERENCE (Backend)
 Base: {API_HOST}/api
 ================================================================================
 
---- HOW IT WORKS ---
+ONE backend (crmBackend) for xCRM staff + customer portal apps.
+Separate project = customer frontend only (deploy later on customer.* domains).
 
-On sale submit, backend creates:
-  1. users row (email + password, userrole = customer)
-  2. customer_accounts row (links user + lead + sale + optional brand)
+--- LOCAL DEV (before real subdomains) ---
 
-Your separate portal app logs in via /api/customer-area/login.
+  .env examples:
+    CUSTOMER_PORTAL_LOCAL_BRAND_SLUG=emrills
+    CUSTOMER_PORTAL_URL=http://localhost:3100
+    CORS_ORIGINS=http://localhost:3100,http://localhost:5173
 
---- SETUP (once) ---
+  Resolve brand on localhost using ANY of:
+    ?brandSlug=emrills
+    ?brandId=1
+    ?portalHost=customer.emrills.com
+    Header: x-customer-host: customer.emrills.com
 
-  npx ts-node src/scripts/sync-customer-area.ts
-  npx ts-node src/scripts/seed-customer-role.ts
+  Production: host customer.emrills.com resolves brand via brands.subdomain
 
---- xCRM STAFF ---
+  Setup (once):
+    npm run sync:customer-area
+    npx ts-node src/scripts/seed-customer-role.ts
+    npx ts-node src/scripts/seed-portal-brands.ts
+
+--- xCRM STAFF (unchanged + portal content) ---
 
 POST /convertLeadToSale
-  Create sale + auto-create customer account (default).
-  Body: { leadId, campaignId, assigneeId, products OR productType+price,
-          brandId (optional), autoProvisionCustomer (optional, default true) }
-  Response includes customerProvisioning: provisioned, emailSent, userId, reason
-
-GET /customer-accounts?page=1&limit=10&search=&brandId=
-  List all customer accounts.
-  Auth: Staff JWT + permission customerAccount:get
-
-GET /customer-accounts/:id
-  One customer account with user, brand, lead, sale.
-  Auth: Staff JWT + permission customerAccount:get
-
+GET  /customer-accounts
+GET  /customer-accounts/:id
+GET  /customer-accounts/:id/insights
+POST /customer-accounts/:id/send-email | /upsell | /discount | /notify
 POST /customer-accounts/provision-from-sale/:saleId
-  Manually create customer account for an existing sale.
-  Body: { brandId (optional) }
-  Auth: Staff JWT + permission customerAccount:create
+GET  /brands/portal/list
+GET  /brands/portal/:brandId/sales-form
 
-GET /brands/portal/list
-  Brands for agent selector (optional).
-  Auth: Staff JWT + permission brand:get
+Portal content (staff JWT + portalContent:* permission):
+GET    /portal-content/brands
+GET    /portal-content/announcements?brandId=
+POST   /portal-content/announcements
+PATCH  /portal-content/announcements/:id
+DELETE /portal-content/announcements/:id
+GET    /portal-content/popups?brandId=
+POST   /portal-content/popups
+PATCH  /portal-content/popups/:id
+DELETE /portal-content/popups/:id
+PATCH  /portal-content/sales/:saleId/progress
+       Body: { label, percent, steps: [{ name, done }] }
 
-GET /brands/portal/:brandId/sales-form
-  Sales form config for selected brand.
-  Auth: Staff JWT + permission brand:get
+--- CUSTOMER PORTAL (public + customer JWT) ---
 
-GET /getleadByid/:id
-  Load lead on sales form (existing endpoint).
-
---- CUSTOMER PORTAL (separate app you deploy) ---
-
+GET  /customer-area/resolve-brand?brandSlug=emrills
+GET  /customer-area/brand-config          (same as resolve-brand)
 POST /customer-area/login
-  Body: { email, password }
-  Returns: { token, user }
+     Body: { email, password, brandId? }
+     Optional: ?brandSlug= | header x-customer-host
 
-GET /customer-area/me
-  Auth: Customer JWT (Authorization: Bearer token)
+GET  /customer-area/me                    (Bearer customer token)
+GET  /customer-area/stats                 (dashboard counts — orders, offers, notifications, etc.)
+GET  /customer-area/my-sales              (legacy summary)
+GET  /customer-area/orders                (requires brand on token or query)
+GET  /customer-area/orders/:saleId/progress
+GET  /customer-area/invoices
+GET  /customer-area/offers
+GET  /customer-area/announcements
+GET  /customer-area/popups
+POST /customer-area/popups/:popupId/dismiss
+GET  /customer-area/notifications
 
-GET /customer-area/my-sales
-  Auth: Customer JWT
+All authenticated portal routes need:
+  Authorization: Bearer <customer token>
+  Plus brand: from JWT brandId OR ?brandSlug= OR x-customer-host
 
-================================================================================
-FLOWS - WHICH ENDPOINT FOR WHAT (Frontend)
-================================================================================
+--- BRAND THEME (in DB) ---
 
-FLOW 1: xCRM AGENT - SALES FORM (create sale + customer account)
-----------------------------------------------------------------
-Use this in the main xCRM frontend (agents/managers).
-
-  Step 1 - Page load / brand selector (optional)
-    -> GET /brands/portal/list
-       Use for: Top nav or dropdown (GWB, Emrills, Dnova, etc.)
-
-  Step 2 - Agent picks a brand (optional)
-    -> GET /brands/portal/:brandId/sales-form
-       Use for: Load which fields/products/campaign to show on sales form
-
-  Step 3 - Agent enters Lead ID and clicks Load
-    -> GET /getleadByid/:id
-       Use for: Fill the form with lead name, email, phone, etc.
-
-  Step 4 - Agent edits missing fields (if needed)
-    -> PUT /leads/:id  (existing lead update API)
-       Use for: Save changes before submitting the sale
-
-  Step 5 - Agent submits the sale
-    -> POST /convertLeadToSale
-       Use for: Convert lead to sale AND auto-create customer account + email credentials
-       Send: leadId, campaignId, assigneeId, products (or productType+price),
-              brandId (optional), autoProvisionCustomer: true (default)
-       Check response.customerProvisioning:
-         - provisioned: true  = account created
-         - emailSent: true    = credentials emailed to customer
-         - reason             = if skipped (e.g. lead_missing_email, already_provisioned)
-
-FLOW 2: xCRM STAFF - VIEW / MANAGE CUSTOMER ACCOUNTS
------------------------------------------------------
-Use this for an admin or support screen inside xCRM.
-
-  List page
-    -> GET /customer-accounts?page=1&limit=10&search=
-       Use for: Table of all customers created from sales
-
-  Detail page (click one row)
-    -> GET /customer-accounts/:id
-       Use for: Show customer email, linked lead, sale, brand
-
-  Sale done but account was not created (retry)
-    -> POST /customer-accounts/provision-from-sale/:saleId
-       Use for: Manually trigger account creation for that sale
-       Body: { brandId } optional
-
-FLOW 3: CUSTOMER PORTAL (separate app you build & deploy)
-----------------------------------------------------------
-Use this in customer.emrills.com (or your portal URL). NOT the xCRM app.
-
-  Step 1 - Login page
-    -> POST /customer-area/login
-       Use for: Customer signs in with email + password from welcome email
-       Save: token from response (store in localStorage/cookie)
-
-  Step 2 - After login / dashboard
-    -> GET /customer-area/me
-       Use for: Show customer name, email, linked brands
-       Header: Authorization: Bearer <customer token>
-
-  Step 3 - Orders / purchase history page
-    -> GET /customer-area/my-sales
-       Use for: Show sales and lead summary linked to this customer
-       Header: Authorization: Bearer <customer token>
-
-================================================================================
-QUICK MAP (one line per endpoint)
-================================================================================
-
-  GET  /brands/portal/list                      -> Brand dropdown in xCRM
-  GET  /brands/portal/:brandId/sales-form       -> Sales form layout per brand
-  GET  /getleadByid/:id                         -> Load lead into sales form
-  POST /convertLeadToSale                       -> Submit sale + create customer
-  GET  /customer-accounts                       -> List customers (xCRM admin)
-  GET  /customer-accounts/:id                   -> Customer detail (xCRM admin)
-  POST /customer-accounts/provision-from-sale/:saleId -> Retry account creation
-  POST /customer-area/login                     -> Portal login
-  GET  /customer-area/me                        -> Portal profile
-  GET  /customer-area/my-sales                  -> Portal orders/history
+  brands.salesFormConfig.portalTheme JSON:
+    { logoUrl, primaryColor, supportEmail, supportPhone }
 
 ================================================================================

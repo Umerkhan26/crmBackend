@@ -5,4 +5,5 @@ export interface CustomRequest extends Request {
     id: number;
     permissions: string[];
   };
+  portalBrandId?: number;
 }

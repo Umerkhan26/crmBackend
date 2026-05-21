@@ -22,6 +22,8 @@ import LeadRotationState from "./leadRotationState.model";
 import LeadAssignmentState from "./leadAssignmentState.model";
 import CustomerAccount from "./customerAccount.model";
 import CustomerEngagement from "./customerEngagement.model";
+import PortalAnnouncement from "./portalAnnouncement.model";
+import PortalPopup from "./portalPopup.model";
 
 Role.belongsToMany(Permission, {
   through: RolePermission,
@@ -89,6 +91,28 @@ CustomerEngagement.belongsTo(CustomerAccount, {
 CustomerEngagement.belongsTo(User, {
   foreignKey: "createdBy",
   as: "createdByUser",
+  onDelete: "CASCADE",
+});
+
+Brand.hasMany(PortalAnnouncement, {
+  foreignKey: "brandId",
+  as: "portalAnnouncements",
+  onDelete: "CASCADE",
+});
+PortalAnnouncement.belongsTo(Brand, {
+  foreignKey: "brandId",
+  as: "brand",
+  onDelete: "CASCADE",
+});
+
+Brand.hasMany(PortalPopup, {
+  foreignKey: "brandId",
+  as: "portalPopups",
+  onDelete: "CASCADE",
+});
+PortalPopup.belongsTo(Brand, {
+  foreignKey: "brandId",
+  as: "brand",
   onDelete: "CASCADE",
 });
 

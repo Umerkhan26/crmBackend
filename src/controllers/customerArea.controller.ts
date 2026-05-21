@@ -1,36 +1,41 @@
 import { Request, Response } from "express";
 import { CustomRequest } from "../types/custom";
 import * as CustomerAreaService from "../services/customerArea.service";
+import * as CustomerPortalService from "../services/customerPortal.service";
+import { readPortalHostFromRequest } from "../utils/portalHost";
+
+const portalBrandId = (req: CustomRequest): number => {
+  const id = (req as any).portalBrandId;
+  if (!id) throw new Error("Brand not resolved on request");
+  return id;
+};
 
 export const resolveBrandController = async (
   req: Request,
   res: Response
 ): Promise<any> => {
   try {
-    const host =
-      (req.query.host as string) ||
-      (req.headers["x-customer-host"] as string) ||
-      "";
-    const brand = await CustomerAreaService.resolveBrandByHost(host);
-    if (!brand) {
+    const input = readPortalHostFromRequest(req);
+    const data = await CustomerPortalService.resolveBrandForPortalRequest(
+      input
+    );
+    if (!data) {
       return res.status(404).json({
         success: false,
         message: "Brand not found for this host",
       });
     }
-    return res.status(200).json({
-      success: true,
-      data: {
-        id: brand.id,
-        name: brand.name,
-        slug: brand.slug,
-        subdomain: brand.subdomain,
-        customerPortalUrl: brand.customerPortalUrl,
-      },
-    });
+    return res.status(200).json({ success: true, data });
   } catch (error: any) {
     return res.status(500).json({ success: false, message: error.message });
   }
+};
+
+export const brandConfigController = async (
+  req: Request,
+  res: Response
+): Promise<any> => {
+  return resolveBrandController(req, res);
 };
 
 export const customerLoginController = async (
@@ -38,17 +43,18 @@ export const customerLoginController = async (
   res: Response
 ): Promise<any> => {
   try {
-    const { email, password, brandId } = req.body;
-    const host =
-      (req.body.host as string) ||
-      (req.headers["x-customer-host"] as string) ||
-      "";
+    const { email, password, brandId, brandSlug: bodySlug } = req.body;
+    const hostInput = readPortalHostFromRequest(req);
+    const brandSlug =
+      hostInput.brandSlug ||
+      (bodySlug ? String(bodySlug).trim() : undefined);
 
     const result = await CustomerAreaService.customerLogin({
       email,
       password,
-      brandId: brandId ? Number(brandId) : undefined,
-      host,
+      brandId: brandId ? Number(brandId) : hostInput.brandId,
+      host: hostInput.host,
+      brandSlug,
     });
 
     return res.status(200).json({
@@ -82,5 +88,153 @@ export const customerSalesController = async (
     return res.status(200).json({ success: true, data });
   } catch (error: any) {
     return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const customerOrdersController = async (
+  req: CustomRequest,
+  res: Response
+): Promise<any> => {
+  try {
+    const brandId = portalBrandId(req);
+    const data = await CustomerPortalService.listCustomerOrders(
+      req.user!.id,
+      brandId
+    );
+    return res.status(200).json({ success: true, data });
+  } catch (error: any) {
+    const status = /not found|no customer/i.test(error.message) ? 404 : 500;
+    return res.status(status).json({ success: false, message: error.message });
+  }
+};
+
+export const customerOrderProgressController = async (
+  req: CustomRequest,
+  res: Response
+): Promise<any> => {
+  try {
+    const saleId = parseInt(req.params.saleId, 10);
+    if (isNaN(saleId)) {
+      return res.status(400).json({ success: false, message: "Invalid sale id" });
+    }
+    const data = await CustomerPortalService.getOrderProgress(
+      req.user!.id,
+      portalBrandId(req),
+      saleId
+    );
+    return res.status(200).json({ success: true, data });
+  } catch (error: any) {
+    const status = /not found|not linked/i.test(error.message) ? 404 : 500;
+    return res.status(status).json({ success: false, message: error.message });
+  }
+};
+
+export const customerInvoicesController = async (
+  req: CustomRequest,
+  res: Response
+): Promise<any> => {
+  try {
+    const data = await CustomerPortalService.listCustomerInvoices(
+      req.user!.id,
+      portalBrandId(req)
+    );
+    return res.status(200).json({ success: true, data });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const customerOffersController = async (
+  req: CustomRequest,
+  res: Response
+): Promise<any> => {
+  try {
+    const data = await CustomerPortalService.listCustomerOffers(
+      req.user!.id,
+      portalBrandId(req)
+    );
+    return res.status(200).json({ success: true, data });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const customerAnnouncementsController = async (
+  req: CustomRequest,
+  res: Response
+): Promise<any> => {
+  try {
+    const rows = await CustomerPortalService.listCustomerAnnouncements(
+      portalBrandId(req)
+    );
+    return res.status(200).json({ success: true, data: rows });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const customerPopupsController = async (
+  req: CustomRequest,
+  res: Response
+): Promise<any> => {
+  try {
+    const data = await CustomerPortalService.listCustomerPopups(
+      req.user!.id,
+      portalBrandId(req)
+    );
+    return res.status(200).json({ success: true, data });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const dismissPopupController = async (
+  req: CustomRequest,
+  res: Response
+): Promise<any> => {
+  try {
+    const popupId = parseInt(req.params.popupId, 10);
+    if (isNaN(popupId)) {
+      return res.status(400).json({ success: false, message: "Invalid popup id" });
+    }
+    const data = await CustomerPortalService.dismissCustomerPopup(
+      req.user!.id,
+      portalBrandId(req),
+      popupId
+    );
+    return res.status(200).json({ success: true, data });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const customerNotificationsController = async (
+  req: CustomRequest,
+  res: Response
+): Promise<any> => {
+  try {
+    const data = await CustomerPortalService.listCustomerNotifications(
+      req.user!.id,
+      portalBrandId(req)
+    );
+    return res.status(200).json({ success: true, data });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const customerStatsController = async (
+  req: CustomRequest,
+  res: Response
+): Promise<any> => {
+  try {
+    const data = await CustomerPortalService.getCustomerDashboardStats(
+      req.user!.id,
+      portalBrandId(req)
+    );
+    return res.status(200).json({ success: true, data });
+  } catch (error: any) {
+    const status = /not found|no customer/i.test(error.message) ? 404 : 500;
+    return res.status(status).json({ success: false, message: error.message });
   }
 };

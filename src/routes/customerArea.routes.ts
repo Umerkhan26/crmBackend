@@ -1,20 +1,64 @@
 import { Router } from "express";
 import {
   resolveBrandController,
+  brandConfigController,
   customerLoginController,
   customerProfileController,
   customerSalesController,
+  customerOrdersController,
+  customerOrderProgressController,
+  customerInvoicesController,
+  customerOffersController,
+  customerAnnouncementsController,
+  customerPopupsController,
+  dismissPopupController,
+  customerNotificationsController,
+  customerStatsController,
 } from "../controllers/customerArea.controller";
 import { verifyCustomerToken } from "../middleware/verifyCustomer.middleware";
+import {
+  attachPortalBrand,
+  requirePortalBrand,
+} from "../middleware/resolvePortalBrand.middleware";
 
 const router = Router();
 
-// Public — Customer Area portal (subdomain apps)
-router.get("/resolve-brand", resolveBrandController);
-router.post("/login", customerLoginController);
+// Public — Customer Area portal (subdomain apps + local dev)
+router.get("/resolve-brand", attachPortalBrand, resolveBrandController);
+router.get("/brand-config", attachPortalBrand, brandConfigController);
+router.post("/login", attachPortalBrand, customerLoginController);
 
-// Authenticated — customer JWT
-router.get("/me", verifyCustomerToken, customerProfileController);
-router.get("/my-sales", verifyCustomerToken, customerSalesController);
+// Authenticated — customer JWT (+ brand from token or ?brandSlug / x-customer-host)
+router.use(verifyCustomerToken);
+router.use(attachPortalBrand);
+
+router.get("/me", customerProfileController);
+router.get("/stats", requirePortalBrand, customerStatsController);
+router.get("/my-sales", customerSalesController);
+
+router.get("/orders", requirePortalBrand, customerOrdersController);
+router.get(
+  "/orders/:saleId/progress",
+  requirePortalBrand,
+  customerOrderProgressController
+);
+router.get("/invoices", requirePortalBrand, customerInvoicesController);
+router.get("/offers", requirePortalBrand, customerOffersController);
+router.get(
+  "/announcements",
+  requirePortalBrand,
+  customerAnnouncementsController
+);
+router.get("/popups", requirePortalBrand, customerPopupsController);
+router.post(
+  "/popups/:popupId/dismiss",
+  requirePortalBrand,
+  dismissPopupController
+);
+router.get(
+  "/notifications",
+  requirePortalBrand,
+  customerNotificationsController
+);
 
 export default router;

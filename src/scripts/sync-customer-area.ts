@@ -58,6 +58,27 @@ const run = async () => {
   await CustomerEngagement.sync({ alter: true });
   console.log("   ✓ customer_engagements table synced");
 
+  await addColumnIfMissing(
+    "product_sales",
+    "portalProgress",
+    "JSON NULL"
+  );
+
+  const PortalAnnouncement = (await import("../models/portalAnnouncement.model"))
+    .default;
+  await PortalAnnouncement.sync({ alter: true });
+  console.log("   ✓ portal_announcements table synced");
+
+  const PortalPopup = (await import("../models/portalPopup.model")).default;
+  await PortalPopup.sync({ alter: true });
+  console.log("   ✓ portal_popups table synced");
+
+  const PortalPopupDismissal = (
+    await import("../models/portalPopupDismissal.model")
+  ).default;
+  await PortalPopupDismissal.sync({ alter: true });
+  console.log("   ✓ portal_popup_dismissals table synced");
+
   const { syncPermissionsToDB } = await import("../utils/syncPermissions");
   await syncPermissionsToDB();
   console.log("   ✓ permissions synced (includes customerAccount:get/create)");

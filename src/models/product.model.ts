@@ -18,6 +18,7 @@ export interface ProductSaleAttributes {
   products?: any[] | null;
   brandId?: number | null;
   customerProvisionedAt?: Date | null;
+  portalProgress?: Record<string, unknown> | null;
 }
 
 export interface ProductSaleCreationAttributes
@@ -35,6 +36,7 @@ export interface ProductSaleCreationAttributes
     | "campaignId"
     | "brandId"
     | "customerProvisionedAt"
+    | "portalProgress"
   > { }
 
 class ProductSale
@@ -53,6 +55,7 @@ class ProductSale
   public products?: any[];
   public brandId?: number | null;
   public customerProvisionedAt?: Date | null;
+  public portalProgress?: Record<string, unknown> | null;
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
@@ -141,6 +144,10 @@ ProductSale.init(
     },
     customerProvisionedAt: {
       type: DataTypes.DATE,
+      allowNull: true,
+    },
+    portalProgress: {
+      type: DataTypes.JSON,
       allowNull: true,
     },
   },

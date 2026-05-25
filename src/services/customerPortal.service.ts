@@ -43,6 +43,11 @@ export const getBrandConfigForPortal = async (brand: Brand) => {
       primaryColor: portalTheme.primaryColor ?? "#2563eb",
       supportEmail: portalTheme.supportEmail ?? null,
       supportPhone: portalTheme.supportPhone ?? null,
+      services: Array.isArray(portalTheme.services)
+        ? portalTheme.services
+        : Array.isArray(salesFormConfig.services)
+          ? salesFormConfig.services
+          : [],
       ...portalTheme,
     },
     localDev: {
@@ -318,6 +323,16 @@ export const getCustomerDashboardStats = async (
 
   const unreadNotifications = notifications.filter((n) => !n.read).length;
 
+  let invoicesPaid = 0;
+  let invoicesPending = 0;
+  for (const o of orders) {
+    const st = String(o.status || "pending").toLowerCase();
+    if (st === "converted") invoicesPaid += 1;
+    else if (st !== "cancelled") invoicesPending += 1;
+  }
+
+  const recent = orders[0] || null;
+
   return {
     brand: {
       id: brand.id,
@@ -332,21 +347,28 @@ export const getCustomerDashboardStats = async (
       converted: ordersByStatus.converted,
       cancelled: ordersByStatus.cancelled,
     },
-    invoices: { total: orders.length },
+    invoices: {
+      total: orders.length,
+      paid: invoicesPaid,
+      pending: invoicesPending,
+    },
     offers: { total: offers.length, active: offers.length },
     notifications: {
       total: notifications.length,
       unread: unreadNotifications,
     },
-    announcements: { active: announcements.length },
-    popups: { visible: popups.length },
+    announcements: { active: announcements.length, total: announcements.length },
+    popups: { visible: popups.length, total: popups.length },
     totalSpent: Math.round(totalSpent * 100) / 100,
-    recentOrder: orders[0]
+    recentOrder: recent
       ? {
-          saleId: orders[0].saleId,
-          productType: orders[0].productType,
-          status: orders[0].status,
-          conversionDate: orders[0].conversionDate,
+          saleId: recent.saleId,
+          productType: recent.productType,
+          status: recent.status,
+          conversionDate: recent.conversionDate,
+          price: recent.price,
+          campaignName: recent.campaignName,
+          progress: recent.progress,
         }
       : null,
   };

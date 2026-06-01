@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { verifyToken } from "../middleware/verifyToken.middleware";
 import { checkPermission } from "../middleware/checkPermission";
+import { checkBrandSaleAccess } from "../middleware/checkBrandSaleAccess";
 import { PERMISSIONS } from "../constants/permissions";
 
 import {
@@ -24,8 +25,8 @@ const router = Router();
 router.post(
   "/convertLeadToSale",
   verifyToken,
-  checkPermission(PERMISSIONS.SALE_CONVERT_LEAD),
-  convertLeadToSale
+  checkBrandSaleAccess,
+  convertLeadToSale,
 );
 
 router.get(
@@ -75,12 +76,7 @@ router.post(
   createProduct
 );
 
-router.get(
-  "/getAll",
-  verifyToken,
-  checkPermission(PERMISSIONS.PRODUCT_GET_ALL),
-  getAllProducts
-);
+router.get("/getAll", verifyToken, checkBrandSaleAccess, getAllProducts);
 
 router.get(
   "/getById/:id",

@@ -288,9 +288,11 @@ export const getLeadById = async (
       data: lead,
     });
   } catch (error: any) {
-    return res.status(500).json({
+    const msg = error.message || "An error occurred while fetching the lead";
+    const notFound = /not found/i.test(msg);
+    return res.status(notFound ? 404 : 500).json({
       success: false,
-      message: error.message || "An error occurred while fetching the lead",
+      message: msg,
     });
   }
 };

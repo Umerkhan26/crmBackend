@@ -49,7 +49,7 @@ export function normalizeLeadDataInput(raw: unknown): Record<string, unknown> {
 const STRIP_BIDI = /[\u200e\u200f\u202a-\u202e]/g;
 
 /** Field names used across campaigns / imports (must stay in sync with CRM frontend helpers). */
-const LEAD_DATA_PHONE_KEYS: string[] = [
+export const LEAD_DATA_PHONE_KEYS: string[] = [
   "phone_number",
   "phoneNumber",
   "phone",

@@ -37,19 +37,11 @@ router.post(
 // Get all brands
 router.get("/", checkPermission(PERMISSIONS.BRAND_GET), getAllBrandsController);
 
-// Portal brands for xCRM top nav (GWB, Emrills, Dnova, etc.)
-router.get(
-  "/portal/list",
-  checkPermission(PERMISSIONS.BRAND_GET),
-  getPortalBrandsController,
-);
+// Portal brands — any logged-in CRM user (header shows all active brands)
+router.get("/portal/list", getPortalBrandsController);
 
-// Sales form config for selected brand
-router.get(
-  "/portal/:brandId/sales-form",
-  checkPermission(PERMISSIONS.BRAND_GET),
-  getBrandSalesFormController,
-);
+// Sales form config — active brand only; assignment not required for agents
+router.get("/portal/:brandId/sales-form", getBrandSalesFormController);
 
 // Get brand by ID
 router.get(

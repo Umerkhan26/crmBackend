@@ -20,11 +20,16 @@ export const listCustomerAccountsController = async (
       ? parseInt(req.query.brandId as string)
       : undefined;
 
+    const userId = req.user?.id;
+    const permissions = req.user?.permissions || [];
+
     const data = await CustomerAccountService.listCustomerAccounts({
       page,
       limit,
       search,
       brandId,
+      viewerUserId: userId,
+      viewerPermissions: permissions,
     });
 
     return res.status(200).json({
@@ -46,7 +51,11 @@ export const getCustomerAccountByIdController = async (
     if (isNaN(id)) {
       return res.status(400).json({ success: false, message: "Invalid ID" });
     }
-    const account = await CustomerAccountService.getCustomerAccountById(id);
+    const account = await CustomerAccountService.getCustomerAccountById(
+      id,
+      req.user?.id,
+      req.user?.permissions || [],
+    );
     return res.status(200).json({ success: true, data: account });
   } catch (error: any) {
     const status = error.message.includes("not found") ? 404 : 500;

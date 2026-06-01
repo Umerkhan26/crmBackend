@@ -6,6 +6,11 @@ import Lead, { AssigneeWithStatus, LeadStatus } from "../models/lead.model";
 import ProductSale from "../models/product.model";
 import { getPagination, getPagingData } from "../utils/paginate";
 import { provisionCustomerFromSale } from "./customerProvisioning.service";
+import {
+  assertCustomerAccountAccess,
+  buildCustomerAccountSaleScopeWhere,
+  resolveCustomerListScope,
+} from "../utils/customerAccountScope";
 
 const LEAD_STATUSES = [
   "pending",
@@ -104,11 +109,15 @@ export const listCustomerAccounts = async ({
   limit = 10,
   search = "",
   brandId,
+  viewerUserId,
+  viewerPermissions = [],
 }: {
   page?: number;
   limit?: number;
   search?: string;
   brandId?: number;
+  viewerUserId?: number;
+  viewerPermissions?: string[];
 }) => {
   const { offset, limit: pageLimit } = getPagination({ page, limit });
 
@@ -124,11 +133,33 @@ export const listCustomerAccounts = async ({
   const where: any = {};
   if (brandId) where.brandId = brandId;
 
+  let scopeLabel: "all" | "own" | "team" = "all";
+  const saleInclude: any = {
+    model: ProductSale,
+    as: "sale",
+    attributes: ["id", "status", "conversionDate", "assigneeId", "createdBy", "brandId"],
+    required: false,
+  };
+
+  if (viewerUserId) {
+    const scopeResult = await resolveCustomerListScope(
+      viewerUserId,
+      viewerPermissions,
+    );
+    scopeLabel = scopeResult.scope;
+    const saleScope = buildCustomerAccountSaleScopeWhere(scopeResult);
+    if (saleScope) {
+      saleInclude.where = saleScope;
+      saleInclude.required = true;
+    }
+  }
+
   const data = await CustomerAccount.findAndCountAll({
     where,
     offset,
     limit: pageLimit,
     order: [["createdAt", "DESC"]],
+    distinct: true,
     include: [
       {
         model: User,
@@ -149,19 +180,19 @@ export const listCustomerAccounts = async ({
         attributes: ["id", "campaignName"],
         required: false,
       },
-      {
-        model: ProductSale,
-        as: "sale",
-        attributes: ["id", "status", "conversionDate"],
-        required: false,
-      },
+      saleInclude,
     ],
   });
 
-  return getPagingData(data, page, pageLimit);
+  const paging = getPagingData(data, page, pageLimit);
+  return { ...paging, scope: scopeLabel };
 };
 
-export const getCustomerAccountById = async (id: number) => {
+export const getCustomerAccountById = async (
+  id: number,
+  viewerUserId?: number,
+  viewerPermissions: string[] = [],
+) => {
   const account = await CustomerAccount.findByPk(id, {
     include: [
       {
@@ -176,10 +207,21 @@ export const getCustomerAccountById = async (id: number) => {
         attributes: ["id", "name", "slug", "salesFormConfig"],
       },
       { model: Lead, as: "lead", required: false },
-      { model: ProductSale, as: "sale", required: false },
+      {
+        model: ProductSale,
+        as: "sale",
+        required: false,
+        attributes: ["id", "status", "conversionDate", "assigneeId", "createdBy", "brandId"],
+      },
     ],
   });
   if (!account) throw new Error("Customer account not found");
+
+  if (viewerUserId) {
+    const plain = account.get({ plain: true }) as any;
+    await assertCustomerAccountAccess(plain, viewerUserId, viewerPermissions);
+  }
+
   return account;
 };
 

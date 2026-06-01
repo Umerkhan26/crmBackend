@@ -45,6 +45,12 @@ import {
   normalizeLeadCodeSearchInput,
 } from "../utils/leadCode";
 import { leadRowHasContactPhone } from "../utils/normalizeLeadData";
+import {
+  appendContactStateToWhere,
+  appendLeadSearchToWhere,
+  clampLeadListPagination,
+  enrichLeadsBatch,
+} from "../utils/leadListQuery";
 
 interface PaginationParams {
   page?: number;
@@ -255,89 +261,30 @@ export const getAllLeads = async ({
       whereCondition[Op.and] = [...andArray, ...conditions];
     }
 
-    // STEP 1: Fetch ALL leads matching filters (no pagination yet)
-    const allLeads = await Lead.findAll({
+    if (search?.trim()) {
+      appendLeadSearchToWhere(whereCondition, search);
+    }
+    if (contactState === "present" || contactState === "missing") {
+      appendContactStateToWhere(whereCondition, contactState);
+    }
+
+    const { pageNum, pageSize, offset } = clampLeadListPagination(page, limit);
+
+    const { count, rows } = await Lead.findAndCountAll({
       where: whereCondition,
       order: [["createdAt", "DESC"]],
+      limit: pageSize,
+      offset,
     });
 
-    // STEP 2: Enrich assignees
-    const enrichedLeads = await Promise.all(
-      allLeads.map(async (lead) => {
-        let assigneesRaw: AssigneeWithStatus[] = [];
+    const enrichedLeads = await enrichLeadsBatch(rows);
 
-        if (typeof lead.assignees === "string") {
-          try {
-            assigneesRaw = JSON.parse(lead.assignees);
-          } catch {
-            assigneesRaw = [];
-          }
-        } else if (Array.isArray(lead.assignees)) {
-          assigneesRaw = lead.assignees;
-        }
-
-        const userIds = assigneesRaw
-          .map((a) => a.userId)
-          .filter((id): id is number => typeof id === "number");
-
-        let assigneesData: any[] = [];
-
-        if (userIds.length > 0) {
-          const users = await User.findAll({
-            where: { id: userIds },
-            attributes: ["id", "firstname", "lastname", "email"],
-          });
-
-          assigneesData = users.map((user) => {
-            const assignment = assigneesRaw.find((a) => a.userId === user.id);
-            return {
-              ...user.toJSON(),
-              status: assignment?.status || "pending",
-            };
-          });
-        }
-
-        const leadCode = buildLeadCodeFromCampaignAndId(
-          lead.campaignName || "",
-          Number(lead.id),
-        );
-
-        return {
-          ...lead.toJSON(),
-          assignees: assigneesData,
-          leadCode: leadCode, // Add leadCode to the enriched lead object
-        };
-      }),
-    );
-
-    // STEP 3: GLOBAL search (search anywhere in JSON + campaign + assignees + leadCode)
-    const searchFilteredLeads = search
-      ? enrichedLeads.filter((lead) =>
-          leadEnrichedRowMatchesSearch(lead as Record<string, unknown>, search),
-        )
-      : enrichedLeads;
-
-    const filteredLeads =
-      contactState === "present"
-        ? searchFilteredLeads.filter((lead) => leadRowHasContactPhone(lead))
-        : contactState === "missing"
-          ? searchFilteredLeads.filter((lead) => !leadRowHasContactPhone(lead))
-          : searchFilteredLeads;
-
-    // STEP 4: PAGINATION
-    const total = filteredLeads.length;
-    const start = (page - 1) * limit;
-    const end = start + limit;
-
-    const paginated = filteredLeads.slice(start, end);
-
-    // STEP 5: Return paging data
     return {
-      totalItems: total,
-      rows: paginated,
-      currentPage: page,
-      totalPages: Math.ceil(total / limit),
-      pageSize: limit,
+      totalItems: count,
+      rows: enrichedLeads,
+      currentPage: pageNum,
+      totalPages: count <= 0 ? 0 : Math.ceil(count / pageSize),
+      pageSize,
     };
   } catch (error: any) {
     throw new Error(`Error fetching leads: ${error.message}`);
@@ -519,105 +466,27 @@ export const getLeadsByCampaign = async ({
       }
     }
 
-    // Step 4: Fetch ALL leads for the campaign (NO pagination)
-    console.log("🔍 getLeadsByCampaign - Campaign name:", campaignName);
-    console.log(
-      "🔍 getLeadsByCampaign - Where condition:",
-      JSON.stringify(whereCondition, null, 2),
-    );
+    if (search?.trim()) {
+      appendLeadSearchToWhere(whereCondition, search);
+    }
 
-    const allLeads = await Lead.findAll({
+    const { pageNum, pageSize, offset } = clampLeadListPagination(page, limit);
+
+    const { count, rows } = await Lead.findAndCountAll({
       where: whereCondition,
       order: [["createdAt", "DESC"]],
+      limit: pageSize,
+      offset,
     });
 
-    console.log(
-      `📊 Found ${allLeads.length} leads for campaign "${campaignName}"`,
-    );
-
-    // Step 5: Enrich leads based on assignees
-    const enrichedLeads = await Promise.all(
-      allLeads.map(async (lead) => {
-        let assigneesRaw: AssigneeWithStatus[] = [];
-
-        if (Array.isArray(lead.assignees)) {
-          assigneesRaw = lead.assignees;
-        } else if (typeof lead.assignees === "string") {
-          try {
-            assigneesRaw = JSON.parse(lead.assignees);
-          } catch {
-            assigneesRaw = [];
-          }
-        } else if (
-          typeof lead.assignees === "object" &&
-          lead.assignees !== null
-        ) {
-          assigneesRaw = [lead.assignees];
-        }
-
-        const userIds = assigneesRaw
-          .map((a) => a.userId)
-          .filter((id): id is number => typeof id === "number");
-
-        let assigneesData: EnrichedAssignee[] = [];
-
-        if (userIds.length > 0) {
-          const users = await User.findAll({
-            where: { id: userIds },
-            attributes: ["id", "firstname", "lastname", "email"],
-          });
-
-          assigneesData = users.map((user) => {
-            const assignment = assigneesRaw.find((a) => a.userId === user.id);
-            return {
-              ...user.toJSON(),
-              status: assignment?.status || "pending",
-            } as EnrichedAssignee;
-          });
-        }
-
-        const leadCode = buildLeadCodeFromCampaignAndId(
-          lead.campaignName || "",
-          Number(lead.id),
-        );
-
-        return {
-          ...lead.toJSON(),
-          assignees: assigneesData,
-          leadCode: leadCode, // Add leadCode to the enriched lead object
-        };
-      }),
-    );
-
-    // Step 6: GLOBAL SEARCH across all fields (including leadCode)
-    console.log("🔍 Search filter - Input:", {
-      searchTerm: search,
-      totalLeadsBeforeFilter: enrichedLeads.length,
-      hasSearch: !!search,
-    });
-
-    const filteredLeads = search
-      ? enrichedLeads.filter((lead) =>
-          leadEnrichedRowMatchesSearch(lead as Record<string, unknown>, search),
-        )
-      : enrichedLeads;
-
-    console.log("🔍 Search filter - Output:", {
-      totalLeadsAfterFilter: filteredLeads.length,
-      filteredCount: enrichedLeads.length - filteredLeads.length,
-    });
-
-    // Step 7: Pagination AFTER filtering
-    const total = filteredLeads.length;
-    const start = (page - 1) * limit;
-    const end = start + limit;
+    const enrichedLeads = await enrichLeadsBatch(rows);
 
     return {
-      totalItems: total,
-      rows: filteredLeads.slice(start, end),
-      currentPage: page,
-      totalPages: Math.ceil(total / limit),
-      pageSize: limit,
+      totalItems: count,
+      rows: enrichedLeads,
+      currentPage: pageNum,
+      totalPages: count <= 0 ? 0 : Math.ceil(count / pageSize),
+      pageSize,
     };
   } catch (error: any) {
     throw new Error(

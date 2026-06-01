@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { verifyToken } from "../middleware/verifyToken.middleware";
 import { checkPermission } from "../middleware/checkPermission";
+import { checkCustomerAccountReadAccess } from "../middleware/checkCustomerAccountReadAccess";
 import { PERMISSIONS } from "../constants/permissions";
 import {
   listCustomerAccountsController,
@@ -21,28 +22,24 @@ const router = Router();
 
 router.use(verifyToken);
 
-router.get(
-  "/",
-  checkPermission(PERMISSIONS.CUSTOMER_ACCOUNT_GET),
-  listCustomerAccountsController
-);
+router.get("/", checkCustomerAccountReadAccess, listCustomerAccountsController);
 
 router.get(
   "/:id/insights",
-  checkPermission(PERMISSIONS.CUSTOMER_ACCOUNT_GET),
-  getCustomerAccountInsightsController
+  checkCustomerAccountReadAccess,
+  getCustomerAccountInsightsController,
 );
 
 router.get(
   "/:id/engagements",
-  checkPermission(PERMISSIONS.CUSTOMER_ACCOUNT_GET),
-  getCustomerEngagementsFeedController
+  checkCustomerAccountReadAccess,
+  getCustomerEngagementsFeedController,
 );
 
 router.get(
   "/:id/timeline",
-  checkPermission(PERMISSIONS.CUSTOMER_ACCOUNT_GET),
-  getCustomerTimelineFeedController
+  checkCustomerAccountReadAccess,
+  getCustomerTimelineFeedController,
 );
 
 router.post(
@@ -81,11 +78,7 @@ router.delete(
   deleteCustomerAccountController
 );
 
-router.get(
-  "/:id",
-  checkPermission(PERMISSIONS.CUSTOMER_ACCOUNT_GET),
-  getCustomerAccountByIdController
-);
+router.get("/:id", checkCustomerAccountReadAccess, getCustomerAccountByIdController);
 
 router.post(
   "/provision-from-sale/:saleId",

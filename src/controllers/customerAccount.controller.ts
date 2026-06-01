@@ -58,8 +58,10 @@ export const getCustomerAccountByIdController = async (
     );
     return res.status(200).json({ success: true, data: account });
   } catch (error: any) {
-    const status = error.message.includes("not found") ? 404 : 500;
-    return res.status(status).json({ success: false, message: error.message });
+    const msg = error.message || "Failed to load customer";
+    const status =
+      msg.includes("not found") || /do not have access/i.test(msg) ? 404 : 500;
+    return res.status(status).json({ success: false, message: msg });
   }
 };
 
@@ -72,6 +74,11 @@ export const getCustomerAccountInsightsController = async (
     if (isNaN(id)) {
       return res.status(400).json({ success: false, message: "Invalid ID" });
     }
+    await CustomerAccountService.getCustomerAccountById(
+      id,
+      req.user?.id,
+      req.user?.permissions || [],
+    );
     const parseIntQ = (v: unknown, fallback: number) => {
       const n = parseInt(String(v || ""), 10);
       return Number.isNaN(n) ? fallback : n;
@@ -89,7 +96,8 @@ export const getCustomerAccountInsightsController = async (
     return res.status(200).json({ success: true, data });
   } catch (error: any) {
     const msg = error?.message || "Failed to load customer insights";
-    const status = /not found/i.test(msg) ? 404 : 500;
+    const status =
+      /not found/i.test(msg) || /do not have access/i.test(msg) ? 404 : 500;
     return res.status(status).json({ success: false, message: msg });
   }
 };
@@ -114,12 +122,18 @@ export const getCustomerEngagementsFeedController = async (
     if (isNaN(id)) {
       return res.status(400).json({ success: false, message: "Invalid ID" });
     }
+    await CustomerAccountService.getCustomerAccountById(
+      id,
+      req.user?.id,
+      req.user?.permissions || [],
+    );
     const { page, limit } = parsePageLimit(req, 30);
     const data = await getCustomerEngagementsFeed(id, page, limit);
     return res.status(200).json({ success: true, data });
   } catch (error: any) {
     const msg = error?.message || "Failed to load engagements";
-    const status = /not found/i.test(msg) ? 404 : 500;
+    const status =
+      /not found/i.test(msg) || /do not have access/i.test(msg) ? 404 : 500;
     return res.status(status).json({ success: false, message: msg });
   }
 };
@@ -138,7 +152,8 @@ export const getCustomerTimelineFeedController = async (
     return res.status(200).json({ success: true, data });
   } catch (error: any) {
     const msg = error?.message || "Failed to load timeline";
-    const status = /not found/i.test(msg) ? 404 : 500;
+    const status =
+      /not found/i.test(msg) || /do not have access/i.test(msg) ? 404 : 500;
     return res.status(status).json({ success: false, message: msg });
   }
 };

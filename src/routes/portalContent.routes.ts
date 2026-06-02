@@ -19,30 +19,50 @@ const router = Router();
 
 router.use(verifyToken);
 
+const portalContentRead = [
+  PERMISSIONS.PORTAL_CONTENT_GET,
+  PERMISSIONS.BRAND_GET,
+  PERMISSIONS.CUSTOMER_ACCOUNT_GET,
+  PERMISSIONS.CUSTOMER_ACCOUNT_CREATE,
+];
+
+const portalAnnouncementWrite = [
+  PERMISSIONS.PORTAL_CONTENT_CREATE,
+  PERMISSIONS.PORTAL_CONTENT_UPDATE,
+  PERMISSIONS.CUSTOMER_ACCOUNT_CREATE,
+  PERMISSIONS.BRAND_UPDATE,
+];
+
+const portalAnnouncementDelete = [
+  PERMISSIONS.PORTAL_CONTENT_DELETE,
+  PERMISSIONS.CUSTOMER_ACCOUNT_CREATE,
+  PERMISSIONS.BRAND_UPDATE,
+];
+
 router.get(
   "/brands",
-  checkPermission(PERMISSIONS.PORTAL_CONTENT_GET),
+  checkPermission(portalContentRead),
   listPortalBrandsController
 );
 
 router.get(
   "/announcements",
-  checkPermission(PERMISSIONS.PORTAL_CONTENT_GET),
+  checkPermission(portalContentRead),
   listAnnouncementsController
 );
 router.post(
   "/announcements",
-  checkPermission(PERMISSIONS.PORTAL_CONTENT_CREATE),
+  checkPermission(portalAnnouncementWrite),
   createAnnouncementController
 );
 router.patch(
   "/announcements/:id",
-  checkPermission(PERMISSIONS.PORTAL_CONTENT_UPDATE),
+  checkPermission(portalAnnouncementWrite),
   updateAnnouncementController
 );
 router.delete(
   "/announcements/:id",
-  checkPermission(PERMISSIONS.PORTAL_CONTENT_DELETE),
+  checkPermission(portalAnnouncementDelete),
   deleteAnnouncementController
 );
 

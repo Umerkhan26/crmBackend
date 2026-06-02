@@ -259,11 +259,28 @@ export const listCustomerOffers = async (userId: number, brandId: number) => {
 };
 
 export const listCustomerAnnouncements = async (brandId: number) => {
-  return PortalAnnouncement.findAll({
+  const rows = await PortalAnnouncement.findAll({
     where: { brandId, ...activeWindowWhere() },
     order: [["createdAt", "DESC"]],
-    attributes: ["id", "title", "body", "linkUrl", "startsAt", "endsAt"],
+    attributes: [
+      "id",
+      "title",
+      "body",
+      "linkUrl",
+      "startsAt",
+      "endsAt",
+      "createdAt",
+    ],
   });
+  return rows.map((r) => ({
+    id: r.id,
+    title: r.title,
+    body: r.body,
+    linkUrl: r.linkUrl,
+    startsAt: r.startsAt,
+    endsAt: r.endsAt,
+    createdAt: r.startsAt || r.createdAt,
+  }));
 };
 
 export const listCustomerPopups = async (

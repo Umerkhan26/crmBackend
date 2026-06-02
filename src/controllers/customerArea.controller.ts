@@ -72,7 +72,11 @@ export const customerProfileController = async (
   res: Response
 ): Promise<any> => {
   try {
-    const profile = await CustomerAreaService.getCustomerProfile(req.user!.id);
+    const portalBrandId = (req as { portalBrandId?: number }).portalBrandId;
+    const profile = await CustomerAreaService.getCustomerProfile(
+      req.user!.id,
+      portalBrandId
+    );
     return res.status(200).json({ success: true, data: profile });
   } catch (error: any) {
     return res.status(500).json({ success: false, message: error.message });

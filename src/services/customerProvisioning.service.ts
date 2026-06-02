@@ -152,14 +152,14 @@ export const provisionCustomerFromSale = async (params: {
   leadId: number;
   brandId?: number | null;
   agentUserId: number;
-  sendCredentialsEmail?: boolean;
+  shouldSendCredentialsEmail?: boolean;
 }): Promise<ProvisionCustomerResult> => {
   const {
     saleId,
     leadId,
     brandId = null,
     agentUserId,
-    sendCredentialsEmail = true,
+    shouldSendCredentialsEmail = true,
   } = params;
 
   const sale = await ProductSale.findByPk(saleId);
@@ -254,7 +254,7 @@ export const provisionCustomerFromSale = async (params: {
     customerProvisionedAt: new Date(),
   });
 
-  const emailSent = sendCredentialsEmail
+  const emailSent = shouldSendCredentialsEmail
     ? await sendCredentialsEmail({
         agentUserId,
         to: email,

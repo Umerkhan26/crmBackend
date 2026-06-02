@@ -26,7 +26,7 @@ const router = Router();
 // Public — Customer Area portal (subdomain apps + local dev)
 router.get("/resolve-brand", attachPortalBrand, resolveBrandController);
 router.get("/brand-config", attachPortalBrand, brandConfigController);
-router.post("/login", attachPortalBrand, customerLoginController);
+router.post("/login", customerLoginController);
 
 // Authenticated — customer JWT (+ brand from token or ?brandSlug / x-customer-host)
 router.use(verifyCustomerToken);

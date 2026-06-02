@@ -8,6 +8,8 @@ import ProductSale from "../models/product.model";
 import Lead from "../models/lead.model";
 import { resolvePortalBrand } from "../utils/portalHost";
 
+const LOCAL_DEV_HOSTS = new Set(["localhost", "127.0.0.1"]);
+
 export const resolveBrandByHost = async (
   host: string,
   opts?: { brandId?: number; brandSlug?: string }
@@ -64,9 +66,23 @@ export const customerLogin = async (params: {
     throw new Error("Email and password are required");
   }
 
-  let resolvedBrandId = brandId;
-  if (!resolvedBrandId) {
-    const brand = await resolveBrandByHost(host || "", { brandSlug });
+  const slug = (brandSlug || "").trim().toLowerCase();
+  const hostname = (host || "").toLowerCase().split(":")[0] || "";
+
+  let resolvedBrandId =
+    brandId != null && Number.isFinite(Number(brandId))
+      ? Number(brandId)
+      : undefined;
+
+  if (!resolvedBrandId && slug) {
+    const bySlug = await Brand.findOne({
+      where: { slug, status: "active" },
+    });
+    resolvedBrandId = bySlug?.id;
+  }
+
+  if (!resolvedBrandId && hostname && !LOCAL_DEV_HOSTS.has(hostname)) {
+    const brand = await resolveBrandByHost(host || "", { brandSlug: slug });
     resolvedBrandId = brand?.id;
   }
 
@@ -87,34 +103,51 @@ export const customerLogin = async (params: {
   const valid = await bcrypt.compare(password, user.password);
   if (!valid) throw new Error("Invalid credentials");
 
-  if (resolvedBrandId) {
-    const account = await CustomerAccount.findOne({
-      where: { userId: user.id, brandId: resolvedBrandId, status: "active" },
-    });
-    if (!account) {
+  const accounts = await CustomerAccount.findAll({
+    where: { userId: user.id, status: "active" },
+    order: [["id", "ASC"]],
+  });
+
+  if (!accounts.length) {
+    throw new Error("No customer account found");
+  }
+
+  let account =
+    resolvedBrandId != null
+      ? accounts.find((a) => a.brandId === resolvedBrandId)
+      : undefined;
+
+  if (!account) {
+    if (resolvedBrandId != null && accounts.length === 1) {
+      account = accounts[0];
+    } else if (resolvedBrandId != null) {
       throw new Error("No customer account for this brand");
-    }
-  } else {
-    const anyAccount = await CustomerAccount.findOne({
-      where: { userId: user.id, status: "active" },
-    });
-    if (!anyAccount) {
-      throw new Error("No customer account found");
+    } else {
+      account = accounts[0];
     }
   }
+
+  const accountBrandId = account.brandId;
+  if (accountBrandId == null || !Number.isFinite(Number(accountBrandId))) {
+    throw new Error("Customer account has no brand");
+  }
+  resolvedBrandId = Number(accountBrandId);
 
   const token = jwt.sign(
     {
       id: user.id,
       email: user.email,
       userrole: "customer",
-      brandId: resolvedBrandId ?? user.brandId,
+      brandId: resolvedBrandId,
     },
     process.env.JWT_SECRET as string,
     { expiresIn: "7d" }
   );
 
-  await user.update({ last_login: new Date() });
+  await user.update({
+    last_login: new Date(),
+    brandId: resolvedBrandId,
+  });
 
   return {
     token,
@@ -123,16 +156,24 @@ export const customerLogin = async (params: {
       firstname: user.firstname,
       lastname: user.lastname,
       email: user.email,
-      brandId: resolvedBrandId ?? user.brandId,
+      brandId: resolvedBrandId,
     },
   };
 };
 
-export const getCustomerProfile = async (userId: number) => {
+export const getCustomerProfile = async (
+  userId: number,
+  activeBrandId?: number
+) => {
   const user = await User.findByPk(userId, {
     attributes: ["id", "firstname", "lastname", "email", "brandId", "userrole"],
   });
   if (!user) throw new Error("User not found");
+
+  const effectiveBrandId =
+    activeBrandId && Number.isFinite(activeBrandId)
+      ? activeBrandId
+      : user.brandId;
 
   const accounts = await CustomerAccount.findAll({
     where: { userId, status: "active" },
@@ -145,7 +186,12 @@ export const getCustomerProfile = async (userId: number) => {
     ],
   });
 
-  return { user, accounts };
+  const userJson = user.toJSON() as Record<string, unknown>;
+  if (effectiveBrandId != null) {
+    userJson.brandId = effectiveBrandId;
+  }
+
+  return { user: userJson, accounts };
 };
 
 export const getCustomerSaleSummary = async (userId: number) => {

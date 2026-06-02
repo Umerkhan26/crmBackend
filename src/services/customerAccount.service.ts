@@ -5,7 +5,10 @@ import Brand from "../models/brand.model";
 import Lead, { AssigneeWithStatus, LeadStatus } from "../models/lead.model";
 import ProductSale from "../models/product.model";
 import { getPagination, getPagingData } from "../utils/paginate";
-import { provisionCustomerFromSale } from "./customerProvisioning.service";
+import {
+  provisionCustomerFromSale,
+  resendCustomerCredentials,
+} from "./customerProvisioning.service";
 import {
   assertCustomerAccountAccess,
   buildCustomerAccountSaleScopeWhere,
@@ -371,15 +374,27 @@ export const deleteCustomerAccount = async (id: number) => {
 export const provisionFromSaleId = async (
   saleId: number,
   agentUserId: number,
-  brandId?: number
+  brandId?: number,
+  options: { resend?: boolean } = {},
 ) => {
   const sale = await ProductSale.findByPk(saleId);
   if (!sale?.leadId) throw new Error("Sale or linked lead not found");
 
+  const resolvedBrandId = brandId ?? sale.brandId ?? null;
+
+  if (options.resend) {
+    return resendCustomerCredentials({
+      saleId,
+      leadId: sale.leadId,
+      brandId: resolvedBrandId,
+      agentUserId,
+    });
+  }
+
   return provisionCustomerFromSale({
     saleId,
     leadId: sale.leadId,
-    brandId: brandId ?? sale.brandId ?? null,
+    brandId: resolvedBrandId,
     agentUserId,
   });
 };

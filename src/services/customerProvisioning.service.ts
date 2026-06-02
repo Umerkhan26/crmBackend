@@ -42,6 +42,111 @@ async function resolveCustomerRoleId(): Promise<number> {
   return role.id;
 }
 
+async function hashPassword(plainPassword: string): Promise<string> {
+  const salt = await bcrypt.genSalt(10);
+  return bcrypt.hash(plainPassword, salt);
+}
+
+async function sendCredentialsEmail(params: {
+  agentUserId: number;
+  to: string;
+  firstname: string;
+  lastname: string;
+  plainPassword: string;
+  brandName: string;
+  portalUrl?: string;
+}): Promise<boolean> {
+  try {
+    const smtpConfig = await getSmtpConfig(params.agentUserId);
+    const { subject, html } = customerCredentialsTemplate({
+      firstname: params.firstname,
+      lastname: params.lastname,
+      email: params.to,
+      password: params.plainPassword,
+      brandName: params.brandName,
+      portalUrl: params.portalUrl,
+    });
+    await sendEmail({
+      smtp: smtpConfig,
+      to: params.to,
+      subject,
+      body: html,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Reset portal password and e-mail a new easy temporary password (resend). */
+export const resendCustomerCredentials = async (params: {
+  saleId: number;
+  leadId: number;
+  brandId?: number | null;
+  agentUserId: number;
+}): Promise<ProvisionCustomerResult> => {
+  const { saleId, leadId, brandId = null, agentUserId } = params;
+
+  const sale = await ProductSale.findByPk(saleId);
+  if (!sale) throw new Error("Sale not found");
+
+  const lead = await Lead.findByPk(leadId);
+  if (!lead) throw new Error("Lead not found");
+
+  const email = extractEmailFromLeadData(lead.leadData);
+  if (!email) {
+    return { provisioned: false, skipped: true, reason: "lead_missing_email" };
+  }
+
+  const account = await CustomerAccount.findOne({ where: { saleId } });
+  if (!account?.userId) {
+    return {
+      provisioned: false,
+      skipped: true,
+      reason: "no_customer_account",
+    };
+  }
+
+  const user = await User.findByPk(account.userId);
+  if (!user) throw new Error("Customer user not found");
+
+  const role = user.userrole?.toLowerCase();
+  if (role && role !== "customer" && role !== "client") {
+    return { provisioned: false, skipped: true, reason: "email_used_by_staff" };
+  }
+
+  const brand = brandId ? await Brand.findByPk(brandId) : null;
+  const brandName = brand?.name || "Customer Portal";
+  const { firstname, lastname } = extractNameFromLeadData(lead.leadData);
+  const plainPassword = generateTemporaryPassword();
+  const hashedPassword = await hashPassword(plainPassword);
+
+  await user.update({
+    password: hashedPassword,
+    brandId: brandId ?? user.brandId,
+    userrole: "customer" as any,
+  });
+
+  const emailSent = await sendCredentialsEmail({
+    agentUserId,
+    to: email,
+    firstname,
+    lastname,
+    plainPassword,
+    brandName,
+    portalUrl: brand?.customerPortalUrl || undefined,
+  });
+
+  return {
+    provisioned: false,
+    skipped: false,
+    reason: "credentials_resent",
+    userId: user.id,
+    customerAccountId: account.id,
+    emailSent,
+  };
+};
+
 export const provisionCustomerFromSale = async (params: {
   saleId: number;
   leadId: number;
@@ -59,20 +164,15 @@ export const provisionCustomerFromSale = async (params: {
 
   const sale = await ProductSale.findByPk(saleId);
   if (!sale) throw new Error("Sale not found");
-  if (sale.customerProvisionedAt) {
-    return { provisioned: false, skipped: true, reason: "already_provisioned" };
-  }
 
   const existingAccount = await CustomerAccount.findOne({ where: { saleId } });
-  if (existingAccount) {
-    await sale.update({ customerProvisionedAt: new Date() });
-    return {
-      provisioned: false,
-      skipped: true,
-      reason: "account_exists",
-      userId: existingAccount.userId,
-      customerAccountId: existingAccount.id,
-    };
+  if (sale.customerProvisionedAt || existingAccount) {
+    return resendCustomerCredentials({
+      saleId,
+      leadId,
+      brandId,
+      agentUserId,
+    });
   }
 
   const lead = await Lead.findByPk(leadId);
@@ -93,8 +193,7 @@ export const provisionCustomerFromSale = async (params: {
   const { firstname, lastname } = extractNameFromLeadData(lead.leadData);
   const plainPassword = generateTemporaryPassword();
   const roleId = await resolveCustomerRoleId();
-  const salt = await bcrypt.genSalt(10);
-  const hashedPassword = await bcrypt.hash(plainPassword, salt);
+  const hashedPassword = await hashPassword(plainPassword);
 
   let user = await User.findOne({ where: { email } });
 
@@ -155,30 +254,17 @@ export const provisionCustomerFromSale = async (params: {
     customerProvisionedAt: new Date(),
   });
 
-  let emailSent = false;
-  if (sendCredentialsEmail) {
-    try {
-      const smtpConfig = await getSmtpConfig(agentUserId);
-      const { subject, html } = customerCredentialsTemplate({
+  const emailSent = sendCredentialsEmail
+    ? await sendCredentialsEmail({
+        agentUserId,
+        to: email,
         firstname,
         lastname,
-        email,
-        password: plainPassword,
+        plainPassword,
         brandName,
         portalUrl: brand?.customerPortalUrl || undefined,
-      });
-
-      await sendEmail({
-        smtp: smtpConfig,
-        to: email,
-        subject,
-        body: html,
-      });
-      emailSent = true;
-    } catch {
-      emailSent = false;
-    }
-  }
+      })
+    : false;
 
   return {
     provisioned: true,

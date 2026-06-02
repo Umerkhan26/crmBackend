@@ -314,17 +314,28 @@ export const provisionCustomerFromSaleController = async (
       ? parseInt(req.body.brandId, 10)
       : undefined;
 
+    const resend = Boolean(req.body.resend);
+
     const result = await CustomerAccountService.provisionFromSaleId(
       saleId,
       req.user!.id,
-      brandId
+      brandId,
+      { resend },
     );
+
+    const message = result.emailSent
+      ? result.reason === "credentials_resent"
+        ? "New login password sent by email"
+        : "Customer account created and credentials emailed"
+      : result.provisioned
+        ? "Customer account created"
+        : result.skipped
+          ? "Could not send credentials"
+          : "Customer account not created";
 
     return res.status(200).json({
       success: true,
-      message: result.provisioned
-        ? "Customer account created"
-        : "Customer account not created",
+      message,
       data: result,
     });
   } catch (error: any) {

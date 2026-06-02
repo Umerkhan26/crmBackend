@@ -109,6 +109,24 @@ export const listCustomerOrders = async (userId: number, brandId: number) => {
     : [];
   const leadById = new Map(leads.map((l) => [l.id, l]));
 
+  const parseLeadDataField = (raw: unknown): Record<string, unknown> | null => {
+    if (raw == null) return null;
+    if (typeof raw === "object" && !Array.isArray(raw)) {
+      return raw as Record<string, unknown>;
+    }
+    if (typeof raw === "string") {
+      try {
+        const parsed = JSON.parse(raw);
+        return typeof parsed === "object" && parsed && !Array.isArray(parsed)
+          ? (parsed as Record<string, unknown>)
+          : null;
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  };
+
   const orders = sales.map((sale) => {
     const lead = sale.leadId ? leadById.get(sale.leadId) : null;
     const progress = parsePortalProgress((sale as any).portalProgress);
@@ -123,6 +141,7 @@ export const listCustomerOrders = async (userId: number, brandId: number) => {
       products: sale.products,
       brandId: sale.brandId,
       campaignName: lead?.campaignName ?? null,
+      leadData: parseLeadDataField(lead?.leadData),
       progress,
     };
   });
@@ -177,17 +196,42 @@ export const getOrderProgress = async (
   };
 };
 
+const sumOrderLineTotal = (order: {
+  products?: unknown;
+  price?: number | null;
+}) => {
+  let products: unknown[] = [];
+  if (Array.isArray(order.products)) products = order.products;
+  else if (typeof order.products === "string") {
+    try {
+      const parsed = JSON.parse(order.products);
+      if (Array.isArray(parsed)) products = parsed;
+    } catch {
+      /* ignore */
+    }
+  }
+  if (products.length) {
+    const sum = products.reduce((total: number, p: any) => {
+      const price = parseFloat(String(p?.price ?? p?.amount ?? 0)) || 0;
+      return total + price;
+    }, 0);
+    if (sum > 0) return sum;
+  }
+  return parseFloat(String(order.price ?? 0)) || 0;
+};
+
 export const listCustomerInvoices = async (userId: number, brandId: number) => {
   const { orders } = await listCustomerOrders(userId, brandId);
   return {
     invoices: orders.map((o) => ({
       id: `INV-${o.saleId}`,
       saleId: o.saleId,
-      amount: o.price ?? 0,
+      amount: sumOrderLineTotal(o),
       currency: "USD",
       status: o.status === "converted" ? "paid" : o.status,
       issuedAt: o.conversionDate || null,
       description: o.productType,
+      products: o.products,
     })),
   };
 };

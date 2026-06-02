@@ -4,6 +4,7 @@ import "./src/models/index";
 import http from "http";
 import { Server as SocketIOServer } from "socket.io";
 import app, { loadRoutes } from './app';
+import { resumeStaleBulkEmailCampaigns } from "./src/services/bulkCustomerEmail.service";
 dotenv.config();
 
 const PORT = process.env.PORT || 3000;
@@ -41,6 +42,10 @@ const startServer = async () => {
     // Load routes
     loadRoutes(app);
     console.log("✅ Routes loaded.");
+
+    resumeStaleBulkEmailCampaigns().catch((err) => {
+      console.warn("bulk email resume warning:", err?.message || err);
+    });
 
     // Start HTTP server
     server.listen(PORT, () => {

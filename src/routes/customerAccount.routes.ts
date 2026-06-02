@@ -17,12 +17,42 @@ import {
   sendCustomerNotificationController,
   provisionCustomerFromSaleController,
 } from "../controllers/customerAccount.controller";
+import {
+  createBulkCustomerEmailController,
+  getBulkCustomerEmailStatusController,
+  cancelBulkCustomerEmailController,
+  listBulkCustomerEmailFailuresController,
+} from "../controllers/bulkCustomerEmail.controller";
 
 const router = Router();
 
 router.use(verifyToken);
 
 router.get("/", checkCustomerAccountReadAccess, listCustomerAccountsController);
+
+router.post(
+  "/bulk-email",
+  checkPermission(PERMISSIONS.CUSTOMER_ACCOUNT_CREATE),
+  createBulkCustomerEmailController
+);
+
+router.get(
+  "/bulk-email/:campaignId",
+  checkPermission(PERMISSIONS.CUSTOMER_ACCOUNT_CREATE),
+  getBulkCustomerEmailStatusController
+);
+
+router.get(
+  "/bulk-email/:campaignId/failures",
+  checkPermission(PERMISSIONS.CUSTOMER_ACCOUNT_CREATE),
+  listBulkCustomerEmailFailuresController
+);
+
+router.post(
+  "/bulk-email/:campaignId/cancel",
+  checkPermission(PERMISSIONS.CUSTOMER_ACCOUNT_CREATE),
+  cancelBulkCustomerEmailController
+);
 
 router.get(
   "/:id/insights",

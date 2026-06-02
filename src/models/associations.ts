@@ -24,6 +24,8 @@ import CustomerAccount from "./customerAccount.model";
 import CustomerEngagement from "./customerEngagement.model";
 import PortalAnnouncement from "./portalAnnouncement.model";
 import PortalPopup from "./portalPopup.model";
+import BulkEmailCampaign from "./bulkEmailCampaign.model";
+import BulkEmailJob from "./bulkEmailJob.model";
 
 Role.belongsToMany(Permission, {
   through: RolePermission,
@@ -89,6 +91,27 @@ CustomerEngagement.belongsTo(CustomerAccount, {
   onDelete: "CASCADE",
 });
 CustomerEngagement.belongsTo(User, {
+  foreignKey: "createdBy",
+  as: "createdByUser",
+  onDelete: "CASCADE",
+});
+
+BulkEmailCampaign.hasMany(BulkEmailJob, {
+  foreignKey: "campaignId",
+  as: "jobs",
+  onDelete: "CASCADE",
+});
+BulkEmailJob.belongsTo(BulkEmailCampaign, {
+  foreignKey: "campaignId",
+  as: "campaign",
+  onDelete: "CASCADE",
+});
+BulkEmailJob.belongsTo(CustomerAccount, {
+  foreignKey: "customerAccountId",
+  as: "customerAccount",
+  onDelete: "CASCADE",
+});
+BulkEmailCampaign.belongsTo(User, {
   foreignKey: "createdBy",
   as: "createdByUser",
   onDelete: "CASCADE",

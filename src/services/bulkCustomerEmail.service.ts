@@ -48,6 +48,12 @@ const buildRecipientWhere = (filters?: BulkEmailCampaignFilters) => {
   if (filters?.brandId != null) {
     accountWhere.brandId = filters.brandId;
   }
+  const ids = (filters?.customerAccountIds || []).filter((id) =>
+    Number.isFinite(Number(id))
+  );
+  if (ids.length) {
+    accountWhere.id = { [Op.in]: ids.map((id) => Number(id)) };
+  }
   return accountWhere;
 };
 

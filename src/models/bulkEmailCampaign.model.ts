@@ -11,6 +11,8 @@ export type BulkEmailCampaignStatus =
 export interface BulkEmailCampaignFilters {
   brandId?: number;
   status?: "active" | "suspended";
+  /** When set, only these customer accounts (must be active unless status overridden). */
+  customerAccountIds?: number[];
 }
 
 export interface BulkEmailCampaignSmtpConfig {

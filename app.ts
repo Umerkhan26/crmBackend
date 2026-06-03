@@ -93,6 +93,9 @@ export const loadRoutes = (app: Application) => {
     if (router && typeof router === "function") {
       const mount = config?.mount || "/api";
       app.use(mount, router);
+      if (routeKey === "customerAccount.routes") {
+        console.log(`   ↳ ${mount}/bulk-email (POST) registered`);
+      }
     } else {
       console.warn(`⚠️  Skipping ${file} — No valid default export found.`);
     }

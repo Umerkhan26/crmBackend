@@ -37,12 +37,6 @@ router.post(
 );
 
 router.get(
-  "/bulk-email/:campaignId",
-  checkPermission(PERMISSIONS.CUSTOMER_ACCOUNT_CREATE),
-  getBulkCustomerEmailStatusController
-);
-
-router.get(
   "/bulk-email/:campaignId/failures",
   checkPermission(PERMISSIONS.CUSTOMER_ACCOUNT_CREATE),
   listBulkCustomerEmailFailuresController
@@ -52,6 +46,18 @@ router.post(
   "/bulk-email/:campaignId/cancel",
   checkPermission(PERMISSIONS.CUSTOMER_ACCOUNT_CREATE),
   cancelBulkCustomerEmailController
+);
+
+router.get(
+  "/bulk-email/:campaignId",
+  checkPermission(PERMISSIONS.CUSTOMER_ACCOUNT_CREATE),
+  getBulkCustomerEmailStatusController
+);
+
+router.post(
+  "/provision-from-sale/:saleId",
+  checkPermission(PERMISSIONS.CUSTOMER_ACCOUNT_CREATE),
+  provisionCustomerFromSaleController
 );
 
 router.get(
@@ -109,11 +115,5 @@ router.delete(
 );
 
 router.get("/:id", checkCustomerAccountReadAccess, getCustomerAccountByIdController);
-
-router.post(
-  "/provision-from-sale/:saleId",
-  checkPermission(PERMISSIONS.CUSTOMER_ACCOUNT_CREATE),
-  provisionCustomerFromSaleController
-);
 
 export default router;

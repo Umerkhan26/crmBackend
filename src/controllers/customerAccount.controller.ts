@@ -7,6 +7,7 @@ import {
   getCustomerTimelineFeed,
 } from "../services/customerAccountInsights.service";
 import * as CustomerEngagementService from "../services/customerEngagement.service";
+import { getCustomerPortalActivity } from "../services/portalActivity.service";
 
 export const listCustomerAccountsController = async (
   req: CustomRequest,
@@ -20,6 +21,33 @@ export const listCustomerAccountsController = async (
       ? parseInt(req.query.brandId as string)
       : undefined;
 
+    const statusRaw = String(req.query.status || "").toLowerCase();
+    const status =
+      statusRaw === "active" || statusRaw === "suspended"
+        ? (statusRaw as "active" | "suspended")
+        : undefined;
+
+    const hasOrderRaw = String(req.query.hasOrder || "").toLowerCase();
+    const hasOrder =
+      hasOrderRaw === "yes" || hasOrderRaw === "no"
+        ? (hasOrderRaw as "yes" | "no")
+        : undefined;
+
+    const emailFilterRaw = String(req.query.emailFilter || "").toLowerCase();
+    const emailFilter =
+      emailFilterRaw === "never" || emailFilterRaw === "opened"
+        ? (emailFilterRaw as "never" | "opened")
+        : undefined;
+
+    const memberSinceFrom =
+      typeof req.query.memberSinceFrom === "string"
+        ? req.query.memberSinceFrom
+        : undefined;
+    const memberSinceTo =
+      typeof req.query.memberSinceTo === "string"
+        ? req.query.memberSinceTo
+        : undefined;
+
     const userId = req.user?.id;
     const permissions = req.user?.permissions || [];
 
@@ -28,6 +56,11 @@ export const listCustomerAccountsController = async (
       limit,
       search,
       brandId,
+      status,
+      hasOrder,
+      emailFilter,
+      memberSinceFrom,
+      memberSinceTo,
       viewerUserId: userId,
       viewerPermissions: permissions,
     });
@@ -162,6 +195,31 @@ const parseAccountId = (req: CustomRequest) => {
   const id = parseInt(req.params.id, 10);
   if (isNaN(id)) throw new Error("Invalid customer account ID");
   return id;
+};
+
+export const getCustomerPortalActivityController = async (
+  req: CustomRequest,
+  res: Response
+): Promise<any> => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) {
+      return res.status(400).json({ success: false, message: "Invalid ID" });
+    }
+    await CustomerAccountService.getCustomerAccountById(
+      id,
+      req.user?.id,
+      req.user?.permissions || [],
+    );
+    const { page, limit } = parsePageLimit(req, 30);
+    const data = await getCustomerPortalActivity(id, page, limit);
+    return res.status(200).json({ success: true, data });
+  } catch (error: any) {
+    const msg = error?.message || "Failed to load portal activity";
+    const status =
+      /not found/i.test(msg) || /do not have access/i.test(msg) ? 404 : 500;
+    return res.status(status).json({ success: false, message: msg });
+  }
 };
 
 export const updateCustomerAccountController = async (

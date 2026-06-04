@@ -9,6 +9,9 @@ import PortalPopupDismissal from "../models/portalPopupDismissal.model";
 import ProductSale from "../models/product.model";
 import Lead from "../models/lead.model";
 import { resolvePortalBrand } from "../utils/portalHost";
+import {
+  logPortalActivityFromContext,
+} from "./portalActivity.service";
 
 const activeWindowWhere = () => {
   const now = new Date();
@@ -82,8 +85,17 @@ export const getPortalContext = async (userId: number, brandId: number) => {
   return { account, brand };
 };
 
-export const listCustomerOrders = async (userId: number, brandId: number) => {
+export const listCustomerOrders = async (
+  userId: number,
+  brandId: number,
+  opts?: { skipActivityLog?: boolean }
+) => {
   const { account } = await getPortalContext(userId, brandId);
+  if (!opts?.skipActivityLog) {
+    void logPortalActivityFromContext(account, userId, "view_orders", {
+      metadata: { brandId },
+    });
+  }
   const accountFilter: any = { userId, status: "active" };
   if (brandId) accountFilter.brandId = brandId;
 
@@ -179,14 +191,19 @@ export const getOrderProgress = async (
   brandId: number,
   saleId: number
 ) => {
-  await getPortalContext(userId, brandId);
+  const { account } = await getPortalContext(userId, brandId);
   const sale = await ProductSale.findByPk(saleId);
   if (!sale) throw new Error("Order not found");
 
-  const account = await CustomerAccount.findOne({
+  const linkedAccount = await CustomerAccount.findOne({
     where: { userId, saleId, status: "active" },
   });
-  if (!account) throw new Error("Order not linked to your account");
+  if (!linkedAccount) throw new Error("Order not linked to your account");
+
+  void logPortalActivityFromContext(linkedAccount, userId, "view_order", {
+    title: `Viewed order #${saleId}`,
+    metadata: { saleId, status: sale.status, productType: sale.productType },
+  });
 
   return {
     saleId: sale.id,
@@ -221,7 +238,13 @@ const sumOrderLineTotal = (order: {
 };
 
 export const listCustomerInvoices = async (userId: number, brandId: number) => {
-  const { orders } = await listCustomerOrders(userId, brandId);
+  const { account } = await getPortalContext(userId, brandId);
+  void logPortalActivityFromContext(account, userId, "view_invoices", {
+    metadata: { brandId },
+  });
+  const { orders } = await listCustomerOrders(userId, brandId, {
+    skipActivityLog: true,
+  });
   return {
     invoices: orders.map((o) => ({
       id: `INV-${o.saleId}`,
@@ -236,8 +259,17 @@ export const listCustomerInvoices = async (userId: number, brandId: number) => {
   };
 };
 
-export const listCustomerOffers = async (userId: number, brandId: number) => {
+export const listCustomerOffers = async (
+  userId: number,
+  brandId: number,
+  opts?: { skipActivityLog?: boolean }
+) => {
   const { account } = await getPortalContext(userId, brandId);
+  if (!opts?.skipActivityLog) {
+    void logPortalActivityFromContext(account, userId, "view_offers", {
+      metadata: { brandId },
+    });
+  }
   const rows = await CustomerEngagement.findAll({
     where: {
       customerAccountId: account.id,
@@ -258,7 +290,17 @@ export const listCustomerOffers = async (userId: number, brandId: number) => {
   }));
 };
 
-export const listCustomerAnnouncements = async (brandId: number) => {
+export const listCustomerAnnouncements = async (
+  userId: number,
+  brandId: number,
+  opts?: { skipActivityLog?: boolean }
+) => {
+  const { account } = await getPortalContext(userId, brandId);
+  if (!opts?.skipActivityLog) {
+    void logPortalActivityFromContext(account, userId, "view_announcements", {
+      metadata: { brandId },
+    });
+  }
   const rows = await PortalAnnouncement.findAll({
     where: { brandId, ...activeWindowWhere() },
     order: [["createdAt", "DESC"]],
@@ -328,14 +370,31 @@ export const dismissCustomerPopup = async (
     where: { userId, popupId },
     defaults: { userId, popupId, brandId },
   });
+
+  const account = await CustomerAccount.findOne({
+    where: { userId, brandId, status: "active" },
+  });
+  if (account) {
+    void logPortalActivityFromContext(account, userId, "dismiss_popup", {
+      title: `Dismissed popup: ${popup.title || `#${popupId}`}`,
+      metadata: { popupId, popupTitle: popup.title },
+    });
+  }
+
   return { dismissed: true, popupId };
 };
 
 export const listCustomerNotifications = async (
   userId: number,
-  brandId: number
+  brandId: number,
+  opts?: { skipActivityLog?: boolean }
 ) => {
   const { account } = await getPortalContext(userId, brandId);
+  if (!opts?.skipActivityLog) {
+    void logPortalActivityFromContext(account, userId, "view_notifications", {
+      metadata: { brandId },
+    });
+  }
   const rows = await CustomerEngagement.findAll({
     where: {
       customerAccountId: account.id,
@@ -360,10 +419,21 @@ export const getCustomerDashboardStats = async (
   brandId: number
 ) => {
   const { account, brand } = await getPortalContext(userId, brandId);
-  const { orders } = await listCustomerOrders(userId, brandId);
-  const offers = await listCustomerOffers(userId, brandId);
-  const notifications = await listCustomerNotifications(userId, brandId);
-  const announcements = await listCustomerAnnouncements(brandId);
+  void logPortalActivityFromContext(account, userId, "dashboard_view", {
+    metadata: { brandId },
+  });
+  const { orders } = await listCustomerOrders(userId, brandId, {
+    skipActivityLog: true,
+  });
+  const offers = await listCustomerOffers(userId, brandId, {
+    skipActivityLog: true,
+  });
+  const notifications = await listCustomerNotifications(userId, brandId, {
+    skipActivityLog: true,
+  });
+  const announcements = await listCustomerAnnouncements(userId, brandId, {
+    skipActivityLog: true,
+  });
   const popups = await listCustomerPopups(userId, brandId);
 
   const ordersByStatus = {

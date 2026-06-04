@@ -37,6 +37,26 @@ export const createBulkCustomerEmailController = async (
   }
 };
 
+export const listBulkCustomerEmailCampaignsController = async (
+  req: CustomRequest,
+  res: Response
+): Promise<any> => {
+  try {
+    const page = parseInt(req.query.page as string, 10) || 1;
+    const limit = parseInt(req.query.limit as string, 10) || 20;
+    const data = await BulkCustomerEmailService.listBulkCustomerEmailCampaigns({
+      page,
+      limit,
+    });
+    return res.status(200).json({ success: true, data });
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      message: error?.message || "Failed to list bulk email campaigns",
+    });
+  }
+};
+
 export const getBulkCustomerEmailStatusController = async (
   req: CustomRequest,
   res: Response

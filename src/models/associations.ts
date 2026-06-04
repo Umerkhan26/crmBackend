@@ -24,6 +24,7 @@ import CustomerAccount from "./customerAccount.model";
 import CustomerEngagement from "./customerEngagement.model";
 import PortalAnnouncement from "./portalAnnouncement.model";
 import PortalPopup from "./portalPopup.model";
+import PortalActivityEvent from "./portalActivityEvent.model";
 import BulkEmailCampaign from "./bulkEmailCampaign.model";
 import BulkEmailJob from "./bulkEmailJob.model";
 
@@ -93,6 +94,22 @@ CustomerEngagement.belongsTo(CustomerAccount, {
 CustomerEngagement.belongsTo(User, {
   foreignKey: "createdBy",
   as: "createdByUser",
+  onDelete: "CASCADE",
+});
+
+CustomerAccount.hasMany(PortalActivityEvent, {
+  foreignKey: "customerAccountId",
+  as: "portalActivityEvents",
+  onDelete: "CASCADE",
+});
+PortalActivityEvent.belongsTo(CustomerAccount, {
+  foreignKey: "customerAccountId",
+  as: "customerAccount",
+  onDelete: "CASCADE",
+});
+PortalActivityEvent.belongsTo(User, {
+  foreignKey: "userId",
+  as: "user",
   onDelete: "CASCADE",
 });
 

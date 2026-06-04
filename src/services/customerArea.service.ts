@@ -7,6 +7,7 @@ import Role from "../models/role.model";
 import ProductSale from "../models/product.model";
 import Lead from "../models/lead.model";
 import { resolvePortalBrand } from "../utils/portalHost";
+import { logPortalActivityFromContext } from "./portalActivity.service";
 
 const LOCAL_DEV_HOSTS = new Set(["localhost", "127.0.0.1"]);
 
@@ -148,6 +149,13 @@ export const customerLogin = async (params: {
     last_login: new Date(),
     brandId: resolvedBrandId,
   });
+
+  void logPortalActivityFromContext(
+    account,
+    Number(user.id),
+    "login",
+    { metadata: { brandId: resolvedBrandId, email: user.email } }
+  );
 
   return {
     token,

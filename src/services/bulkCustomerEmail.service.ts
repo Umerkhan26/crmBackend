@@ -327,6 +327,59 @@ export const resumeStaleBulkEmailCampaigns = async () => {
   }
 };
 
+export const listBulkCustomerEmailCampaigns = async ({
+  page = 1,
+  limit = 20,
+}: {
+  page?: number;
+  limit?: number;
+} = {}) => {
+  const safePage = Math.max(1, page);
+  const safeLimit = Math.min(50, Math.max(5, limit));
+  const offset = (safePage - 1) * safeLimit;
+
+  const { rows, count } = await BulkEmailCampaign.findAndCountAll({
+    order: [["createdAt", "DESC"]],
+    limit: safeLimit,
+    offset,
+    attributes: [
+      "id",
+      "subject",
+      "category",
+      "status",
+      "totalRecipients",
+      "sentCount",
+      "failedCount",
+      "filters",
+      "createdBy",
+      "startedAt",
+      "completedAt",
+      "createdAt",
+    ],
+  });
+
+  const items = await Promise.all(
+    rows.map(async (row) => {
+      const plain = row.toJSON();
+      const pendingCount = await BulkEmailJob.count({
+        where: {
+          campaignId: row.id,
+          status: { [Op.in]: ["pending", "processing"] },
+        },
+      });
+      return { ...plain, pendingCount };
+    })
+  );
+
+  return {
+    items,
+    total: count,
+    page: safePage,
+    limit: safeLimit,
+    totalPages: Math.ceil(count / safeLimit) || 1,
+  };
+};
+
 export const getBulkCustomerEmailCampaignStatus = async (campaignId: number) => {
   const campaign = await BulkEmailCampaign.findByPk(campaignId, {
     attributes: [

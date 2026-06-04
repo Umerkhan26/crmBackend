@@ -9,6 +9,7 @@ import Lead from "../models/lead.model";
 import ProductSale from "../models/product.model";
 import EmailLog from "../models/emailLog.model";
 import LeadActivity from "../models/leadActivity.model";
+import PortalActivityEvent from "../models/portalActivityEvent.model";
 import { getNotesForEntity } from "./note.service";
 
 const accountIncludes = [
@@ -347,6 +348,9 @@ export const getCustomerAccountInsights = async (
     }),
     discountsApplied: await CustomerEngagement.count({
       where: { customerAccountId: accountId, type: "discount" },
+    }),
+    portalActivityCount: await PortalActivityEvent.count({
+      where: { customerAccountId: accountId },
     }),
   };
 

@@ -1,4 +1,4 @@
-import { Op } from "sequelize";
+import { Op, literal } from "sequelize";
 import CustomerAccount from "../models/customerAccount.model";
 import User from "../models/user.model";
 import Brand from "../models/brand.model";
@@ -107,11 +107,18 @@ const patchLinkedLead = async (
   }
 };
 
+export type CustomerListEmailFilter = "never" | "opened";
+
 export const listCustomerAccounts = async ({
   page = 1,
   limit = 10,
   search = "",
   brandId,
+  status,
+  hasOrder,
+  emailFilter,
+  memberSinceFrom,
+  memberSinceTo,
   viewerUserId,
   viewerPermissions = [],
 }: {
@@ -119,6 +126,11 @@ export const listCustomerAccounts = async ({
   limit?: number;
   search?: string;
   brandId?: number;
+  status?: "active" | "suspended";
+  hasOrder?: "yes" | "no";
+  emailFilter?: CustomerListEmailFilter;
+  memberSinceFrom?: string;
+  memberSinceTo?: string;
   viewerUserId?: number;
   viewerPermissions?: string[];
 }) => {
@@ -135,6 +147,58 @@ export const listCustomerAccounts = async ({
 
   const where: any = {};
   if (brandId) where.brandId = brandId;
+  if (status === "active" || status === "suspended") {
+    where.status = status;
+  }
+  if (hasOrder === "yes") {
+    where.saleId = { [Op.ne]: null };
+  } else if (hasOrder === "no") {
+    where.saleId = null;
+  }
+  if (memberSinceFrom || memberSinceTo) {
+    where.createdAt = {};
+    if (memberSinceFrom) {
+      const from = new Date(memberSinceFrom);
+      if (!Number.isNaN(from.getTime())) {
+        where.createdAt[Op.gte] = from;
+      }
+    }
+    if (memberSinceTo) {
+      const to = new Date(memberSinceTo);
+      if (!Number.isNaN(to.getTime())) {
+        to.setHours(23, 59, 59, 999);
+        where.createdAt[Op.lte] = to;
+      }
+    }
+    if (!Object.keys(where.createdAt).length) delete where.createdAt;
+  }
+
+  const andClauses: unknown[] = [];
+  if (emailFilter === "never") {
+    andClauses.push(
+      literal(`NOT EXISTS (
+        SELECT 1 FROM users u
+        INNER JOIN email_logs el ON (
+          el.\`to\` = u.email OR el.\`to\` LIKE CONCAT('%', u.email, '%')
+        )
+        WHERE u.id = \`CustomerAccount\`.\`userId\`
+      )`)
+    );
+  } else if (emailFilter === "opened") {
+    andClauses.push(
+      literal(`EXISTS (
+        SELECT 1 FROM users u
+        INNER JOIN email_logs el ON (
+          el.\`to\` = u.email OR el.\`to\` LIKE CONCAT('%', u.email, '%')
+        )
+        WHERE u.id = \`CustomerAccount\`.\`userId\`
+          AND LOWER(COALESCE(el.status, '')) REGEXP 'open|read|viewed'
+      )`)
+    );
+  }
+  if (andClauses.length) {
+    where[Op.and] = [...(where[Op.and] || []), ...andClauses];
+  }
 
   let scopeLabel: "all" | "own" | "team" = "all";
   const saleInclude: any = {

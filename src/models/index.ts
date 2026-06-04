@@ -40,6 +40,7 @@ import "./customerEngagement.model";
 import "./portalAnnouncement.model";
 import "./portalPopup.model";
 import "./portalPopupDismissal.model";
+import "./portalActivityEvent.model";
 import "./bulkEmailCampaign.model";
 import "./bulkEmailJob.model";
 import "./client.model";

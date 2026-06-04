@@ -169,6 +169,7 @@ export const customerAnnouncementsController = async (
 ): Promise<any> => {
   try {
     const rows = await CustomerPortalService.listCustomerAnnouncements(
+      req.user!.id,
       portalBrandId(req)
     );
     return res.status(200).json({ success: true, data: rows });

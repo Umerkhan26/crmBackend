@@ -7,6 +7,7 @@ import {
   listCustomerAccountsController,
   getCustomerAccountByIdController,
   getCustomerAccountInsightsController,
+  getCustomerPortalActivityController,
   getCustomerEngagementsFeedController,
   getCustomerTimelineFeedController,
   updateCustomerAccountController,
@@ -19,6 +20,7 @@ import {
 } from "../controllers/customerAccount.controller";
 import {
   createBulkCustomerEmailController,
+  listBulkCustomerEmailCampaignsController,
   getBulkCustomerEmailStatusController,
   cancelBulkCustomerEmailController,
   listBulkCustomerEmailFailuresController,
@@ -34,6 +36,12 @@ router.post(
   "/bulk-email",
   checkPermission(PERMISSIONS.CUSTOMER_ACCOUNT_CREATE),
   createBulkCustomerEmailController
+);
+
+router.get(
+  "/bulk-email",
+  checkPermission(PERMISSIONS.CUSTOMER_ACCOUNT_CREATE),
+  listBulkCustomerEmailCampaignsController
 );
 
 router.get(
@@ -64,6 +72,12 @@ router.get(
   "/:id/insights",
   checkCustomerAccountReadAccess,
   getCustomerAccountInsightsController,
+);
+
+router.get(
+  "/:id/portal-activity",
+  checkCustomerAccountReadAccess,
+  getCustomerPortalActivityController,
 );
 
 router.get(

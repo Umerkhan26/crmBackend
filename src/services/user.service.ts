@@ -14,7 +14,7 @@ import { buildSearchFilter } from "../utils/filterQuery";
 import Permission from "../models/permission.model";
 import ActivityLog from "../models/activityLog.model";
 import Campaign from "../models/campaign.model";
-import { Op, fn, col } from "sequelize";
+import { Op, fn, col, literal } from "sequelize";
 import { userRegistrationTemplate } from "../Templetes/userRegistrationTemplate";
 import { sendEmail } from "../utils/email";
 
@@ -22,6 +22,20 @@ interface PaginationParams {
   page?: number;
   limit?: number;
 }
+
+/** Portal customers have a customer_accounts row; hide them from CRM staff user lists. */
+const staffOnlyUserWhere = (baseWhere: Record<string, unknown>) => ({
+  [Op.and]: [
+    baseWhere,
+    {
+      id: {
+        [Op.notIn]: literal(
+          "(SELECT DISTINCT userId FROM customer_accounts WHERE userId IS NOT NULL)"
+        ),
+      },
+    },
+  ],
+});
 
 
 
@@ -313,7 +327,7 @@ export const getAllUsers = async ({
   }
 
   const data = await User.findAndCountAll({
-    where: finalWhereClause,
+    where: staffOnlyUserWhere(finalWhereClause),
     offset,
     limit: pageLimit,
     include: [

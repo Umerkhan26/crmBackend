@@ -20,6 +20,8 @@ export interface PortalActivityEventAttributes {
   action: PortalActivityAction;
   title: string;
   metadata?: Record<string, unknown> | null;
+  createdAt?: Date;
+  updatedAt?: Date;
 }
 
 export interface PortalActivityEventCreationAttributes

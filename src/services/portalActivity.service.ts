@@ -20,6 +20,32 @@ const ACTION_LABELS: Record<PortalActivityAction, string> = {
   dismiss_popup: "Dismissed popup",
 };
 
+/** Always log these; others dedupe within window per account. */
+const ALWAYS_LOG_ACTIONS = new Set<PortalActivityAction>([
+  "login",
+  "view_order",
+  "dismiss_popup",
+]);
+
+const DEDUPE_WINDOW_MS = 30 * 60 * 1000;
+
+const shouldSkipDuplicateActivity = async (input: {
+  customerAccountId: number;
+  action: PortalActivityAction;
+}) => {
+  if (ALWAYS_LOG_ACTIONS.has(input.action)) return false;
+  const since = new Date(Date.now() - DEDUPE_WINDOW_MS);
+  const recent = await PortalActivityEvent.findOne({
+    where: {
+      customerAccountId: input.customerAccountId,
+      action: input.action,
+      createdAt: { [Op.gte]: since },
+    },
+    attributes: ["id"],
+  });
+  return !!recent;
+};
+
 export const portalActivityLabel = (action: string) =>
   ACTION_LABELS[action as PortalActivityAction] || action;
 
@@ -33,6 +59,8 @@ export const logPortalActivity = async (input: {
   metadata?: Record<string, unknown> | null;
 }) => {
   try {
+    if (await shouldSkipDuplicateActivity(input)) return;
+
     await PortalActivityEvent.create({
       customerAccountId: input.customerAccountId,
       userId: input.userId,
@@ -85,6 +113,58 @@ const mapEventRow = (row: PortalActivityEvent): FeedItem => ({
   metadata: row.metadata ?? null,
   source: "event",
 });
+
+export type PortalActivitySession = {
+  id: string;
+  startedAt: string;
+  loginEvent: FeedItem | null;
+  activities: FeedItem[];
+};
+
+/** Group flat events into login sessions (newest session first). */
+export const buildPortalActivitySessions = (
+  events: FeedItem[]
+): PortalActivitySession[] => {
+  const sorted = [...events].sort(
+    (a, b) => new Date(a.at).getTime() - new Date(b.at).getTime()
+  );
+
+  const sessions: PortalActivitySession[] = [];
+  let current: FeedItem[] = [];
+
+  const pushSession = () => {
+    if (!current.length) return;
+    const loginEvent = current.find((e) => e.action === "login") || null;
+    const startedAt = loginEvent?.at || current[0].at;
+    const seenActions = new Set<string>();
+    const activities = current.filter((item) => {
+      if (item.action === "login") return true;
+      if (seenActions.has(item.action)) return false;
+      seenActions.add(item.action);
+      return true;
+    });
+
+    sessions.push({
+      id: loginEvent?.id || `session-${startedAt}`,
+      startedAt,
+      loginEvent,
+      activities,
+    });
+    current = [];
+  };
+
+  for (const event of sorted) {
+    if (event.action === "login") {
+      pushSession();
+      current = [event];
+    } else {
+      current.push(event);
+    }
+  }
+  pushSession();
+
+  return sessions.reverse();
+};
 
 /** Staff CRM feed for one customer account. */
 export const getCustomerPortalActivity = async (
@@ -172,6 +252,7 @@ export const getCustomerPortalActivity = async (
       popupDismissals: byAction.dismiss_popup || 0,
     },
     events: mergedEvents,
+    sessions: buildPortalActivitySessions(mergedEvents),
     pagination: pagingMeta(safePage, safeLimit, totalEvents),
   };
 };

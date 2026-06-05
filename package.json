@@ -14,6 +14,7 @@
     "patch:schema-columns": "npx ts-node src/scripts/patch-missing-schema-columns.ts",
     "sync:customer-area": "npx ts-node src/scripts/sync-customer-area.ts",
     "sync:bulk-email": "npx ts-node src/scripts/sync-bulk-email.ts",
+    "sync:portal-activity": "npx ts-node src/scripts/sync-portal-activity.ts",
     "seed:customer-role": "npx ts-node src/scripts/seed-customer-role.ts"
   },
   "keywords": [],

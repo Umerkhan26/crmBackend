@@ -88,14 +88,9 @@ export const getPortalContext = async (userId: number, brandId: number) => {
 export const listCustomerOrders = async (
   userId: number,
   brandId: number,
-  opts?: { skipActivityLog?: boolean }
+  _opts?: { skipActivityLog?: boolean }
 ) => {
-  const { account } = await getPortalContext(userId, brandId);
-  if (!opts?.skipActivityLog) {
-    void logPortalActivityFromContext(account, userId, "view_orders", {
-      metadata: { brandId },
-    });
-  }
+  await getPortalContext(userId, brandId);
   const accountFilter: any = { userId, status: "active" };
   if (brandId) accountFilter.brandId = brandId;
 
@@ -238,13 +233,8 @@ const sumOrderLineTotal = (order: {
 };
 
 export const listCustomerInvoices = async (userId: number, brandId: number) => {
-  const { account } = await getPortalContext(userId, brandId);
-  void logPortalActivityFromContext(account, userId, "view_invoices", {
-    metadata: { brandId },
-  });
-  const { orders } = await listCustomerOrders(userId, brandId, {
-    skipActivityLog: true,
-  });
+  await getPortalContext(userId, brandId);
+  const { orders } = await listCustomerOrders(userId, brandId);
   return {
     invoices: orders.map((o) => ({
       id: `INV-${o.saleId}`,
@@ -262,14 +252,9 @@ export const listCustomerInvoices = async (userId: number, brandId: number) => {
 export const listCustomerOffers = async (
   userId: number,
   brandId: number,
-  opts?: { skipActivityLog?: boolean }
+  _opts?: { skipActivityLog?: boolean }
 ) => {
   const { account } = await getPortalContext(userId, brandId);
-  if (!opts?.skipActivityLog) {
-    void logPortalActivityFromContext(account, userId, "view_offers", {
-      metadata: { brandId },
-    });
-  }
   const rows = await CustomerEngagement.findAll({
     where: {
       customerAccountId: account.id,
@@ -293,14 +278,9 @@ export const listCustomerOffers = async (
 export const listCustomerAnnouncements = async (
   userId: number,
   brandId: number,
-  opts?: { skipActivityLog?: boolean }
+  _opts?: { skipActivityLog?: boolean }
 ) => {
-  const { account } = await getPortalContext(userId, brandId);
-  if (!opts?.skipActivityLog) {
-    void logPortalActivityFromContext(account, userId, "view_announcements", {
-      metadata: { brandId },
-    });
-  }
+  await getPortalContext(userId, brandId);
   const rows = await PortalAnnouncement.findAll({
     where: { brandId, ...activeWindowWhere() },
     order: [["createdAt", "DESC"]],
@@ -387,14 +367,9 @@ export const dismissCustomerPopup = async (
 export const listCustomerNotifications = async (
   userId: number,
   brandId: number,
-  opts?: { skipActivityLog?: boolean }
+  _opts?: { skipActivityLog?: boolean }
 ) => {
   const { account } = await getPortalContext(userId, brandId);
-  if (!opts?.skipActivityLog) {
-    void logPortalActivityFromContext(account, userId, "view_notifications", {
-      metadata: { brandId },
-    });
-  }
   const rows = await CustomerEngagement.findAll({
     where: {
       customerAccountId: account.id,
@@ -420,20 +395,13 @@ export const getCustomerDashboardStats = async (
 ) => {
   const { account, brand } = await getPortalContext(userId, brandId);
   void logPortalActivityFromContext(account, userId, "dashboard_view", {
+    title: "Portal session",
     metadata: { brandId },
   });
-  const { orders } = await listCustomerOrders(userId, brandId, {
-    skipActivityLog: true,
-  });
-  const offers = await listCustomerOffers(userId, brandId, {
-    skipActivityLog: true,
-  });
-  const notifications = await listCustomerNotifications(userId, brandId, {
-    skipActivityLog: true,
-  });
-  const announcements = await listCustomerAnnouncements(userId, brandId, {
-    skipActivityLog: true,
-  });
+  const { orders } = await listCustomerOrders(userId, brandId);
+  const offers = await listCustomerOffers(userId, brandId);
+  const notifications = await listCustomerNotifications(userId, brandId);
+  const announcements = await listCustomerAnnouncements(userId, brandId);
   const popups = await listCustomerPopups(userId, brandId);
 
   const ordersByStatus = {

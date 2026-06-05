@@ -109,6 +109,71 @@ const patchLinkedLead = async (
 
 export type CustomerListEmailFilter = "never" | "opened";
 
+const parseCustomerSearchTerm = (raw: string) => {
+  const term = raw.trim();
+  const leadHyphen = term.match(/^([A-Za-z]+)-(\d+)$/);
+  const leadLegacy = term.match(/^([A-Za-z]+)(\d+)$/);
+  const saleExplicit = term.match(/^sale\s*#?\s*(\d+)$/i);
+  const numeric = /^\d+$/.test(term) ? parseInt(term, 10) : null;
+  const leadIdFromCode = leadHyphen
+    ? parseInt(leadHyphen[2], 10)
+    : leadLegacy
+      ? parseInt(leadLegacy[2], 10)
+      : null;
+
+  return {
+    term,
+    leadIdFromCode: Number.isFinite(leadIdFromCode) ? leadIdFromCode : null,
+    saleId: saleExplicit ? parseInt(saleExplicit[1], 10) : null,
+    numeric: Number.isFinite(numeric) ? numeric : null,
+  };
+};
+
+const buildCustomerAccountSearchClause = async (raw: string) => {
+  const parsed = parseCustomerSearchTerm(raw);
+  if (!parsed.term) return null;
+
+  const orConditions: Record<string, unknown>[] = [];
+
+  const matchingUsers = await User.findAll({
+    where: {
+      [Op.or]: [
+        { email: { [Op.like]: `%${parsed.term}%` } },
+        { firstname: { [Op.like]: `%${parsed.term}%` } },
+        { lastname: { [Op.like]: `%${parsed.term}%` } },
+        { phone: { [Op.like]: `%${parsed.term}%` } },
+      ],
+    },
+    attributes: ["id"],
+  });
+  if (matchingUsers.length) {
+    orConditions.push({
+      userId: { [Op.in]: matchingUsers.map((u) => u.id) },
+    });
+  }
+
+  if (parsed.leadIdFromCode != null) {
+    orConditions.push({ leadId: parsed.leadIdFromCode });
+  }
+  if (parsed.saleId != null) {
+    orConditions.push({ saleId: parsed.saleId });
+  }
+  if (parsed.numeric != null) {
+    orConditions.push({ id: parsed.numeric });
+    if (parsed.leadIdFromCode == null) {
+      orConditions.push({ leadId: parsed.numeric });
+    }
+    if (parsed.saleId == null) {
+      orConditions.push({ saleId: parsed.numeric });
+    }
+  }
+
+  if (!orConditions.length) {
+    return { id: -1 };
+  }
+  return { [Op.or]: orConditions };
+};
+
 export const listCustomerAccounts = async ({
   page = 1,
   limit = 10,
@@ -136,46 +201,44 @@ export const listCustomerAccounts = async ({
 }) => {
   const { offset, limit: pageLimit } = getPagination({ page, limit });
 
-  const userWhere: any = {};
-  if (search.trim()) {
-    userWhere[Op.or] = [
-      { email: { [Op.like]: `%${search}%` } },
-      { firstname: { [Op.like]: `%${search}%` } },
-      { lastname: { [Op.like]: `%${search}%` } },
-    ];
-  }
+  const filterAnd: unknown[] = [];
 
-  const where: any = {};
-  if (brandId) where.brandId = brandId;
+  if (brandId) filterAnd.push({ brandId });
   if (status === "active" || status === "suspended") {
-    where.status = status;
+    filterAnd.push({ status });
   }
   if (hasOrder === "yes") {
-    where.saleId = { [Op.ne]: null };
+    filterAnd.push({ saleId: { [Op.ne]: null } });
   } else if (hasOrder === "no") {
-    where.saleId = null;
+    filterAnd.push({ saleId: null });
   }
   if (memberSinceFrom || memberSinceTo) {
-    where.createdAt = {};
+    const createdAt: Record<string | symbol, Date> = {};
     if (memberSinceFrom) {
       const from = new Date(memberSinceFrom);
       if (!Number.isNaN(from.getTime())) {
-        where.createdAt[Op.gte] = from;
+        createdAt[Op.gte] = from;
       }
     }
     if (memberSinceTo) {
       const to = new Date(memberSinceTo);
       if (!Number.isNaN(to.getTime())) {
         to.setHours(23, 59, 59, 999);
-        where.createdAt[Op.lte] = to;
+        createdAt[Op.lte] = to;
       }
     }
-    if (!Object.keys(where.createdAt).length) delete where.createdAt;
+    if (Object.keys(createdAt).length) {
+      filterAnd.push({ createdAt });
+    }
   }
 
-  const andClauses: unknown[] = [];
+  if (search.trim()) {
+    const searchClause = await buildCustomerAccountSearchClause(search);
+    if (searchClause) filterAnd.push(searchClause);
+  }
+
   if (emailFilter === "never") {
-    andClauses.push(
+    filterAnd.push(
       literal(`NOT EXISTS (
         SELECT 1 FROM users u
         INNER JOIN email_logs el ON (
@@ -185,7 +248,7 @@ export const listCustomerAccounts = async ({
       )`)
     );
   } else if (emailFilter === "opened") {
-    andClauses.push(
+    filterAnd.push(
       literal(`EXISTS (
         SELECT 1 FROM users u
         INNER JOIN email_logs el ON (
@@ -196,9 +259,8 @@ export const listCustomerAccounts = async ({
       )`)
     );
   }
-  if (andClauses.length) {
-    where[Op.and] = [...(where[Op.and] || []), ...andClauses];
-  }
+
+  const where: any = filterAnd.length ? { [Op.and]: filterAnd } : {};
 
   let scopeLabel: "all" | "own" | "team" = "all";
   const saleInclude: any = {
@@ -232,8 +294,7 @@ export const listCustomerAccounts = async ({
         model: User,
         as: "user",
         attributes: ["id", "firstname", "lastname", "email", "phone", "status"],
-        where: Object.keys(userWhere).length ? userWhere : undefined,
-        required: !!search.trim(),
+        required: false,
       },
       {
         model: Brand,

@@ -11,7 +11,9 @@ import Lead from "../models/lead.model";
 import { resolvePortalBrand } from "../utils/portalHost";
 import {
   logPortalActivityFromContext,
+  portalActivityLabel,
 } from "./portalActivity.service";
+import type { PortalActivityAction } from "../models/portalActivityEvent.model";
 
 const activeWindowWhere = () => {
   const now = new Date();
@@ -394,10 +396,6 @@ export const getCustomerDashboardStats = async (
   brandId: number
 ) => {
   const { account, brand } = await getPortalContext(userId, brandId);
-  void logPortalActivityFromContext(account, userId, "dashboard_view", {
-    title: "Portal session",
-    metadata: { brandId },
-  });
   const { orders } = await listCustomerOrders(userId, brandId);
   const offers = await listCustomerOffers(userId, brandId);
   const notifications = await listCustomerNotifications(userId, brandId);
@@ -471,6 +469,56 @@ export const getCustomerDashboardStats = async (
         }
       : null,
   };
+};
+
+const TRACKABLE_ACTIONS = new Set<PortalActivityAction>([
+  "dashboard_view",
+  "view_orders",
+  "view_invoices",
+  "view_offers",
+  "view_announcements",
+  "view_notifications",
+  "view_order",
+  "download_invoice",
+]);
+
+/** Explicit activity from portal (page visit, download, etc.) — not from bulk data prefetch. */
+export const trackCustomerPortalActivity = async (
+  userId: number,
+  brandId: number,
+  input: {
+    action: string;
+    title?: string;
+    metadata?: Record<string, unknown> | null;
+  }
+) => {
+  const action = String(input.action || "").trim() as PortalActivityAction;
+  if (!TRACKABLE_ACTIONS.has(action)) {
+    throw new Error("Invalid activity action");
+  }
+
+  const { account } = await getPortalContext(userId, brandId);
+  const metadata = input.metadata ?? null;
+  const saleId = metadata?.saleId != null ? Number(metadata.saleId) : null;
+
+  let title = input.title?.trim();
+  if (!title) {
+    if (action === "download_invoice" && saleId) {
+      title = `Downloaded invoice for order #${saleId}`;
+    } else if (action === "view_order" && saleId) {
+      title = `Viewed order #${saleId}`;
+    } else {
+      title = portalActivityLabel(action);
+    }
+  }
+
+  await logPortalActivityFromContext(account, userId, action, {
+    title,
+    metadata,
+    skipDedupe: action === "download_invoice" || action === "view_order",
+  });
+
+  return { logged: true, action };
 };
 
 export const extractBrandIdFromCustomerToken = (

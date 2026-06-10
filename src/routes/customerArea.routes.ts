@@ -14,6 +14,7 @@ import {
   dismissPopupController,
   customerNotificationsController,
   customerStatsController,
+  trackPortalActivityController,
 } from "../controllers/customerArea.controller";
 import { verifyCustomerToken } from "../middleware/verifyCustomer.middleware";
 import {
@@ -60,5 +61,6 @@ router.get(
   requirePortalBrand,
   customerNotificationsController
 );
+router.post("/activity", requirePortalBrand, trackPortalActivityController);
 
 export default router;

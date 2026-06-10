@@ -243,3 +243,24 @@ export const customerStatsController = async (
     return res.status(status).json({ success: false, message: error.message });
   }
 };
+
+export const trackPortalActivityController = async (
+  req: CustomRequest,
+  res: Response
+): Promise<any> => {
+  try {
+    const { action, title, metadata } = req.body || {};
+    if (!action) {
+      return res.status(400).json({ success: false, message: "action is required" });
+    }
+    const data = await CustomerPortalService.trackCustomerPortalActivity(
+      req.user!.id,
+      portalBrandId(req),
+      { action, title, metadata }
+    );
+    return res.status(200).json({ success: true, data });
+  } catch (error: any) {
+    const status = /invalid activity/i.test(error.message) ? 400 : 500;
+    return res.status(status).json({ success: false, message: error.message });
+  }
+};

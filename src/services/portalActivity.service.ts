@@ -18,22 +18,26 @@ const ACTION_LABELS: Record<PortalActivityAction, string> = {
   view_notifications: "Viewed notifications",
   view_order: "Viewed order progress",
   dismiss_popup: "Dismissed popup",
+  download_invoice: "Downloaded invoice",
 };
 
-/** Always log these; others dedupe within window per account. */
+/** Always log these; passive page views dedupe within a short window. */
 const ALWAYS_LOG_ACTIONS = new Set<PortalActivityAction>([
   "login",
   "view_order",
   "dismiss_popup",
+  "download_invoice",
 ]);
 
-const DEDUPE_WINDOW_MS = 30 * 60 * 1000;
+const DEDUPE_WINDOW_MS = 45 * 1000;
 
 const shouldSkipDuplicateActivity = async (input: {
   customerAccountId: number;
   action: PortalActivityAction;
+  skipDedupe?: boolean;
+  metadata?: Record<string, unknown> | null;
 }) => {
-  if (ALWAYS_LOG_ACTIONS.has(input.action)) return false;
+  if (input.skipDedupe || ALWAYS_LOG_ACTIONS.has(input.action)) return false;
   const since = new Date(Date.now() - DEDUPE_WINDOW_MS);
   const recent = await PortalActivityEvent.findOne({
     where: {
@@ -57,6 +61,7 @@ export const logPortalActivity = async (input: {
   action: PortalActivityAction;
   title?: string;
   metadata?: Record<string, unknown> | null;
+  skipDedupe?: boolean;
 }) => {
   try {
     if (await shouldSkipDuplicateActivity(input)) return;
@@ -78,7 +83,11 @@ export const logPortalActivityFromContext = async (
   account: { id: number; brandId?: number | null },
   userId: number,
   action: PortalActivityAction,
-  opts?: { title?: string; metadata?: Record<string, unknown> | null }
+  opts?: {
+    title?: string;
+    metadata?: Record<string, unknown> | null;
+    skipDedupe?: boolean;
+  }
 ) =>
   logPortalActivity({
     customerAccountId: account.id,
@@ -87,6 +96,7 @@ export const logPortalActivityFromContext = async (
     action,
     title: opts?.title,
     metadata: opts?.metadata,
+    skipDedupe: opts?.skipDedupe,
   });
 
 const pagingMeta = (page: number, limit: number, total: number) => ({
@@ -136,19 +146,12 @@ export const buildPortalActivitySessions = (
     if (!current.length) return;
     const loginEvent = current.find((e) => e.action === "login") || null;
     const startedAt = loginEvent?.at || current[0].at;
-    const seenActions = new Set<string>();
-    const activities = current.filter((item) => {
-      if (item.action === "login") return true;
-      if (seenActions.has(item.action)) return false;
-      seenActions.add(item.action);
-      return true;
-    });
 
     sessions.push({
       id: loginEvent?.id || `session-${startedAt}`,
       startedAt,
       loginEvent,
-      activities,
+      activities: [...current],
     });
     current = [];
   };
@@ -250,6 +253,7 @@ export const getCustomerPortalActivity = async (
       invoicesViews: byAction.view_invoices || 0,
       offersViews: byAction.view_offers || 0,
       popupDismissals: byAction.dismiss_popup || 0,
+      invoiceDownloads: byAction.download_invoice || 0,
     },
     events: mergedEvents,
     sessions: buildPortalActivitySessions(mergedEvents),

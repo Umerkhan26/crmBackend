@@ -10,7 +10,8 @@ export type PortalActivityAction =
   | "view_announcements"
   | "view_notifications"
   | "view_order"
-  | "dismiss_popup";
+  | "dismiss_popup"
+  | "download_invoice";
 
 export interface PortalActivityEventAttributes {
   id: number;

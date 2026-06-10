@@ -10,7 +10,7 @@ import BulkEmailJob from "../models/bulkEmailJob.model";
 import EmailLog from "../models/emailLog.model";
 import CustomerEngagement from "../models/customerEngagement.model";
 import { sendEmail } from "../utils/email";
-import { getSmtpConfig } from "../utils/getSmtpConfig";
+import { getCustomerPortalSmtpConfig } from "../utils/getCustomerPortalSmtpConfig";
 import { fillTemplate } from "../utils/fillTemplate";
 import { logLeadActivity } from "../utils/logLeadActivity";
 
@@ -25,15 +25,16 @@ const getBulkEmailDelayMs = (): number => {
   return Number.isFinite(raw) && raw >= 0 ? raw : 1500;
 };
 
-const normalizeSmtp = (smtpRaw: Awaited<ReturnType<typeof getSmtpConfig>>) => {
+const normalizeSmtp = (smtpRaw: ReturnType<typeof getCustomerPortalSmtpConfig>) => {
   const smtp = {
     host: smtpRaw.host || "",
-    port: smtpRaw.port || 587,
+    port: smtpRaw.port || 465,
     user: smtpRaw.user || "",
     pass: smtpRaw.pass || "",
+    fromName: smtpRaw.fromName,
   };
   if (!smtp.host || !smtp.user || !smtp.pass) {
-    throw new Error("SMTP configuration is incomplete.");
+    throw new Error("Customer portal SMTP configuration is incomplete.");
   }
   return smtp;
 };
@@ -70,7 +71,7 @@ export const createBulkCustomerEmailCampaign = async ({
   filters?: BulkEmailCampaignFilters;
   createdBy: number;
 }) => {
-  const smtp = normalizeSmtp(await getSmtpConfig(createdBy));
+  const smtp = normalizeSmtp(getCustomerPortalSmtpConfig());
 
   const accounts = await CustomerAccount.findAll({
     where: buildRecipientWhere(filters),

@@ -10,7 +10,7 @@ import {
   extractEmailFromLeadData,
   extractNameFromLeadData,
 } from "../utils/extractLeadContact";
-import { getSmtpConfig } from "../utils/getSmtpConfig";
+import { getCustomerPortalSmtpConfig } from "../utils/getCustomerPortalSmtpConfig";
 import { sendEmail } from "../utils/email";
 import { customerCredentialsTemplate } from "../Templetes/customerCredentialsTemplate";
 import { normalizePortalBaseUrl } from "../utils/portalHost";
@@ -51,7 +51,6 @@ async function hashPassword(plainPassword: string): Promise<string> {
 }
 
 async function sendCredentialsEmail(params: {
-  agentUserId: number;
   to: string;
   firstname: string;
   lastname: string;
@@ -60,7 +59,7 @@ async function sendCredentialsEmail(params: {
   portalUrl?: string;
 }): Promise<boolean> {
   try {
-    const smtpConfig = await getSmtpConfig(params.agentUserId);
+    const smtpConfig = getCustomerPortalSmtpConfig();
     const { subject, html } = customerCredentialsTemplate({
       firstname: params.firstname,
       lastname: params.lastname,
@@ -70,7 +69,10 @@ async function sendCredentialsEmail(params: {
       portalUrl: params.portalUrl,
     });
     await sendEmail({
-      smtp: smtpConfig,
+      smtp: {
+        ...smtpConfig,
+        fromName: params.brandName || smtpConfig.fromName,
+      },
       to: params.to,
       subject,
       body: html,
@@ -131,7 +133,6 @@ export const resendCustomerCredentials = async (params: {
   });
 
   const emailSent = await sendCredentialsEmail({
-    agentUserId,
     to: email,
     firstname,
     lastname,
@@ -259,7 +260,6 @@ export const provisionCustomerFromSale = async (params: {
 
   const emailSent = shouldSendCredentialsEmail
     ? await sendCredentialsEmail({
-        agentUserId,
         to: email,
         firstname,
         lastname,

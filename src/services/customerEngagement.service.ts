@@ -7,7 +7,7 @@ import CustomerEngagement, {
 import User from "../models/user.model";
 import EmailLog from "../models/emailLog.model";
 import { sendEmail } from "../utils/email";
-import { getSmtpConfig } from "../utils/getSmtpConfig";
+import { getCustomerPortalSmtpConfig } from "../utils/getCustomerPortalSmtpConfig";
 import { logLeadActivity } from "../utils/logLeadActivity";
 
 const fetchAccountForEngagement = async (accountId: number) => {
@@ -81,16 +81,7 @@ export const sendEmailToCustomerAccount = async ({
 }) => {
   const { account, email } = await fetchAccountForEngagement(accountId);
 
-  const smtpRaw = await getSmtpConfig(createdBy);
-  const smtp = {
-    host: smtpRaw.host || "",
-    port: smtpRaw.port || 587,
-    user: smtpRaw.user || "",
-    pass: smtpRaw.pass || "",
-  };
-  if (!smtp.host || !smtp.user || !smtp.pass) {
-    throw new Error("SMTP configuration is incomplete.");
-  }
+  const smtp = getCustomerPortalSmtpConfig();
 
   await sendEmail({ smtp, to: email, subject, body });
 
@@ -232,9 +223,9 @@ export const sendCustomerNotification = async ({
   });
 
   if (sendEmailAlso) {
-    const smtpRaw = await getSmtpConfig(createdBy);
+    const smtp = getCustomerPortalSmtpConfig();
     await sendEmail({
-      smtp: smtpRaw,
+      smtp,
       to: email,
       subject: "Notification from your account team",
       body: `<p>${message}</p>`,

@@ -8,7 +8,7 @@ import PortalPopup from "../models/portalPopup.model";
 import PortalPopupDismissal from "../models/portalPopupDismissal.model";
 import ProductSale from "../models/product.model";
 import Lead from "../models/lead.model";
-import { resolvePortalBrand } from "../utils/portalHost";
+import { resolvePortalBrand, normalizePortalBaseUrl } from "../utils/portalHost";
 import {
   logPortalActivityFromContext,
   portalActivityLabel,
@@ -42,7 +42,7 @@ export const getBrandConfigForPortal = async (brand: Brand) => {
     name: brand.name,
     slug: brand.slug,
     subdomain: brand.subdomain,
-    customerPortalUrl: brand.customerPortalUrl,
+    customerPortalUrl: normalizePortalBaseUrl(brand.customerPortalUrl),
     portalTheme: {
       logoUrl: portalTheme.logoUrl ?? null,
       primaryColor: portalTheme.primaryColor ?? "#2563eb",
@@ -196,11 +196,6 @@ export const getOrderProgress = async (
     where: { userId, saleId, status: "active" },
   });
   if (!linkedAccount) throw new Error("Order not linked to your account");
-
-  void logPortalActivityFromContext(linkedAccount, userId, "view_order", {
-    title: `Viewed order #${saleId}`,
-    metadata: { saleId, status: sale.status, productType: sale.productType },
-  });
 
   return {
     saleId: sale.id,
@@ -515,7 +510,7 @@ export const trackCustomerPortalActivity = async (
   await logPortalActivityFromContext(account, userId, action, {
     title,
     metadata,
-    skipDedupe: action === "download_invoice" || action === "view_order",
+    skipDedupe: action === "download_invoice",
   });
 
   return { logged: true, action };

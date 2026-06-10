@@ -7,6 +7,23 @@ export type PortalBrandResolveInput = {
 };
 
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1"]);
+const SHARED_PORTAL_HOSTS = new Set(["customerarea.live", "www.customerarea.live"]);
+
+const PORTAL_BASE_URL =
+  process.env.CUSTOMER_PORTAL_BASE_URL?.trim() || "https://customerarea.live";
+
+/** Shared portal URL — no brand query params. */
+export const normalizePortalBaseUrl = (raw?: string | null): string => {
+  const fallback = PORTAL_BASE_URL;
+  const value = String(raw || "").trim();
+  if (!value) return fallback;
+  try {
+    const u = new URL(value.startsWith("http") ? value : `https://${value}`);
+    return `${u.protocol}//${u.host}`;
+  } catch {
+    return fallback;
+  }
+};
 
 /** Subdomain from production host, e.g. customer.emrills.com → emrills */
 export const subdomainFromHost = (host: string): string | null => {
@@ -52,6 +69,10 @@ export const resolvePortalBrand = async (
 
   if (LOCAL_HOSTS.has(normalized)) {
     return resolveLocalDefaultBrand();
+  }
+
+  if (SHARED_PORTAL_HOSTS.has(normalized)) {
+    return null;
   }
 
   const sub = subdomainFromHost(host);
@@ -129,6 +150,7 @@ export const isAllowedPortalOrigin = (origin: string): boolean => {
     const host = u.hostname.toLowerCase();
     if (LOCAL_HOSTS.has(host)) return true;
     if (host.startsWith("customer.")) return true;
+    if (host === "customerarea.live" || host.endsWith(".customerarea.live")) return true;
     const extra = process.env.CUSTOMER_PORTAL_CORS_HOST_SUFFIXES || "";
     for (const suffix of extra.split(",")) {
       const s = suffix.trim().toLowerCase();

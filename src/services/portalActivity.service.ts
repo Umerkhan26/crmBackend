@@ -21,15 +21,64 @@ const ACTION_LABELS: Record<PortalActivityAction, string> = {
   download_invoice: "Downloaded invoice",
 };
 
-/** Always log these; passive page views dedupe within a short window. */
+/** Log every time — e.g. each login session, each invoice download. */
 const ALWAYS_LOG_ACTIONS = new Set<PortalActivityAction>([
   "login",
-  "view_order",
-  "dismiss_popup",
   "download_invoice",
 ]);
 
-const DEDUPE_WINDOW_MS = 45 * 1000;
+/** Log once per customer account; repeat visits are not shown in activity. */
+const ONCE_PER_ACCOUNT_ACTIONS = new Set<PortalActivityAction>([
+  "dashboard_view",
+  "view_orders",
+  "view_invoices",
+  "view_offers",
+  "view_announcements",
+  "view_notifications",
+]);
+
+const metadataEntityKey = (action: PortalActivityAction): string | null => {
+  if (action === "view_order") return "saleId";
+  if (action === "dismiss_popup") return "popupId";
+  return null;
+};
+
+const metadataMatches = (
+  stored: Record<string, unknown> | null | undefined,
+  key: string,
+  value: unknown
+) => {
+  if (!stored || value == null) return false;
+  const left = stored[key];
+  if (left === value) return true;
+  const leftNum = Number(left);
+  const rightNum = Number(value);
+  return Number.isFinite(leftNum) && Number.isFinite(rightNum) && leftNum === rightNum;
+};
+
+const hasExistingEntityActivity = async (input: {
+  customerAccountId: number;
+  action: PortalActivityAction;
+  metadata?: Record<string, unknown> | null;
+}) => {
+  const entityKey = metadataEntityKey(input.action);
+  if (!entityKey) return false;
+  const entityValue = input.metadata?.[entityKey];
+  if (entityValue == null) return false;
+
+  const rows = await PortalActivityEvent.findAll({
+    where: {
+      customerAccountId: input.customerAccountId,
+      action: input.action,
+    },
+    attributes: ["id", "metadata"],
+    limit: 200,
+  });
+
+  return rows.some((row) =>
+    metadataMatches(row.metadata as Record<string, unknown> | null, entityKey, entityValue)
+  );
+};
 
 const shouldSkipDuplicateActivity = async (input: {
   customerAccountId: number;
@@ -38,16 +87,24 @@ const shouldSkipDuplicateActivity = async (input: {
   metadata?: Record<string, unknown> | null;
 }) => {
   if (input.skipDedupe || ALWAYS_LOG_ACTIONS.has(input.action)) return false;
-  const since = new Date(Date.now() - DEDUPE_WINDOW_MS);
-  const recent = await PortalActivityEvent.findOne({
-    where: {
-      customerAccountId: input.customerAccountId,
-      action: input.action,
-      createdAt: { [Op.gte]: since },
-    },
-    attributes: ["id"],
-  });
-  return !!recent;
+
+  if (ONCE_PER_ACCOUNT_ACTIONS.has(input.action)) {
+    const existing = await PortalActivityEvent.findOne({
+      where: {
+        customerAccountId: input.customerAccountId,
+        action: input.action,
+      },
+      attributes: ["id"],
+    });
+    return !!existing;
+  }
+
+  const entityKey = metadataEntityKey(input.action);
+  if (entityKey) {
+    return hasExistingEntityActivity(input);
+  }
+
+  return false;
 };
 
 export const portalActivityLabel = (action: string) =>

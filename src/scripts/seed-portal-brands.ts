@@ -5,24 +5,26 @@
 import db from "../../db";
 import Brand from "../models/brand.model";
 
+const PORTAL_BASE_URL = "https://customerarea.live";
+
 const PORTAL_BRANDS = [
   {
     name: "GWB",
     slug: "gwb",
     subdomain: "globalwebbuilders",
-    customerPortalUrl: "https://customer.globalwebbuilders.com",
+    customerPortalUrl: PORTAL_BASE_URL,
   },
   {
     name: "Emrills",
     slug: "emrills",
     subdomain: "emrills",
-    customerPortalUrl: "https://customer.emrills.com",
+    customerPortalUrl: PORTAL_BASE_URL,
   },
   {
     name: "Dnova",
     slug: "dnova",
     subdomain: "dnova",
-    customerPortalUrl: "https://customer.dnova.com",
+    customerPortalUrl: PORTAL_BASE_URL,
   },
 ];
 

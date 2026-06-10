@@ -13,6 +13,9 @@ import {
 import { getSmtpConfig } from "../utils/getSmtpConfig";
 import { sendEmail } from "../utils/email";
 import { customerCredentialsTemplate } from "../Templetes/customerCredentialsTemplate";
+import { normalizePortalBaseUrl } from "../utils/portalHost";
+
+const resolveBrandPortalUrl = (_brand: Brand | null) => normalizePortalBaseUrl();
 
 export interface ProvisionCustomerResult {
   provisioned: boolean;
@@ -134,7 +137,7 @@ export const resendCustomerCredentials = async (params: {
     lastname,
     plainPassword,
     brandName,
-    portalUrl: brand?.customerPortalUrl || undefined,
+    portalUrl: resolveBrandPortalUrl(brand),
   });
 
   return {
@@ -262,7 +265,7 @@ export const provisionCustomerFromSale = async (params: {
         lastname,
         plainPassword,
         brandName,
-        portalUrl: brand?.customerPortalUrl || undefined,
+        portalUrl: resolveBrandPortalUrl(brand),
       })
     : false;
 

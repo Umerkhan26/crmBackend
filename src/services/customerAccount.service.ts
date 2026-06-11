@@ -1,9 +1,11 @@
 import { Op, literal } from "sequelize";
+import db from "../../db";
 import CustomerAccount from "../models/customerAccount.model";
 import User from "../models/user.model";
 import Brand from "../models/brand.model";
 import Lead, { AssigneeWithStatus, LeadStatus } from "../models/lead.model";
 import ProductSale from "../models/product.model";
+import PortalPopupDismissal from "../models/portalPopupDismissal.model";
 import { getPagination, getPagingData } from "../utils/paginate";
 import {
   provisionCustomerFromSale,
@@ -483,17 +485,46 @@ export const deleteCustomerAccount = async (id: number) => {
   const account = await CustomerAccount.findByPk(id);
   if (!account) throw new Error("Customer account not found");
 
+  const userId = account.userId;
   const saleId = account.saleId;
-  await account.destroy();
 
-  if (saleId) {
-    await ProductSale.update(
-      { customerProvisionedAt: null },
-      { where: { id: saleId } }
-    );
-  }
+  let userDeleted = false;
 
-  return { deleted: true, id };
+  await db.transaction(async (transaction) => {
+    await account.destroy({ transaction });
+
+    if (saleId) {
+      await ProductSale.update(
+        { customerProvisionedAt: null },
+        { where: { id: saleId }, transaction }
+      );
+    }
+
+    const remainingAccounts = await CustomerAccount.count({
+      where: { userId },
+      transaction,
+    });
+
+    if (remainingAccounts > 0) return;
+
+    const user = await User.findByPk(userId, { transaction });
+    if (!user) return;
+
+    const role = String(user.userrole || "").toLowerCase();
+    if (role !== "customer" && role !== "client") {
+      return;
+    }
+
+    await PortalPopupDismissal.destroy({
+      where: { userId },
+      transaction,
+    });
+
+    await user.destroy({ transaction });
+    userDeleted = true;
+  });
+
+  return { deleted: true, id, userId, userDeleted };
 };
 
 export const provisionFromSaleId = async (

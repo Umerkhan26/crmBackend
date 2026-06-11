@@ -9,8 +9,11 @@ import BulkEmailCampaign, {
 import BulkEmailJob from "../models/bulkEmailJob.model";
 import EmailLog from "../models/emailLog.model";
 import CustomerEngagement from "../models/customerEngagement.model";
-import { sendEmail } from "../utils/email";
-import { getCustomerPortalSmtpConfig } from "../utils/getCustomerPortalSmtpConfig";
+import { customerEngagementEmailTemplate } from "../Templetes/customerEngagementEmailTemplate";
+import {
+  getCustomerPortalSmtpAuditSnapshot,
+  sendCustomerPortalEmail,
+} from "../utils/customerPortalEmail";
 import { fillTemplate } from "../utils/fillTemplate";
 import { logLeadActivity } from "../utils/logLeadActivity";
 
@@ -23,20 +26,6 @@ const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const getBulkEmailDelayMs = (): number => {
   const raw = Number(process.env.BULK_EMAIL_DELAY_MS || "1500");
   return Number.isFinite(raw) && raw >= 0 ? raw : 1500;
-};
-
-const normalizeSmtp = (smtpRaw: ReturnType<typeof getCustomerPortalSmtpConfig>) => {
-  const smtp = {
-    host: smtpRaw.host || "",
-    port: smtpRaw.port || 465,
-    user: smtpRaw.user || "",
-    pass: smtpRaw.pass || "",
-    fromName: smtpRaw.fromName,
-  };
-  if (!smtp.host || !smtp.user || !smtp.pass) {
-    throw new Error("Customer portal SMTP configuration is incomplete.");
-  }
-  return smtp;
 };
 
 const buildRecipientWhere = (filters?: BulkEmailCampaignFilters) => {
@@ -71,7 +60,7 @@ export const createBulkCustomerEmailCampaign = async ({
   filters?: BulkEmailCampaignFilters;
   createdBy: number;
 }) => {
-  const smtp = normalizeSmtp(getCustomerPortalSmtpConfig());
+  const smtp = getCustomerPortalSmtpAuditSnapshot();
 
   const accounts = await CustomerAccount.findAll({
     where: buildRecipientWhere(filters),
@@ -179,15 +168,23 @@ const processOneJob = async (
     email: job.toEmail,
   };
   const subject = fillTemplate(campaign.subject, templateData);
-  const body = fillTemplate(campaign.body, templateData);
-  const smtp = campaign.smtpConfig;
-
-  await sendEmail({ smtp, to: job.toEmail, subject, body });
+  const bodyPlain = fillTemplate(campaign.body, templateData);
+  const { subject: mailSubject, html } = customerEngagementEmailTemplate({
+    firstname: job.recipientFirstname,
+    lastname: job.recipientLastname,
+    subject,
+    body: bodyPlain,
+  });
+  await sendCustomerPortalEmail({
+    to: job.toEmail,
+    subject: mailSubject,
+    body: html,
+  });
 
   await EmailLog.create({
     to: job.toEmail,
-    subject,
-    body,
+    subject: mailSubject,
+    body: html,
     status: "sent",
     serviceName: `customer_bulk_${campaign.category}`,
     sentAt: new Date(),
@@ -196,8 +193,8 @@ const processOneJob = async (
   await CustomerEngagement.create({
     customerAccountId: job.customerAccountId,
     type: "promotional_email",
-    title: subject,
-    details: body,
+    title: mailSubject,
+    details: bodyPlain,
     metadata: {
       category: campaign.category,
       recipient: job.toEmail,
@@ -216,7 +213,7 @@ const processOneJob = async (
       entityType: "lead",
       action: "customer_bulk_email_sent",
       performedBy: campaign.createdBy,
-      details: `${subject} (${campaign.category})`,
+      details: `${mailSubject} (${campaign.category})`,
     });
   }
 

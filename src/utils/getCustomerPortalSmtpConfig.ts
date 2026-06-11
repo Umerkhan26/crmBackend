@@ -6,7 +6,8 @@
  * CUSTOMER_PORTAL_SMTP_PORT=465
  * CUSTOMER_PORTAL_SMTP_EMAIL=system@globalwebbuilders.com
  * CUSTOMER_PORTAL_SMTP_PASSWORD=...
- * CUSTOMER_PORTAL_SMTP_FROM_NAME=Global Web Builders
+ * CUSTOMER_PORTAL_SMTP_FROM_NAME=GWB
+ * CUSTOMER_PORTAL_EMAIL_BRAND_NAME=GWB
  */
 export type SmtpCredentials = {
   host: string;
@@ -35,7 +36,7 @@ export const getCustomerPortalSmtpConfig = (): SmtpCredentials => {
     "system@globalwebbuilders.com";
   const pass = process.env.CUSTOMER_PORTAL_SMTP_PASSWORD?.trim() || "";
   const fromName =
-    process.env.CUSTOMER_PORTAL_SMTP_FROM_NAME?.trim() || "Customer Area";
+    process.env.CUSTOMER_PORTAL_SMTP_FROM_NAME?.trim() || "GWB";
 
   if (!pass) {
     throw new Error(

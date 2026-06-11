@@ -1,3 +1,5 @@
+import { CUSTOMER_EMAIL_BRAND_NAME } from "../utils/customerPortalEmail";
+
 /**
  * GWB / customer portal welcome email — same layout as userRegistrationTemplate (xCRM welcome).
  */
@@ -6,10 +8,10 @@ export const customerCredentialsTemplate = (data: {
   lastname: string;
   email: string;
   password: string;
-  brandName: string;
+  brandName?: string;
   portalUrl?: string;
 }): { subject: string; html: string } => {
-  const brand = data.brandName || "GWB";
+  const brand = CUSTOMER_EMAIL_BRAND_NAME;
   const subject = `Welcome to ${brand}`;
 
   const portalHost = (data.portalUrl || "https://customerarea.live")

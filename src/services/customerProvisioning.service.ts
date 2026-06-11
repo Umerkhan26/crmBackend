@@ -10,8 +10,10 @@ import {
   extractEmailFromLeadData,
   extractNameFromLeadData,
 } from "../utils/extractLeadContact";
-import { getCustomerPortalSmtpConfig } from "../utils/getCustomerPortalSmtpConfig";
-import { sendEmail } from "../utils/email";
+import {
+  CUSTOMER_EMAIL_BRAND_NAME,
+  sendCustomerPortalEmail,
+} from "../utils/customerPortalEmail";
 import { customerCredentialsTemplate } from "../Templetes/customerCredentialsTemplate";
 import { normalizePortalBaseUrl } from "../utils/portalHost";
 
@@ -42,20 +44,15 @@ async function sendCredentialsEmail(params: {
   portalUrl?: string;
 }): Promise<boolean> {
   try {
-    const smtpConfig = getCustomerPortalSmtpConfig();
     const { subject, html } = customerCredentialsTemplate({
       firstname: params.firstname,
       lastname: params.lastname,
       email: params.to,
       password: params.plainPassword,
-      brandName: params.brandName,
+      brandName: CUSTOMER_EMAIL_BRAND_NAME,
       portalUrl: params.portalUrl,
     });
-    await sendEmail({
-      smtp: {
-        ...smtpConfig,
-        fromName: params.brandName || smtpConfig.fromName,
-      },
+    await sendCustomerPortalEmail({
       to: params.to,
       subject,
       body: html,
@@ -139,7 +136,6 @@ export const resendCustomerCredentials = async (params: {
   if (!portalCustomer) throw new Error("Portal customer not found");
 
   const brand = brandId ? await Brand.findByPk(brandId) : null;
-  const brandName = brand?.name || "Customer Portal";
   const { firstname, lastname } = extractNameFromLeadData(lead.leadData);
   const plainPassword = generateTemporaryPassword();
   const hashedPassword = await hashPassword(plainPassword);
@@ -154,7 +150,7 @@ export const resendCustomerCredentials = async (params: {
     firstname,
     lastname,
     plainPassword,
-    brandName,
+    brandName: CUSTOMER_EMAIL_BRAND_NAME,
     portalUrl: resolveBrandPortalUrl(brand),
   });
 
@@ -217,7 +213,6 @@ export const provisionCustomerFromSale = async (params: {
   }
 
   const brand = brandId ? await Brand.findByPk(brandId) : null;
-  const brandName = brand?.name || "Customer Portal";
 
   const { firstname, lastname } = extractNameFromLeadData(lead.leadData);
   const plainPassword = generateTemporaryPassword();
@@ -264,7 +259,7 @@ export const provisionCustomerFromSale = async (params: {
         firstname,
         lastname,
         plainPassword,
-        brandName,
+        brandName: CUSTOMER_EMAIL_BRAND_NAME,
         portalUrl: resolveBrandPortalUrl(brand),
       })
     : false;

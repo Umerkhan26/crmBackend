@@ -5,10 +5,13 @@ export const baseEmailTemplate = (options: {
   primaryColor?: string;
   accentColor?: string;
   footerText?: string;
+  replyNotice?: string;
 }) => {
   const primaryColor = options.primaryColor || "#5664d2";
   const accentColor = options.accentColor || "#764ba2";
   const footerText = options.footerText || `© ${new Date().getFullYear()} XCRM. All rights reserved.`;
+  const replyNotice =
+    options.replyNotice || "This is an automated email from XCRM. Please do not reply.";
 
   return `
     <!DOCTYPE html>
@@ -30,7 +33,7 @@ export const baseEmailTemplate = (options: {
                     ${options.content}
                   </div>
                   <p style="margin: 10px 0 0 0; font-size: 12px; color: #6c757d; line-height: 1.4; text-align: center;">
-                    ${footerText} | This is an automated email from XCRM. Please do not reply.
+                    ${footerText} | ${replyNotice}
                   </p>
                 </td>
               </tr>

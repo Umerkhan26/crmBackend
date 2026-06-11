@@ -7,8 +7,11 @@ import CustomerEngagement, {
 import User from "../models/user.model";
 import PortalCustomer from "../models/portalCustomer.model";
 import EmailLog from "../models/emailLog.model";
-import { sendEmail } from "../utils/email";
-import { getCustomerPortalSmtpConfig } from "../utils/getCustomerPortalSmtpConfig";
+import { customerEngagementEmailTemplate } from "../Templetes/customerEngagementEmailTemplate";
+import {
+  CUSTOMER_EMAIL_BRAND_NAME,
+  sendCustomerPortalEmail,
+} from "../utils/customerPortalEmail";
 import { logLeadActivity } from "../utils/logLeadActivity";
 
 const fetchAccountForEngagement = async (accountId: number) => {
@@ -22,9 +25,12 @@ const fetchAccountForEngagement = async (accountId: number) => {
     ],
   });
   if (!account) throw new Error("Customer account not found");
-  const email = (account as any).portalCustomer?.email?.trim();
+  const portalCustomer = (account as any).portalCustomer as
+    | InstanceType<typeof PortalCustomer>
+    | undefined;
+  const email = portalCustomer?.email?.trim();
   if (!email) throw new Error("Customer email not found");
-  return { account, email };
+  return { account, email, portalCustomer };
 };
 
 export const listCustomerEngagements = async (accountId: number) => {
@@ -86,16 +92,25 @@ export const sendEmailToCustomerAccount = async ({
   category?: string;
   createdBy: number;
 }) => {
-  const { account, email } = await fetchAccountForEngagement(accountId);
+  const { account, email, portalCustomer } =
+    await fetchAccountForEngagement(accountId);
 
-  const smtp = getCustomerPortalSmtpConfig();
-
-  await sendEmail({ smtp, to: email, subject, body });
+  const { subject: mailSubject, html } = customerEngagementEmailTemplate({
+    firstname: portalCustomer?.firstname,
+    lastname: portalCustomer?.lastname,
+    subject,
+    body,
+  });
+  await sendCustomerPortalEmail({
+    to: email,
+    subject: mailSubject,
+    body: html,
+  });
 
   await EmailLog.create({
     to: email,
-    subject,
-    body,
+    subject: mailSubject,
+    body: html,
     status: "sent",
     serviceName: `customer_${category}`,
     sentAt: new Date(),
@@ -104,7 +119,7 @@ export const sendEmailToCustomerAccount = async ({
   const engagement = await CustomerEngagement.create({
     customerAccountId: accountId,
     type: "promotional_email",
-    title: subject,
+    title: mailSubject,
     details: body,
     metadata: { category, recipient: email },
     status: "sent",
@@ -117,7 +132,7 @@ export const sendEmailToCustomerAccount = async ({
       entityType: "lead",
       action: "customer_email_sent",
       performedBy: createdBy,
-      details: `${subject} (${category})`,
+      details: `${mailSubject} (${category})`,
     });
   }
 
@@ -217,7 +232,8 @@ export const sendCustomerNotification = async ({
   sendEmailAlso?: boolean;
   createdBy: number;
 }) => {
-  const { account, email } = await fetchAccountForEngagement(accountId);
+  const { account, email, portalCustomer } =
+    await fetchAccountForEngagement(accountId);
 
   const engagement = await CustomerEngagement.create({
     customerAccountId: accountId,
@@ -230,17 +246,22 @@ export const sendCustomerNotification = async ({
   });
 
   if (sendEmailAlso) {
-    const smtp = getCustomerPortalSmtpConfig();
-    await sendEmail({
-      smtp,
+    const notifySubject = `Notification from ${CUSTOMER_EMAIL_BRAND_NAME}`;
+    const { subject: mailSubject, html } = customerEngagementEmailTemplate({
+      firstname: portalCustomer?.firstname,
+      lastname: portalCustomer?.lastname,
+      subject: notifySubject,
+      body: message,
+    });
+    await sendCustomerPortalEmail({
       to: email,
-      subject: "Notification from your account team",
-      body: `<p>${message}</p>`,
+      subject: mailSubject,
+      body: html,
     });
     await EmailLog.create({
       to: email,
-      subject: "Notification from your account team",
-      body: message,
+      subject: mailSubject,
+      body: html,
       status: "sent",
       serviceName: "customer_notification",
       sentAt: new Date(),

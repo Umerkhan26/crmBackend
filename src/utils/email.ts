@@ -12,6 +12,8 @@ interface SendEmailOptions {
     pass?: string;
     fromName?: string;
   };
+  /** When true, never fall back to DEFAULT_SMTP — customer portal emails only. */
+  strict?: boolean;
   to: string;
   subject: string;
   body: string;
@@ -19,15 +21,35 @@ interface SendEmailOptions {
 
 export const sendEmail = async ({
   smtp,
+  strict = false,
   to,
   subject,
   body,
 }: SendEmailOptions): Promise<void> => {
-  const host = smtp?.host || process.env.DEFAULT_SMTP_HOST || "smtp.gmail.com";
+  if (strict) {
+    const host = smtp?.host?.trim();
+    const user = smtp?.user?.trim();
+    const pass = smtp?.pass?.trim();
+    if (!host || !user || !pass) {
+      throw new Error(
+        "Customer portal SMTP is not configured. Set CUSTOMER_PORTAL_SMTP_PASSWORD (and related vars) in .env"
+      );
+    }
+  }
+
+  const host =
+    smtp?.host?.trim() ||
+    (!strict ? process.env.DEFAULT_SMTP_HOST || "smtp.gmail.com" : "");
   const port = Number(smtp?.port) || Number(process.env.DEFAULT_SMTP_PORT) || 587;
-  const user = smtp?.user || process.env.DEFAULT_SMTP_EMAIL;
-  const pass = smtp?.pass || process.env.DEFAULT_SMTP_PASSWORD;
+  const user =
+    smtp?.user?.trim() || (!strict ? process.env.DEFAULT_SMTP_EMAIL : "");
+  const pass =
+    smtp?.pass?.trim() || (!strict ? process.env.DEFAULT_SMTP_PASSWORD : "");
   const fromName = smtp?.fromName?.trim() || "CRM App";
+
+  if (strict && (!host || !user || !pass)) {
+    throw new Error("Customer portal SMTP configuration is incomplete.");
+  }
 
   const transporter = nodemailer.createTransport({
     host,

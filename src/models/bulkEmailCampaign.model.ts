@@ -19,7 +19,7 @@ export interface BulkEmailCampaignSmtpConfig {
   host: string;
   port: number;
   user: string;
-  pass: string;
+  fromName?: string;
 }
 
 export interface BulkEmailCampaignAttributes {

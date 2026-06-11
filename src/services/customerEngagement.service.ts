@@ -5,6 +5,7 @@ import CustomerEngagement, {
   CustomerEngagementType,
 } from "../models/customerEngagement.model";
 import User from "../models/user.model";
+import PortalCustomer from "../models/portalCustomer.model";
 import EmailLog from "../models/emailLog.model";
 import { sendEmail } from "../utils/email";
 import { getCustomerPortalSmtpConfig } from "../utils/getCustomerPortalSmtpConfig";
@@ -12,10 +13,16 @@ import { logLeadActivity } from "../utils/logLeadActivity";
 
 const fetchAccountForEngagement = async (accountId: number) => {
   const account = await CustomerAccount.findByPk(accountId, {
-    include: [{ model: User, as: "user", attributes: ["id", "email", "firstname", "lastname"] }],
+    include: [
+      {
+        model: PortalCustomer,
+        as: "portalCustomer",
+        attributes: ["id", "email", "firstname", "lastname"],
+      },
+    ],
   });
   if (!account) throw new Error("Customer account not found");
-  const email = (account as any).user?.email?.trim();
+  const email = (account as any).portalCustomer?.email?.trim();
   if (!email) throw new Error("Customer email not found");
   return { account, email };
 };

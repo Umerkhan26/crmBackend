@@ -1,8 +1,11 @@
 import { Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
-import { extractUserIdFromToken } from "../utils/authHelper";
 import { CustomRequest } from "../types/custom";
-import User from "../models/user.model";
+import PortalCustomer from "../models/portalCustomer.model";
+import {
+  decodePortalCustomerToken,
+  PORTAL_CUSTOMER_TOKEN_TYPE,
+} from "../utils/portalCustomerToken";
 import {
   readPortalHostFromRequest,
   resolvePortalBrand,
@@ -20,36 +23,36 @@ export const verifyCustomerToken = async (
     return;
   }
 
-  const userId = extractUserIdFromToken(token);
-  if (!userId) {
+  const payload = decodePortalCustomerToken(token);
+  if (!payload?.id) {
     res.status(401).json({ message: "Invalid or expired token" });
     return;
   }
 
   try {
-    const user = await User.findByPk(userId);
-    if (!user) {
-      res.status(404).json({ message: "User not found" });
+    const portalCustomer = await PortalCustomer.findByPk(payload.id);
+    if (!portalCustomer || portalCustomer.status !== "active") {
+      res.status(404).json({ message: "Customer not found" });
       return;
     }
 
-    const role = (user.userrole || "").toLowerCase();
-    if (role !== "customer" && role !== "client") {
-      res.status(403).json({ message: "Customer access only" });
-      return;
-    }
+    req.user = { id: portalCustomer.id!, permissions: [] };
+    (req as any).portalCustomer = portalCustomer;
+    (req as any).customerUser = portalCustomer;
 
-    req.user = { id: user.id!, permissions: [] };
-    (req as any).customerUser = user;
-
-    let brandId: number | undefined;
-    try {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET as string) as {
-        brandId?: number;
-      };
-      if (decoded?.brandId) brandId = Number(decoded.brandId);
-    } catch {
-      /* ignore */
+    let brandId: number | undefined = payload.brandId;
+    if (!brandId) {
+      try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET as string) as {
+          brandId?: number;
+          tokenType?: string;
+        };
+        if (decoded?.tokenType === PORTAL_CUSTOMER_TOKEN_TYPE && decoded.brandId) {
+          brandId = Number(decoded.brandId);
+        }
+      } catch {
+        /* ignore */
+      }
     }
     if (!brandId) {
       const hostInput = readPortalHostFromRequest(req);

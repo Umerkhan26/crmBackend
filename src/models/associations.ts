@@ -21,6 +21,7 @@ import TeamRotationConfig from "./teamRotationConfig.model";
 import LeadRotationState from "./leadRotationState.model";
 import LeadAssignmentState from "./leadAssignmentState.model";
 import CustomerAccount from "./customerAccount.model";
+import PortalCustomer from "./portalCustomer.model";
 import CustomerEngagement from "./customerEngagement.model";
 import PortalAnnouncement from "./portalAnnouncement.model";
 import PortalPopup from "./portalPopup.model";
@@ -72,8 +73,16 @@ Brand.hasMany(Lead, { foreignKey: "brandId", as: "leads", onDelete: "SET NULL" }
 ProductSale.belongsTo(Brand, { foreignKey: "brandId", as: "brand", onDelete: "SET NULL" });
 Brand.hasMany(ProductSale, { foreignKey: "brandId", as: "sales", onDelete: "SET NULL" });
 
-User.hasMany(CustomerAccount, { foreignKey: "userId", as: "customerAccounts", onDelete: "CASCADE" });
-CustomerAccount.belongsTo(User, { foreignKey: "userId", as: "user", onDelete: "CASCADE" });
+PortalCustomer.hasMany(CustomerAccount, {
+  foreignKey: "portalCustomerId",
+  as: "customerAccounts",
+  onDelete: "CASCADE",
+});
+CustomerAccount.belongsTo(PortalCustomer, {
+  foreignKey: "portalCustomerId",
+  as: "portalCustomer",
+  onDelete: "CASCADE",
+});
 
 Brand.hasMany(CustomerAccount, { foreignKey: "brandId", as: "customerAccounts", onDelete: "CASCADE" });
 CustomerAccount.belongsTo(Brand, { foreignKey: "brandId", as: "brand", onDelete: "CASCADE" });
@@ -107,9 +116,9 @@ PortalActivityEvent.belongsTo(CustomerAccount, {
   as: "customerAccount",
   onDelete: "CASCADE",
 });
-PortalActivityEvent.belongsTo(User, {
-  foreignKey: "userId",
-  as: "user",
+PortalActivityEvent.belongsTo(PortalCustomer, {
+  foreignKey: "portalCustomerId",
+  as: "portalCustomer",
   onDelete: "CASCADE",
 });
 

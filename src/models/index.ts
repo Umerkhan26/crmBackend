@@ -35,6 +35,7 @@ import "./leadRotationState.model";
 import "./leadAssignmentState.model";
 import "./incomingLead.model";
 import "./leadMemberHistory.model";
+import "./portalCustomer.model";
 import "./customerAccount.model";
 import "./customerEngagement.model";
 import "./portalAnnouncement.model";

@@ -3,6 +3,7 @@ import "../models/index";
 import { Op } from "sequelize";
 import CustomerAccount from "../models/customerAccount.model";
 import CustomerEngagement from "../models/customerEngagement.model";
+import PortalCustomer from "../models/portalCustomer.model";
 import User from "../models/user.model";
 import Brand from "../models/brand.model";
 import Lead from "../models/lead.model";
@@ -11,12 +12,16 @@ import EmailLog from "../models/emailLog.model";
 import LeadActivity from "../models/leadActivity.model";
 import PortalActivityEvent from "../models/portalActivityEvent.model";
 import { getNotesForEntity } from "./note.service";
+import {
+  attachPortalCustomerAsUser,
+  mapPortalCustomerAsUser,
+} from "../utils/portalCustomerResponse";
 
 const accountIncludes = [
   {
-    model: User,
-    as: "user",
-    attributes: ["id", "firstname", "lastname", "email", "status", "userrole"],
+    model: PortalCustomer,
+    as: "portalCustomer",
+    attributes: ["id", "firstname", "lastname", "email", "status"],
   },
   { model: Brand, as: "brand", required: false },
   { model: Lead, as: "lead", required: false },
@@ -161,15 +166,19 @@ export const getCustomerAccountInsights = async (
   const activitiesLimit = Math.min(50, Math.max(5, query.activitiesLimit || 30));
 
   const account = await fetchCustomerAccountById(accountId);
-  const userId = account.userId;
-  const email = (account as any).user?.email?.trim();
+  const portalCustomerId = account.portalCustomerId;
+  const email = (account as any).portalCustomer?.email?.trim();
 
   const relatedAccounts = await CustomerAccount.findAll({
-    where: { userId },
+    where: { portalCustomerId },
     order: [["createdAt", "DESC"]],
     include: accountIncludes,
   });
-  const relatedPlain = relatedAccounts.map((a) => a.get({ plain: true }));
+  const relatedPlain = mapPortalCustomerAsUser(
+    relatedAccounts.map(
+      (a) => a.get({ plain: true }) as unknown as Record<string, unknown>
+    )
+  );
 
   const saleIds = [
     ...new Set(relatedPlain.map((a) => a.saleId).filter((id): id is number => id != null)),
@@ -355,7 +364,9 @@ export const getCustomerAccountInsights = async (
   };
 
   return {
-    account: account.get({ plain: true }),
+    account: attachPortalCustomerAsUser(
+      account.get({ plain: true }) as unknown as Record<string, unknown>
+    ),
     relatedAccounts: relatedPlain,
     sales: salesPlain,
     emailLogs: emailsEnriched,
@@ -411,15 +422,19 @@ export const getCustomerTimelineFeed = async (
   const safePage = Math.max(1, page);
   const safeLimit = Math.min(50, Math.max(5, limit));
   const account = await fetchCustomerAccountById(accountId);
-  const userId = account.userId;
-  const email = (account as any).user?.email?.trim();
+  const portalCustomerId = account.portalCustomerId;
+  const email = (account as any).portalCustomer?.email?.trim();
 
   const relatedAccounts = await CustomerAccount.findAll({
-    where: { userId },
+    where: { portalCustomerId },
     order: [["createdAt", "DESC"]],
     include: accountIncludes,
   });
-  const relatedPlain = relatedAccounts.map((a) => a.get({ plain: true }));
+  const relatedPlain = mapPortalCustomerAsUser(
+    relatedAccounts.map(
+      (a) => a.get({ plain: true }) as unknown as Record<string, unknown>
+    )
+  );
 
   const saleIds = [
     ...new Set(relatedPlain.map((a) => a.saleId).filter((id): id is number => id != null)),

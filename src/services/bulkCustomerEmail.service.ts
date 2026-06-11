@@ -1,7 +1,7 @@
 import { Op } from "sequelize";
 import "../models/associations";
 import CustomerAccount from "../models/customerAccount.model";
-import User from "../models/user.model";
+import PortalCustomer from "../models/portalCustomer.model";
 import BulkEmailCampaign, {
   BulkEmailCampaignFilters,
   BulkEmailCampaignStatus,
@@ -77,8 +77,8 @@ export const createBulkCustomerEmailCampaign = async ({
     where: buildRecipientWhere(filters),
     include: [
       {
-        model: User,
-        as: "user",
+        model: PortalCustomer,
+        as: "portalCustomer",
         attributes: ["id", "email", "firstname", "lastname"],
         required: true,
       },
@@ -95,16 +95,18 @@ export const createBulkCustomerEmailCampaign = async ({
   }[] = [];
 
   for (const account of accounts) {
-    const user = (account as any).user as InstanceType<typeof User> | undefined;
-    const email = user?.email?.trim().toLowerCase();
+    const portalCustomer = (account as any).portalCustomer as
+      | InstanceType<typeof PortalCustomer>
+      | undefined;
+    const email = portalCustomer?.email?.trim().toLowerCase();
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) continue;
     if (seenEmails.has(email)) continue;
     seenEmails.add(email);
     recipients.push({
       customerAccountId: account.id,
       toEmail: email,
-      recipientFirstname: user?.firstname?.trim() || null,
-      recipientLastname: user?.lastname?.trim() || null,
+      recipientFirstname: portalCustomer?.firstname?.trim() || null,
+      recipientLastname: portalCustomer?.lastname?.trim() || null,
       leadId: account.leadId ?? null,
     });
   }

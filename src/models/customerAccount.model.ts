@@ -1,13 +1,13 @@
 import { DataTypes, Model, Optional } from "sequelize";
 import db from "../../db";
-import User from "./user.model";
+import PortalCustomer from "./portalCustomer.model";
 import Brand from "./brand.model";
 import Lead from "./lead.model";
 import ProductSale from "./product.model";
 
 export interface CustomerAccountAttributes {
   id: number;
-  userId: number;
+  portalCustomerId: number;
   brandId?: number | null;
   leadId?: number | null;
   saleId?: number | null;
@@ -25,7 +25,7 @@ export class CustomerAccount
   implements CustomerAccountAttributes
 {
   public id!: number;
-  public userId!: number;
+  public portalCustomerId!: number;
   public brandId?: number | null;
   public leadId?: number | null;
   public saleId?: number | null;
@@ -42,10 +42,10 @@ CustomerAccount.init(
       autoIncrement: true,
       primaryKey: true,
     },
-    userId: {
+    portalCustomerId: {
       type: DataTypes.INTEGER,
       allowNull: false,
-      references: { model: User, key: "id" },
+      references: { model: PortalCustomer, key: "id" },
       onDelete: "CASCADE",
     },
     brandId: {
@@ -77,7 +77,7 @@ CustomerAccount.init(
     tableName: "customer_accounts",
     timestamps: true,
     indexes: [
-      { fields: ["userId"] },
+      { fields: ["portalCustomerId"] },
       { fields: ["brandId"] },
       { fields: ["leadId"] },
       { fields: ["saleId"], unique: true },

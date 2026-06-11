@@ -1,10 +1,10 @@
 import bcrypt from "bcrypt";
 import User from "../models/user.model";
+import PortalCustomer from "../models/portalCustomer.model";
 import CustomerAccount from "../models/customerAccount.model";
 import Brand from "../models/brand.model";
 import Lead from "../models/lead.model";
 import ProductSale from "../models/product.model";
-import Role from "../models/role.model";
 import { generateTemporaryPassword } from "../utils/generatePassword";
 import {
   extractEmailFromLeadData,
@@ -21,28 +21,11 @@ export interface ProvisionCustomerResult {
   provisioned: boolean;
   skipped?: boolean;
   reason?: string;
+  portalCustomerId?: number;
+  /** @deprecated use portalCustomerId — kept for older CRM clients */
   userId?: number;
   customerAccountId?: number;
   emailSent?: boolean;
-}
-
-async function resolveCustomerRoleId(): Promise<number> {
-  const envRoleId = process.env.CUSTOMER_DEFAULT_ROLE_ID;
-  if (envRoleId) {
-    const parsed = Number(envRoleId);
-    if (!Number.isNaN(parsed)) return parsed;
-  }
-
-  const role =
-    (await Role.findOne({ where: { name: "customer" } })) ||
-    (await Role.findOne({ where: { name: "client" } }));
-
-  if (!role?.id) {
-    throw new Error(
-      "Customer role not found. Create a 'customer' role or set CUSTOMER_DEFAULT_ROLE_ID in .env"
-    );
-  }
-  return role.id;
 }
 
 async function hashPassword(plainPassword: string): Promise<string> {
@@ -83,6 +66,46 @@ async function sendCredentialsEmail(params: {
   }
 }
 
+async function assertEmailNotUsedByStaff(email: string): Promise<boolean> {
+  const staffUser = await User.findOne({ where: { email } });
+  if (!staffUser) return true;
+  const role = String(staffUser.userrole || "").toLowerCase();
+  return role === "customer" || role === "client";
+}
+
+async function findOrCreatePortalCustomer(params: {
+  email: string;
+  firstname: string;
+  lastname: string;
+  hashedPassword: string;
+  brandId?: number | null;
+}): Promise<PortalCustomer> {
+  let portalCustomer = await PortalCustomer.findOne({
+    where: { email: params.email },
+  });
+
+  if (!portalCustomer) {
+    portalCustomer = await PortalCustomer.create({
+      email: params.email,
+      password: params.hashedPassword,
+      firstname: params.firstname,
+      lastname: params.lastname,
+      brandId: params.brandId ?? null,
+      status: "active",
+    });
+    return portalCustomer;
+  }
+
+  await portalCustomer.update({
+    password: params.hashedPassword,
+    firstname: params.firstname,
+    lastname: params.lastname,
+    brandId: params.brandId ?? portalCustomer.brandId,
+  });
+
+  return portalCustomer;
+}
+
 /** Reset portal password and e-mail a new easy temporary password (resend). */
 export const resendCustomerCredentials = async (params: {
   saleId: number;
@@ -90,7 +113,7 @@ export const resendCustomerCredentials = async (params: {
   brandId?: number | null;
   agentUserId: number;
 }): Promise<ProvisionCustomerResult> => {
-  const { saleId, leadId, brandId = null, agentUserId } = params;
+  const { saleId, leadId, brandId = null } = params;
 
   const sale = await ProductSale.findByPk(saleId);
   if (!sale) throw new Error("Sale not found");
@@ -104,7 +127,7 @@ export const resendCustomerCredentials = async (params: {
   }
 
   const account = await CustomerAccount.findOne({ where: { saleId } });
-  if (!account?.userId) {
+  if (!account?.portalCustomerId) {
     return {
       provisioned: false,
       skipped: true,
@@ -112,13 +135,8 @@ export const resendCustomerCredentials = async (params: {
     };
   }
 
-  const user = await User.findByPk(account.userId);
-  if (!user) throw new Error("Customer user not found");
-
-  const role = user.userrole?.toLowerCase();
-  if (role && role !== "customer" && role !== "client") {
-    return { provisioned: false, skipped: true, reason: "email_used_by_staff" };
-  }
+  const portalCustomer = await PortalCustomer.findByPk(account.portalCustomerId);
+  if (!portalCustomer) throw new Error("Portal customer not found");
 
   const brand = brandId ? await Brand.findByPk(brandId) : null;
   const brandName = brand?.name || "Customer Portal";
@@ -126,10 +144,9 @@ export const resendCustomerCredentials = async (params: {
   const plainPassword = generateTemporaryPassword();
   const hashedPassword = await hashPassword(plainPassword);
 
-  await user.update({
+  await portalCustomer.update({
     password: hashedPassword,
-    brandId: brandId ?? user.brandId,
-    userrole: "customer" as any,
+    brandId: brandId ?? portalCustomer.brandId,
   });
 
   const emailSent = await sendCredentialsEmail({
@@ -145,7 +162,8 @@ export const resendCustomerCredentials = async (params: {
     provisioned: false,
     skipped: false,
     reason: "credentials_resent",
-    userId: user.id,
+    portalCustomerId: portalCustomer.id,
+    userId: portalCustomer.id,
     customerAccountId: account.id,
     emailSent,
   };
@@ -162,7 +180,6 @@ export const provisionCustomerFromSale = async (params: {
     saleId,
     leadId,
     brandId = null,
-    agentUserId,
     shouldSendCredentialsEmail = true,
   } = params;
 
@@ -175,7 +192,7 @@ export const provisionCustomerFromSale = async (params: {
       saleId,
       leadId,
       brandId,
-      agentUserId,
+      agentUserId: params.agentUserId,
     });
   }
 
@@ -191,52 +208,34 @@ export const provisionCustomerFromSale = async (params: {
     };
   }
 
+  if (!(await assertEmailNotUsedByStaff(email))) {
+    return {
+      provisioned: false,
+      skipped: true,
+      reason: "email_used_by_staff",
+    };
+  }
+
   const brand = brandId ? await Brand.findByPk(brandId) : null;
   const brandName = brand?.name || "Customer Portal";
 
   const { firstname, lastname } = extractNameFromLeadData(lead.leadData);
   const plainPassword = generateTemporaryPassword();
-  const roleId = await resolveCustomerRoleId();
   const hashedPassword = await hashPassword(plainPassword);
 
-  let user = await User.findOne({ where: { email } });
-
-  if (!user) {
-    user = await User.create({
-      email,
-      password: hashedPassword,
-      firstname,
-      lastname,
-      roleId,
-      brandId: brandId ?? undefined,
-      userrole: "customer",
-      status: "active",
-      created_at: new Date(),
-      updated_at: new Date(),
-    } as any);
-  } else {
-    const role = user.userrole?.toLowerCase();
-    if (role && role !== "customer" && role !== "client") {
-      return {
-        provisioned: false,
-        skipped: true,
-        reason: "email_used_by_staff",
-      };
-    }
-    await user.update({
-      password: hashedPassword,
-      brandId: brandId ?? undefined,
-      userrole: "customer" as any,
-    });
-  }
-
-  if (!user.id) throw new Error("Failed to create customer user");
+  const portalCustomer = await findOrCreatePortalCustomer({
+    email,
+    firstname,
+    lastname,
+    hashedPassword,
+    brandId,
+  });
 
   let account = await CustomerAccount.findOne({ where: { saleId } });
 
   if (!account) {
     account = await CustomerAccount.create({
-      userId: user.id,
+      portalCustomerId: portalCustomer.id,
       brandId: brandId ?? null,
       leadId,
       saleId,
@@ -244,6 +243,7 @@ export const provisionCustomerFromSale = async (params: {
     });
   } else {
     await account.update({
+      portalCustomerId: portalCustomer.id,
       leadId,
       brandId: brandId ?? account.brandId,
     });
@@ -271,7 +271,8 @@ export const provisionCustomerFromSale = async (params: {
 
   return {
     provisioned: true,
-    userId: user.id,
+    portalCustomerId: portalCustomer.id,
+    userId: portalCustomer.id,
     customerAccountId: account.id,
     emailSent,
   };

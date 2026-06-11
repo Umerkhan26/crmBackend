@@ -1,13 +1,12 @@
-import jwt from "jsonwebtoken";
 import bcrypt from "bcrypt";
-import User from "../models/user.model";
+import PortalCustomer from "../models/portalCustomer.model";
 import Brand from "../models/brand.model";
 import CustomerAccount from "../models/customerAccount.model";
-import Role from "../models/role.model";
 import ProductSale from "../models/product.model";
 import Lead from "../models/lead.model";
 import { resolvePortalBrand } from "../utils/portalHost";
 import { logPortalActivityFromContext } from "./portalActivity.service";
+import { signPortalCustomerToken } from "../utils/portalCustomerToken";
 
 const LOCAL_DEV_HOSTS = new Set(["localhost", "127.0.0.1"]);
 
@@ -87,25 +86,19 @@ export const customerLogin = async (params: {
     resolvedBrandId = brand?.id;
   }
 
-  const user = await User.findOne({
-    where: { email },
-    include: [{ model: Role, as: "role", attributes: ["id", "name"] }],
+  const portalCustomer = await PortalCustomer.findOne({
+    where: { email: email.trim().toLowerCase(), status: "active" },
   });
 
-  if (!user || !user.password) {
+  if (!portalCustomer?.password) {
     throw new Error("Invalid credentials");
   }
 
-  const roleName = (user.userrole || user.role?.name || "").toLowerCase();
-  if (roleName !== "customer" && roleName !== "client") {
-    throw new Error("Invalid credentials");
-  }
-
-  const valid = await bcrypt.compare(password, user.password);
+  const valid = await bcrypt.compare(password, portalCustomer.password);
   if (!valid) throw new Error("Invalid credentials");
 
   const accounts = await CustomerAccount.findAll({
-    where: { userId: user.id, status: "active" },
+    where: { portalCustomerId: portalCustomer.id, status: "active" },
     order: [["id", "ASC"]],
   });
 
@@ -134,57 +127,60 @@ export const customerLogin = async (params: {
   }
   resolvedBrandId = Number(accountBrandId);
 
-  const token = jwt.sign(
-    {
-      id: user.id,
-      email: user.email,
-      userrole: "customer",
-      brandId: resolvedBrandId,
-    },
-    process.env.JWT_SECRET as string,
-    { expiresIn: "7d" }
-  );
+  const token = signPortalCustomerToken({
+    id: portalCustomer.id,
+    email: portalCustomer.email,
+    brandId: resolvedBrandId,
+  });
 
-  await user.update({
+  await portalCustomer.update({
     last_login: new Date(),
     brandId: resolvedBrandId,
   });
 
   void logPortalActivityFromContext(
     account,
-    Number(user.id),
+    portalCustomer.id,
     "login",
-    { metadata: { brandId: resolvedBrandId, email: user.email } }
+    { metadata: { brandId: resolvedBrandId, email: portalCustomer.email } }
   );
 
   return {
     token,
     user: {
-      id: user.id,
-      firstname: user.firstname,
-      lastname: user.lastname,
-      email: user.email,
+      id: portalCustomer.id,
+      firstname: portalCustomer.firstname,
+      lastname: portalCustomer.lastname,
+      email: portalCustomer.email,
       brandId: resolvedBrandId,
     },
   };
 };
 
 export const getCustomerProfile = async (
-  userId: number,
+  portalCustomerId: number,
   activeBrandId?: number
 ) => {
-  const user = await User.findByPk(userId, {
-    attributes: ["id", "firstname", "lastname", "email", "brandId", "userrole"],
+  const portalCustomer = await PortalCustomer.findByPk(portalCustomerId, {
+    attributes: [
+      "id",
+      "firstname",
+      "lastname",
+      "email",
+      "brandId",
+      "phone",
+      "status",
+    ],
   });
-  if (!user) throw new Error("User not found");
+  if (!portalCustomer) throw new Error("Customer not found");
 
   const effectiveBrandId =
     activeBrandId && Number.isFinite(activeBrandId)
       ? activeBrandId
-      : user.brandId;
+      : portalCustomer.brandId;
 
   const accounts = await CustomerAccount.findAll({
-    where: { userId, status: "active" },
+    where: { portalCustomerId, status: "active" },
     include: [
       {
         model: Brand,
@@ -194,7 +190,7 @@ export const getCustomerProfile = async (
     ],
   });
 
-  const userJson = user.toJSON() as Record<string, unknown>;
+  const userJson = portalCustomer.toJSON() as unknown as Record<string, unknown>;
   if (effectiveBrandId != null) {
     userJson.brandId = effectiveBrandId;
   }
@@ -202,9 +198,9 @@ export const getCustomerProfile = async (
   return { user: userJson, accounts };
 };
 
-export const getCustomerSaleSummary = async (userId: number) => {
+export const getCustomerSaleSummary = async (portalCustomerId: number) => {
   const accounts = await CustomerAccount.findAll({
-    where: { userId, status: "active" },
+    where: { portalCustomerId, status: "active" },
     attributes: ["id", "brandId", "leadId", "saleId"],
   });
 

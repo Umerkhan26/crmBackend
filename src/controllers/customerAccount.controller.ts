@@ -8,6 +8,7 @@ import {
 } from "../services/customerAccountInsights.service";
 import * as CustomerEngagementService from "../services/customerEngagement.service";
 import { getCustomerPortalActivity } from "../services/portalActivity.service";
+import { serializeCustomerAccount } from "../utils/portalCustomerResponse";
 
 export const listCustomerAccountsController = async (
   req: CustomRequest,
@@ -89,7 +90,10 @@ export const getCustomerAccountByIdController = async (
       req.user?.id,
       req.user?.permissions || [],
     );
-    return res.status(200).json({ success: true, data: account });
+    return res.status(200).json({
+      success: true,
+      data: serializeCustomerAccount(account),
+    });
   } catch (error: any) {
     const msg = error.message || "Failed to load customer";
     const status =

@@ -16,7 +16,7 @@ export type PortalActivityAction =
 export interface PortalActivityEventAttributes {
   id: number;
   customerAccountId: number;
-  userId: number;
+  portalCustomerId: number;
   brandId?: number | null;
   action: PortalActivityAction;
   title: string;
@@ -40,7 +40,7 @@ class PortalActivityEvent
 {
   public id!: number;
   public customerAccountId!: number;
-  public userId!: number;
+  public portalCustomerId!: number;
   public brandId?: number | null;
   public action!: PortalActivityAction;
   public title!: string;
@@ -60,7 +60,7 @@ PortalActivityEvent.init(
       type: DataTypes.INTEGER,
       allowNull: false,
     },
-    userId: {
+    portalCustomerId: {
       type: DataTypes.INTEGER,
       allowNull: false,
     },
@@ -87,7 +87,7 @@ PortalActivityEvent.init(
     timestamps: true,
     indexes: [
       { fields: ["customerAccountId", "createdAt"] },
-      { fields: ["userId", "createdAt"] },
+      { fields: ["portalCustomerId", "createdAt"] },
       { fields: ["action"] },
     ],
   }

@@ -4,7 +4,7 @@ import PortalActivityEvent, {
   PortalActivityAction,
 } from "../models/portalActivityEvent.model";
 import CustomerAccount from "../models/customerAccount.model";
-import User from "../models/user.model";
+import PortalCustomer from "../models/portalCustomer.model";
 import PortalPopupDismissal from "../models/portalPopupDismissal.model";
 import PortalPopup from "../models/portalPopup.model";
 
@@ -113,7 +113,7 @@ export const portalActivityLabel = (action: string) =>
 /** Fire-and-forget safe portal event log. */
 export const logPortalActivity = async (input: {
   customerAccountId: number;
-  userId: number;
+  portalCustomerId: number;
   brandId?: number | null;
   action: PortalActivityAction;
   title?: string;
@@ -125,7 +125,7 @@ export const logPortalActivity = async (input: {
 
     await PortalActivityEvent.create({
       customerAccountId: input.customerAccountId,
-      userId: input.userId,
+      portalCustomerId: input.portalCustomerId,
       brandId: input.brandId ?? null,
       action: input.action,
       title: input.title || ACTION_LABELS[input.action] || input.action,
@@ -138,7 +138,7 @@ export const logPortalActivity = async (input: {
 
 export const logPortalActivityFromContext = async (
   account: { id: number; brandId?: number | null },
-  userId: number,
+  portalCustomerId: number,
   action: PortalActivityAction,
   opts?: {
     title?: string;
@@ -148,7 +148,7 @@ export const logPortalActivityFromContext = async (
 ) =>
   logPortalActivity({
     customerAccountId: account.id,
-    userId,
+    portalCustomerId,
     brandId: account.brandId ?? null,
     action,
     title: opts?.title,
@@ -238,16 +238,17 @@ export const getCustomerPortalActivity = async (
   const account = await CustomerAccount.findByPk(accountId, {
     include: [
       {
-        model: User,
-        as: "user",
+        model: PortalCustomer,
+        as: "portalCustomer",
         attributes: ["id", "email", "firstname", "lastname", "last_login"],
       },
     ],
   });
   if (!account) throw new Error("Customer account not found");
 
-  const user = (account as any).user as InstanceType<typeof User> | undefined;
-  const userId = account.userId;
+  const portalCustomer = (account as any).portalCustomer as
+    | InstanceType<typeof PortalCustomer>
+    | undefined;
 
   const eventResult = await PortalActivityEvent.findAndCountAll({
     where: { customerAccountId: accountId },
@@ -276,7 +277,9 @@ export const getCustomerPortalActivity = async (
 
   const lastPortalLogin =
     lastLoginEvent?.createdAt?.toISOString() ||
-    (user?.last_login ? new Date(user.last_login).toISOString() : null);
+    (portalCustomer?.last_login
+      ? new Date(portalCustomer.last_login).toISOString()
+      : null);
 
   const totalEvents = eventResult.count;
 
@@ -324,13 +327,13 @@ export const getLegacyPortalActivityPreview = async (
   limit = 10
 ): Promise<FeedItem[]> => {
   const account = await CustomerAccount.findByPk(accountId, {
-    attributes: ["id", "userId", "brandId"],
+    attributes: ["id", "portalCustomerId", "brandId"],
   });
   if (!account) return [];
 
   const dismissals = await PortalPopupDismissal.findAll({
     where: {
-      userId: account.userId,
+      portalCustomerId: account.portalCustomerId,
       ...(account.brandId ? { brandId: account.brandId } : {}),
     },
     order: [["createdAt", "DESC"]],

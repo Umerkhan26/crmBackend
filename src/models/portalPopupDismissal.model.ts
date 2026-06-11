@@ -3,7 +3,7 @@ import db from "../../db";
 
 export interface PortalPopupDismissalAttributes {
   id: number;
-  userId: number;
+  portalCustomerId: number;
   popupId: number;
   brandId: number;
 }
@@ -19,7 +19,7 @@ export class PortalPopupDismissal
   implements PortalPopupDismissalAttributes
 {
   public id!: number;
-  public userId!: number;
+  public portalCustomerId!: number;
   public popupId!: number;
   public brandId!: number;
   public readonly createdAt!: Date;
@@ -33,7 +33,7 @@ PortalPopupDismissal.init(
       autoIncrement: true,
       primaryKey: true,
     },
-    userId: {
+    portalCustomerId: {
       type: DataTypes.INTEGER,
       allowNull: false,
     },
@@ -51,7 +51,7 @@ PortalPopupDismissal.init(
     tableName: "portal_popup_dismissals",
     timestamps: true,
     indexes: [
-      { unique: true, fields: ["userId", "popupId"] },
+      { unique: true, fields: ["portalCustomerId", "popupId"] },
       { fields: ["brandId"] },
     ],
   }

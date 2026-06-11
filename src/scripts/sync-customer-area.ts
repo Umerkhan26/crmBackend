@@ -48,6 +48,11 @@ const run = async () => {
     "DATETIME NULL"
   );
 
+  const { ensurePortalCustomersSchema } = await import(
+    "./lib/portalCustomersSchema"
+  );
+  await ensurePortalCustomersSchema();
+
   const CustomerAccount = (await import("../models/customerAccount.model"))
     .default;
   await CustomerAccount.sync({ alter: true });

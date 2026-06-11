@@ -1,7 +1,7 @@
 import { Op, literal } from "sequelize";
 import db from "../../db";
 import CustomerAccount from "../models/customerAccount.model";
-import User from "../models/user.model";
+import PortalCustomer from "../models/portalCustomer.model";
 import Brand from "../models/brand.model";
 import Lead, { AssigneeWithStatus, LeadStatus } from "../models/lead.model";
 import ProductSale from "../models/product.model";
@@ -16,6 +16,7 @@ import {
   buildCustomerAccountSaleScopeWhere,
   resolveCustomerListScope,
 } from "../utils/customerAccountScope";
+import { attachPortalCustomerAsUser, mapPortalCustomerAsUser } from "../utils/portalCustomerResponse";
 
 const LEAD_STATUSES = [
   "pending",
@@ -137,7 +138,7 @@ const buildCustomerAccountSearchClause = async (raw: string) => {
 
   const orConditions: Record<string, unknown>[] = [];
 
-  const matchingUsers = await User.findAll({
+  const matchingCustomers = await PortalCustomer.findAll({
     where: {
       [Op.or]: [
         { email: { [Op.like]: `%${parsed.term}%` } },
@@ -148,9 +149,9 @@ const buildCustomerAccountSearchClause = async (raw: string) => {
     },
     attributes: ["id"],
   });
-  if (matchingUsers.length) {
+  if (matchingCustomers.length) {
     orConditions.push({
-      userId: { [Op.in]: matchingUsers.map((u) => u.id) },
+      portalCustomerId: { [Op.in]: matchingCustomers.map((u) => u.id) },
     });
   }
 
@@ -242,21 +243,21 @@ export const listCustomerAccounts = async ({
   if (emailFilter === "never") {
     filterAnd.push(
       literal(`NOT EXISTS (
-        SELECT 1 FROM users u
+        SELECT 1 FROM portal_customers pc
         INNER JOIN email_logs el ON (
-          el.\`to\` = u.email OR el.\`to\` LIKE CONCAT('%', u.email, '%')
+          el.\`to\` = pc.email OR el.\`to\` LIKE CONCAT('%', pc.email, '%')
         )
-        WHERE u.id = \`CustomerAccount\`.\`userId\`
+        WHERE pc.id = \`CustomerAccount\`.\`portalCustomerId\`
       )`)
     );
   } else if (emailFilter === "opened") {
     filterAnd.push(
       literal(`EXISTS (
-        SELECT 1 FROM users u
+        SELECT 1 FROM portal_customers pc
         INNER JOIN email_logs el ON (
-          el.\`to\` = u.email OR el.\`to\` LIKE CONCAT('%', u.email, '%')
+          el.\`to\` = pc.email OR el.\`to\` LIKE CONCAT('%', pc.email, '%')
         )
-        WHERE u.id = \`CustomerAccount\`.\`userId\`
+        WHERE pc.id = \`CustomerAccount\`.\`portalCustomerId\`
           AND LOWER(COALESCE(el.status, '')) REGEXP 'open|read|viewed'
       )`)
     );
@@ -293,8 +294,8 @@ export const listCustomerAccounts = async ({
     distinct: true,
     include: [
       {
-        model: User,
-        as: "user",
+        model: PortalCustomer,
+        as: "portalCustomer",
         attributes: ["id", "firstname", "lastname", "email", "phone", "status"],
         required: false,
       },
@@ -315,7 +316,13 @@ export const listCustomerAccounts = async ({
   });
 
   const paging = getPagingData(data, page, pageLimit);
-  return { ...paging, scope: scopeLabel };
+  return {
+    ...paging,
+    scope: scopeLabel,
+    data: mapPortalCustomerAsUser(
+      paging.data.map((row) => row.get({ plain: true }) as Record<string, unknown>)
+    ),
+  };
 };
 
 export const getCustomerAccountById = async (
@@ -326,9 +333,9 @@ export const getCustomerAccountById = async (
   const account = await CustomerAccount.findByPk(id, {
     include: [
       {
-        model: User,
-        as: "user",
-        attributes: ["id", "firstname", "lastname", "email", "phone", "status", "userrole"],
+        model: PortalCustomer,
+        as: "portalCustomer",
+        attributes: ["id", "firstname", "lastname", "email", "phone", "status"],
       },
       {
         model: Brand,
@@ -380,7 +387,7 @@ export const updateCustomerAccount = async (
 ) => {
   const account = await CustomerAccount.findByPk(id, {
     include: [
-      { model: User, as: "user", required: true },
+      { model: PortalCustomer, as: "portalCustomer", required: true },
       { model: Lead, as: "lead", required: false },
       { model: ProductSale, as: "sale", required: false },
     ],
@@ -400,25 +407,33 @@ export const updateCustomerAccount = async (
     await account.update({ brandId });
   }
 
-  const user = (account as any).user as InstanceType<typeof User>;
-  if (user) {
-    const userUpdates: Record<string, string> = {};
-    if (payload.firstname !== undefined) userUpdates.firstname = String(payload.firstname).trim();
-    if (payload.lastname !== undefined) userUpdates.lastname = String(payload.lastname).trim();
-    if (payload.phone !== undefined) userUpdates.phone = String(payload.phone).trim();
+  const portalCustomer = (account as any).portalCustomer as InstanceType<
+    typeof PortalCustomer
+  >;
+  if (portalCustomer) {
+    const customerUpdates: Record<string, string> = {};
+    if (payload.firstname !== undefined) {
+      customerUpdates.firstname = String(payload.firstname).trim();
+    }
+    if (payload.lastname !== undefined) {
+      customerUpdates.lastname = String(payload.lastname).trim();
+    }
+    if (payload.phone !== undefined) {
+      customerUpdates.phone = String(payload.phone).trim();
+    }
 
     if (payload.email !== undefined) {
       const email = String(payload.email).trim().toLowerCase();
       if (!email) throw new Error("Email is required");
-      const existing = await User.findOne({ where: { email } });
-      if (existing && existing.id !== user.id) {
-        throw new Error("Email already in use by another user");
+      const existing = await PortalCustomer.findOne({ where: { email } });
+      if (existing && existing.id !== portalCustomer.id) {
+        throw new Error("Email already in use by another customer");
       }
-      userUpdates.email = email;
+      customerUpdates.email = email;
     }
 
-    if (Object.keys(userUpdates).length > 0) {
-      await user.update(userUpdates);
+    if (Object.keys(customerUpdates).length > 0) {
+      await portalCustomer.update(customerUpdates);
     }
   }
 
@@ -478,17 +493,19 @@ export const updateCustomerAccount = async (
   }
 
   const refreshed = await getCustomerAccountById(id);
-  return refreshed.get({ plain: true });
+  return attachPortalCustomerAsUser(
+    refreshed.get({ plain: true }) as unknown as Record<string, unknown>
+  );
 };
 
 export const deleteCustomerAccount = async (id: number) => {
   const account = await CustomerAccount.findByPk(id);
   if (!account) throw new Error("Customer account not found");
 
-  const userId = account.userId;
+  const portalCustomerId = account.portalCustomerId;
   const saleId = account.saleId;
 
-  let userDeleted = false;
+  let portalCustomerDeleted = false;
 
   await db.transaction(async (transaction) => {
     await account.destroy({ transaction });
@@ -501,30 +518,39 @@ export const deleteCustomerAccount = async (id: number) => {
     }
 
     const remainingAccounts = await CustomerAccount.count({
-      where: { userId },
+      where: { portalCustomerId },
       transaction,
     });
 
     if (remainingAccounts > 0) return;
 
-    const user = await User.findByPk(userId, { transaction });
-    if (!user) return;
-
-    const role = String(user.userrole || "").toLowerCase();
-    if (role !== "customer" && role !== "client") {
-      return;
+    try {
+      await PortalPopupDismissal.destroy({
+        where: { portalCustomerId },
+        transaction,
+      });
+    } catch (err) {
+      const msg = String((err as Error)?.message || err);
+      if (!/Unknown column.*portalCustomerId/i.test(msg)) {
+        throw err;
+      }
     }
 
-    await PortalPopupDismissal.destroy({
-      where: { userId },
+    const portalCustomer = await PortalCustomer.findByPk(portalCustomerId, {
       transaction,
     });
+    if (!portalCustomer) return;
 
-    await user.destroy({ transaction });
-    userDeleted = true;
+    await portalCustomer.destroy({ transaction });
+    portalCustomerDeleted = true;
   });
 
-  return { deleted: true, id, userId, userDeleted };
+  return {
+    deleted: true,
+    id,
+    portalCustomerId,
+    portalCustomerDeleted,
+  };
 };
 
 export const provisionFromSaleId = async (

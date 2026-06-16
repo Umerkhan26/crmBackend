@@ -15,6 +15,9 @@ import {
   customerNotificationsController,
   customerStatsController,
   trackPortalActivityController,
+  customerServicesController,
+  customerServiceDetailController,
+  submitCustomerServiceFormController,
 } from "../controllers/customerArea.controller";
 import { verifyCustomerToken } from "../middleware/verifyCustomer.middleware";
 import {
@@ -60,6 +63,17 @@ router.get(
   "/notifications",
   requirePortalBrand,
   customerNotificationsController
+);
+router.get("/services", requirePortalBrand, customerServicesController);
+router.get(
+  "/services/:slug",
+  requirePortalBrand,
+  customerServiceDetailController
+);
+router.post(
+  "/services/:slug/submit",
+  requirePortalBrand,
+  submitCustomerServiceFormController
 );
 router.post("/activity", requirePortalBrand, trackPortalActivityController);
 

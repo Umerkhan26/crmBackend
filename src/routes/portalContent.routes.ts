@@ -14,6 +14,16 @@ import {
   setSaleProgressController,
   listPortalBrandsController,
 } from "../controllers/portalContent.controller";
+import {
+  listPortalServicesController,
+  getPortalServiceController,
+  createPortalServiceController,
+  updatePortalServiceController,
+  deletePortalServiceController,
+  listPortalServiceSubmissionsController,
+  getPortalServiceSubmissionController,
+  updatePortalServiceSubmissionController,
+} from "../controllers/portalService.controller";
 
 const router = Router();
 
@@ -91,6 +101,48 @@ router.patch(
   "/sales/:saleId/progress",
   checkPermission(PERMISSIONS.PORTAL_CONTENT_UPDATE),
   setSaleProgressController
+);
+
+router.get(
+  "/services",
+  checkPermission(portalContentRead),
+  listPortalServicesController
+);
+router.get(
+  "/services/:id",
+  checkPermission(portalContentRead),
+  getPortalServiceController
+);
+router.post(
+  "/services",
+  checkPermission(portalAnnouncementWrite),
+  createPortalServiceController
+);
+router.patch(
+  "/services/:id",
+  checkPermission(portalAnnouncementWrite),
+  updatePortalServiceController
+);
+router.delete(
+  "/services/:id",
+  checkPermission(portalAnnouncementDelete),
+  deletePortalServiceController
+);
+
+router.get(
+  "/service-submissions",
+  checkPermission(portalContentRead),
+  listPortalServiceSubmissionsController
+);
+router.get(
+  "/service-submissions/:id",
+  checkPermission(portalContentRead),
+  getPortalServiceSubmissionController
+);
+router.patch(
+  "/service-submissions/:id",
+  checkPermission(portalAnnouncementWrite),
+  updatePortalServiceSubmissionController
 );
 
 export default router;

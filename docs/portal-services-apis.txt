@@ -1,0 +1,425 @@
+================================================================================
+PORTAL SERVICES & FORMS — FRONTEND INTEGRATION GUIDE
+================================================================================
+
+Read this file top to bottom. It explains what to build, in what order, and which
+API to call for each screen. Two frontends use this:
+
+  A) CRM admin (Crm-Frontend) — manage services + view submissions  [DONE in repo]
+  B) Customer portal app — list services, show form, submit answers   [YOU BUILD]
+
+================================================================================
+1. WHAT THIS FEATURE DOES (BIG PICTURE)
+================================================================================
+
+- Admin adds services (e.g. "Web Development", "SEO") with:
+    • Page content (description, detailed HTML)
+    • Custom form questions per service (budget, timeline, etc.)
+- Customer logs into portal → sees services → clicks one → sees content + form
+- Customer submits form → saved in DB → admin views in "Service Submissions"
+- Form questions are defined by ADMIN in CRM — NOT hardcoded in customer portal code
+- Customer portal only RENDERS fields from API response (dynamic form)
+
+================================================================================
+2. BEFORE YOU START (BACKEND / DEVOPS — ONE TIME)
+================================================================================
+
+Backend team runs once on server (APIs fail without this):
+
+  npm run sync:portal-services
+  pm2 restart <api-app-name>
+
+Creates tables: portal_services, portal_service_submissions
+
+================================================================================
+3. API BASICS
+================================================================================
+
+--- CRM ADMIN (staff) ---
+
+Base URL:  {API_URL}/portal-content
+Example:   https://your-api.com/api/portal-content/services
+
+Headers (ALL admin endpoints):
+  Authorization: Bearer <staff token from localStorage>
+  Content-Type: application/json
+
+Permissions: portalContent:get | create | update | delete
+  (Strict admin / staff with portal content access)
+
+Response shape:
+  Success: { success: true, data: ... }
+  Error:   { success: false, message: "..." }
+
+CRM pages already in repo:
+  /portal-services              → PortalServices.js
+  /portal-service-submissions   → PortalServiceSubmissions.js
+  Service file: src/services/portalServiceService.js
+
+--- CUSTOMER PORTAL ---
+
+Base URL:  {API_URL}/customer-area
+Example:   https://your-api.com/api/customer-area/services
+
+Headers (authenticated customer endpoints):
+  Authorization: Bearer <customer portal JWT>
+  Content-Type: application/json
+
+Brand resolution (same as other customer-area APIs):
+  Pass ?brandSlug=emrills OR rely on token brandId OR x-customer-host header
+
+Customer must be logged in before list/detail/submit (except brand-config/login).
+
+================================================================================
+4. BUILD ORDER — CRM ADMIN (Crm-Frontend)
+================================================================================
+
+Already implemented — use as reference or extend.
+
+STEP 1 — API service
+  File: src/services/portalServiceService.js
+
+STEP 2 — PAGE: Portal Services (/portal-services)
+  Purpose: Admin adds service name, content, and form questions.
+
+  On page load:
+    1) GET /portal-content/brands          → brand dropdown
+    2) GET /portal-content/services?brandId={id}  → services table
+
+  "Add service" modal:
+    1) POST /portal-content/services
+    2) Body: brandId, name, shortDescription, detailedContent, iconUrl,
+              sortOrder, status, formFields[]
+    3) Refresh GET /portal-content/services?brandId=
+
+  "Edit service":
+    1) PATCH /portal-content/services/:id
+    2) Same fields as create (partial update OK)
+    3) Refresh list
+
+  "Delete service":
+    1) DELETE /portal-content/services/:id
+    2) Refresh list
+
+  formFields[] — each question object:
+    name        (string, required) — key in submitted formData, e.g. "budget"
+    label       (string, required) — question shown to customer
+    type        (string) — text | textarea | email | phone | number | select | date
+    required    (boolean)
+    placeholder (string, optional)
+    options     (string[], only for type "select")
+    sortOrder   (number, optional)
+
+  status values: draft | active | archived
+  Only status "active" services appear on customer portal.
+
+STEP 3 — PAGE: Service Submissions (/portal-service-submissions)
+  Purpose: Admin views customer form answers.
+
+  On page load:
+    1) GET /portal-content/brands
+    2) GET /portal-content/services?brandId=  (for service filter)
+    3) GET /portal-content/service-submissions?brandId=&serviceId=&status=&page=1&limit=20
+
+  Filters:
+    brandId   — optional
+    serviceId — optional
+    status    — new | in_review | completed | cancelled
+    page, limit
+
+  "View" submission:
+    1) GET /portal-content/service-submissions/:id
+    2) Show formData key/value pairs + customer email
+
+  "Update status / notes":
+    1) PATCH /portal-content/service-submissions/:id
+    2) Body: { status?, adminNotes? }
+
+================================================================================
+5. BUILD ORDER — CUSTOMER PORTAL APP (separate project)
+================================================================================
+
+STEP 1 — Create API service file (customer portal project)
+  Use customer JWT (not staff token).
+  Base: {API_URL}/customer-area
+
+STEP 2 — Services list page (e.g. /services)
+  On page load (after login + brand resolved):
+    GET /customer-area/services
+
+  Display each item:
+    - name
+    - shortDescription
+    - iconUrl (optional)
+    - link to /services/{slug}
+
+  Do NOT hardcode service names — always from API.
+
+STEP 3 — Service detail + form page (e.g. /services/:slug)
+  On page load:
+    GET /customer-area/services/:slug
+    Example slug: web-development (from list response)
+
+  Display:
+    - name, shortDescription, detailedContent (HTML — sanitize if needed)
+    - Dynamic form built from data.formFields array
+
+  Render form by field type:
+    text      → <input type="text">
+    textarea  → <textarea>
+    email     → <input type="email">
+    phone     → <input type="tel">
+    number    → <input type="number">
+    date      → <input type="date">
+    select    → <select> with field.options
+
+  Use field.name as input name/key in local state.
+  Show field.label to user.
+  Mark required fields from field.required.
+
+STEP 4 — Form submit
+  On submit button:
+    POST /customer-area/services/:slug/submit
+    Body option A: { "formData": { "budget": 5000, "timeline": "3 months" } }
+    Body option B: { "budget": 5000, "timeline": "3 months" }  (also accepted)
+
+  Keys in formData MUST match field.name from formFields (e.g. "budget", not "Budget").
+
+  On success (201):
+    Show "Thank you" / success message
+    Optionally redirect to dashboard
+
+  On error (400):
+    Show message from response — e.g. missing required fields, invalid email
+
+STEP 5 — Optional: track activity
+  POST /customer-area/activity
+  Body: { action: "view_services", title: "Viewed services" }
+  (Not required for MVP)
+
+================================================================================
+6. ENDPOINT REFERENCE (ALL)
+================================================================================
+
+--- CRM ADMIN ---
+
+GET /portal-content/brands
+  Brand dropdown for filters. Response: [{ id, name, slug, ... }]
+
+GET /portal-content/services?brandId={optional}
+  List services for admin table.
+
+GET /portal-content/services/:id
+  Single service (edit modal if needed).
+
+POST /portal-content/services
+  Create service + form questions.
+
+PATCH /portal-content/services/:id
+  Update service name, content, questions, status.
+
+DELETE /portal-content/services/:id
+  Delete service.
+
+GET /portal-content/service-submissions?brandId=&serviceId=&status=&page=&limit=
+  Paginated submissions list for admin.
+
+GET /portal-content/service-submissions/:id
+  Full submission with formData, customer, service.
+
+PATCH /portal-content/service-submissions/:id
+  Update status and admin notes.
+
+--- CUSTOMER PORTAL ---
+
+GET /customer-area/services
+  List active services (cards). No formFields in list (lightweight).
+
+GET /customer-area/services/:slug
+  Full page: detailedContent + formFields for dynamic form.
+
+POST /customer-area/services/:slug/submit
+  Submit customer answers. Requires customer JWT.
+
+================================================================================
+7. SAMPLE RESPONSES
+================================================================================
+
+GET /customer-area/services
+{
+  "success": true,
+  "data": [
+    {
+      "id": 1,
+      "name": "Web Development",
+      "slug": "web-development",
+      "shortDescription": "Custom websites",
+      "iconUrl": null,
+      "sortOrder": 1
+    }
+  ]
+}
+
+GET /customer-area/services/web-development
+{
+  "success": true,
+  "data": {
+    "id": 1,
+    "name": "Web Development",
+    "slug": "web-development",
+    "shortDescription": "Custom websites",
+    "detailedContent": "<p>We build modern websites...</p>",
+    "iconUrl": null,
+    "sortOrder": 1,
+    "formFields": [
+      {
+        "name": "budget",
+        "label": "Budget (USD)",
+        "type": "number",
+        "required": true,
+        "sortOrder": 1
+      },
+      {
+        "name": "timeline",
+        "label": "Timeline",
+        "type": "select",
+        "required": true,
+        "options": ["1 month", "3 months", "6 months"],
+        "sortOrder": 2
+      }
+    ]
+  }
+}
+
+POST /customer-area/services/web-development/submit
+Request:
+{
+  "formData": {
+    "budget": 5000,
+    "timeline": "3 months"
+  }
+}
+
+Response (201):
+{
+  "success": true,
+  "message": "Form submitted successfully",
+  "data": {
+    "submissionId": 12,
+    "serviceId": 1,
+    "serviceName": "Web Development",
+    "status": "new",
+    "submittedAt": "2026-06-16T10:00:00.000Z"
+  }
+}
+
+GET /portal-content/service-submissions (admin)
+{
+  "success": true,
+  "data": {
+    "items": [
+      {
+        "id": 12,
+        "serviceId": 1,
+        "status": "new",
+        "formData": { "budget": 5000, "timeline": "3 months" },
+        "submittedAt": "...",
+        "service": { "id": 1, "name": "Web Development", "slug": "web-development" },
+        "portalCustomer": {
+          "id": 5,
+          "email": "customer@example.com",
+          "firstname": "John",
+          "lastname": "Doe"
+        }
+      }
+    ],
+    "total": 1,
+    "page": 1,
+    "limit": 20,
+    "totalPages": 1
+  }
+}
+
+================================================================================
+8. ERROR HANDLING
+================================================================================
+
+CRM admin:
+  401 — Missing/invalid staff token → redirect to login
+  403 — Missing portalContent permission → hide page
+  400 — Validation error (read message)
+  404 — Service or submission not found
+
+Customer portal:
+  401 — Not logged in → redirect to /login
+  404 — Service slug not found or not active
+  400 — Validation failed (required field missing, invalid email, etc.)
+  500 — Server error
+
+If GET /customer-area/services returns [] → admin has not created active services yet.
+
+================================================================================
+9. WHAT NOT TO BUILD (COMMON MISTAKES)
+================================================================================
+
+  X  Do NOT hardcode form fields per service in customer portal — use formFields from API
+  X  Do NOT use staff JWT on customer-area endpoints
+  X  Do NOT use customer JWT on portal-content admin endpoints
+  X  Do NOT use brands.salesFormConfig.portalTheme.services — use GET /customer-area/services
+  X  Do NOT show draft/archived services on customer portal (API already filters active only)
+  X  formData keys must use field.name (e.g. "budget"), not field.label ("Budget (USD)")
+
+================================================================================
+10. FAQ
+================================================================================
+
+Q: Who defines form questions?
+A: Admin in CRM → Portal Services page. Stored in backend per service.
+
+Q: Can each service have different questions?
+A: Yes. Each service has its own formFields array.
+
+Q: Does customer need to login to submit?
+A: Yes. All /customer-area/services/* endpoints require customer JWT.
+
+Q: Where does admin see submissions?
+A: CRM → Settings → Service Submissions (/portal-service-submissions)
+
+Q: What field types are supported?
+A: text, textarea, email, phone, number, select, date
+
+Q: File upload in forms?
+A: Not in MVP. Text/select/number fields only. File upload can be added later.
+
+Q: Is slug auto-generated?
+A: Yes from service name (e.g. "Web Development" → web-development). Returned in API.
+
+================================================================================
+11. QUICK COPY — CUSTOMER PORTAL FETCH EXAMPLES
+================================================================================
+
+// List services
+fetch(`${API_URL}/customer-area/services`, {
+  headers: { Authorization: `Bearer ${customerToken}` },
+});
+
+// Service detail + form schema
+fetch(`${API_URL}/customer-area/services/web-development`, {
+  headers: { Authorization: `Bearer ${customerToken}` },
+});
+
+// Submit form
+fetch(`${API_URL}/customer-area/services/web-development/submit`, {
+  method: "POST",
+  headers: {
+    Authorization: `Bearer ${customerToken}`,
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    formData: { budget: 5000, timeline: "3 months" },
+  }),
+});
+
+================================================================================
+END OF GUIDE
+================================================================================

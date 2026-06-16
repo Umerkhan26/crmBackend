@@ -72,6 +72,7 @@ const ROUTE_PRIORITY: Record<string, { mount?: string; order?: number }> = {
   "customerArea.routes": { mount: "/api/customer-area", order: 0 },
   "customerAccount.routes": { mount: "/api/customer-accounts", order: 0 },
   "portalContent.routes": { mount: "/api/portal-content", order: 0 },
+  "followUpEmail.routes": { mount: "/api/follow-up-emails", order: 0 },
   "user.routes": { order: 1 },  // login, register
   "role.routes": { order: 2 },  // /all
   "permission.routes": { order: 3 },

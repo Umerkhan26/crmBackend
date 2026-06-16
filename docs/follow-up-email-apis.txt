@@ -1,0 +1,322 @@
+================================================================================
+FOLLOW-UP EMAIL — FRONTEND INTEGRATION GUIDE
+================================================================================
+
+Read this file top to bottom. It tells you what to build, in what order, and which
+API to call for each screen action. You should not need to ask backend questions
+if you follow this guide.
+
+================================================================================
+1. WHAT THIS FEATURE DOES (BIG PICTURE)
+================================================================================
+
+- When a customer is provisioned from a sale, backend auto-enrolls them in a
+  follow-up email program (you do NOT build enroll UI or API).
+- Admin manages two things separately:
+    A) Email CONTENT  → subject, body, step name, order
+    B) Email SCHEDULE → when each email sends (e.g. 3 days, 7 days after signup)
+- Backend cron sends due emails every 2 minutes (safe delay between sends).
+- Frontend only builds admin settings pages + optional stats/enrollment views.
+
+================================================================================
+2. BEFORE YOU START (BACKEND / DEVOPS — ONE TIME)
+================================================================================
+
+Backend team runs once on server (not frontend job, but APIs fail without this):
+
+  npm run sync:follow-up-email
+  pm2 restart <api-app-name>
+
+This creates DB tables and default steps: 3, 7, 14, 30 days.
+
+================================================================================
+3. API BASICS (EVERY REQUEST)
+================================================================================
+
+Base URL:  {API_URL}/follow-up-emails
+Example:   https://your-api.com/api/follow-up-emails/content
+
+Headers (required on ALL endpoints):
+  Authorization: Bearer <token from localStorage>
+  Content-Type: application/json
+
+Permission required: customerAccount:create
+  → Same as bulk customer email / provision customer. Strict admin users only.
+  → Hide menu items from non-admin users (match existing Settings sidebar pattern).
+
+Standard response shape:
+  Success: { success: true, data: ... }
+  Error:   { success: false, message: "..." }
+
+Reference service file already in repo (optional copy):
+  Crm-Frontend/src/services/followUpEmailService.js
+
+Suggested routes (already added — you can reuse or relocate):
+  /follow-up-email-content   → Content admin page
+  /follow-up-email-schedule   → Schedule admin page
+
+================================================================================
+4. BUILD IN THIS ORDER (STEP BY STEP)
+================================================================================
+
+STEP 1 — Create API service file
+  Copy pattern from src/services/followUpEmailService.js (or import from it).
+  All calls use API_URL from src/services/auth.js + Bearer token.
+
+STEP 2 — Build PAGE 1: Follow-up Email CONTENT
+  Purpose: Admin edits what each email says (NOT when it sends).
+
+  On page load:
+    1) Call GET /follow-up-emails/content
+    2) Save data.sequence (you need sequence.id for create)
+    3) Render data.steps in a table (sort by sortOrder)
+
+  Table columns to show:
+    - sortOrder (order)
+    - name (step label)
+    - subject
+    - isActive (badge: Active / Inactive)
+    - Actions: Edit, Delete
+
+  "Add step" button:
+    1) Call POST /follow-up-emails/content
+    2) Body: { sequenceId, name, subject, body, sortOrder?, isActive? }
+    3) Refresh list with GET /content
+
+  "Edit step" modal:
+    1) Call PATCH /follow-up-emails/content/:stepId
+    2) Body: { name?, subject?, body?, sortOrder?, isActive? }
+    3) Refresh list
+
+  "Delete step":
+    1) Confirm with user
+    2) Call DELETE /follow-up-emails/content/:stepId
+    3) Refresh list
+
+  Placeholders admin can use in subject/body:
+    {{firstname}}  {{lastname}}  {{email}}
+
+  Show helper text on page:
+    "Timing is managed on the Follow-up Schedule page."
+
+STEP 3 — Build PAGE 2: Follow-up Email SCHEDULE
+  Purpose: Admin sets WHEN each step sends (NOT email text).
+
+  On page load (call in parallel):
+    1) GET /follow-up-emails/schedule  → timings table
+    2) GET /follow-up-emails/stats      → dashboard cards
+
+  Stats cards (from GET /stats):
+    - pending            → emails waiting to send
+    - sent               → successfully sent
+    - failed             → failed after retries
+    - activeEnrollments  → customers currently in program
+
+  Timings table columns:
+    - sortOrder
+    - stepName
+    - delay: timing.delayAmount + timing.delayUnit (e.g. "7 days")
+    - timing.isActive
+    - stepIsActive (content active — read-only info from API)
+    - Action: Edit timing
+
+  "Pause / Activate sequence" button:
+    1) Use sequence.id from schedule response (data.sequence)
+    2) Call PATCH /follow-up-emails/sequences/:sequenceId
+    3) Body: { isActive: true } or { isActive: false }
+    4) Refresh schedule + stats
+
+  "Edit timing" modal:
+    1) Call PATCH /follow-up-emails/schedule/:stepId
+    2) Body: { delayAmount: number, delayUnit: "days"|"hours", isActive?: boolean }
+    3) delayAmount is required
+    4) Show note: "Pending emails are rescheduled automatically"
+    5) Refresh schedule + stats
+
+  Show helper text on page:
+    "Email text is managed on the Follow-up Content page."
+
+STEP 4 (OPTIONAL) — Enrollments list page
+  Purpose: Admin sees which customers are in the follow-up program.
+
+  On page load:
+    GET /follow-up-emails/enrollments?page=1&limit=20&status=active
+
+  Query params:
+    page   — default 1
+    limit  — default 20, max 50
+    status — optional: active | paused | completed | cancelled
+
+  Display from each item:
+    - customerAccount.portalCustomer.email
+    - customerAccount.portalCustomer.firstname / lastname
+    - sequence.name
+    - enrolledAt
+    - status
+
+STEP 5 (OPTIONAL — DEV/TEST ONLY) — Manual send button
+  Do NOT show to normal admins in production unless requested.
+  POST /follow-up-emails/process-now
+  Triggers immediate send of due emails (cron normally handles this).
+
+================================================================================
+5. WHAT NOT TO BUILD (COMMON MISTAKES)
+================================================================================
+
+  X  Do NOT call an API to enroll customers — backend does this on provision.
+  X  Do NOT mix content + timing in one form — two separate pages.
+  X  Do NOT send emails from frontend — backend cron sends them.
+  X  Do NOT hardcode 3/7/14/30 days — always load from GET /schedule.
+  X  Do NOT forget Bearer token — all endpoints return 401 without it.
+
+================================================================================
+6. ENDPOINT REFERENCE (METHOD + PURPOSE)
+================================================================================
+
+--- CONTENT PAGE ---
+
+GET /follow-up-emails/content?sequenceId={optional}
+  Load content page table. Returns { sequence, steps[] }.
+
+POST /follow-up-emails/content
+  Add new step. Required body: sequenceId, name, subject, body.
+
+PATCH /follow-up-emails/content/:stepId
+  Update step text/order/active. isActive=false cancels pending sends for step.
+
+DELETE /follow-up-emails/content/:stepId
+  Remove step entirely.
+
+--- SCHEDULE PAGE ---
+
+GET /follow-up-emails/schedule?sequenceId={optional}
+  Load schedule table. Returns { sequence, timings[] }.
+
+PATCH /follow-up-emails/schedule/:stepId
+  Change delay. Body: { delayAmount, delayUnit?, isActive? }.
+
+GET /follow-up-emails/stats
+  Load stats cards on schedule page.
+
+PATCH /follow-up-emails/sequences/:sequenceId
+  Pause or resume entire program. Body: { isActive: boolean }.
+
+GET /follow-up-emails/sequences
+  Optional — only if you need a sequence picker (usually one sequence exists).
+
+--- OPTIONAL PAGES ---
+
+GET /follow-up-emails/enrollments?page=&limit=&status=
+  Customer enrollment list.
+
+POST /follow-up-emails/process-now
+  Manual send trigger (testing only).
+
+================================================================================
+7. SAMPLE RESPONSES
+================================================================================
+
+GET /content
+{
+  "success": true,
+  "data": {
+    "sequence": { "id": 1, "name": "Customer onboarding follow-ups", "isActive": true },
+    "steps": [
+      {
+        "id": 1,
+        "sequenceId": 1,
+        "name": "3 Day Check-in",
+        "sortOrder": 1,
+        "subject": "Checking in, {{firstname}}",
+        "body": "<p>Hi {{firstname}},</p>...",
+        "isActive": true
+      }
+    ]
+  }
+}
+
+GET /schedule
+{
+  "success": true,
+  "data": {
+    "sequence": { "id": 1, "name": "Customer onboarding follow-ups", "isActive": true },
+    "timings": [
+      {
+        "stepId": 1,
+        "stepName": "3 Day Check-in",
+        "sortOrder": 1,
+        "stepIsActive": true,
+        "timing": { "delayAmount": 3, "delayUnit": "days", "isActive": true }
+      }
+    ]
+  }
+}
+
+GET /stats
+{
+  "success": true,
+  "data": { "pending": 12, "sent": 45, "failed": 1, "activeEnrollments": 8 }
+}
+
+POST /content — request body example
+{
+  "sequenceId": 1,
+  "name": "Welcome follow-up",
+  "subject": "Hello {{firstname}}",
+  "body": "<p>Hi {{firstname}}, welcome!</p>",
+  "sortOrder": 5,
+  "isActive": true
+}
+
+PATCH /schedule/1 — request body example
+{
+  "delayAmount": 4,
+  "delayUnit": "days",
+  "isActive": true
+}
+
+================================================================================
+8. ERROR HANDLING
+================================================================================
+
+  401 — Missing/invalid token → redirect to login
+  403 — User lacks customerAccount:create → hide page / show access denied
+  400 — Validation error (read message field)
+  404 — Step or sequence not found (stale id after delete)
+  500 — Server error (show toast with message)
+
+If GET /content returns sequence: null → tell admin backend sync not run yet.
+
+================================================================================
+9. FAQ (ANSWERS WITHOUT ASKING BACKEND)
+================================================================================
+
+Q: What is a "sequence"?
+A: The whole follow-up program (one container). Usually only one exists.
+   Steps (emails) live inside it. Pause sequence = stop ALL follow-ups.
+
+Q: When do emails actually send?
+A: Backend cron every 2 min. Frontend only configures rules.
+
+Q: If admin changes 7 days to 8 days, what happens?
+A: PATCH /schedule/:stepId reschedules pending unsent emails automatically.
+   Already-sent emails are not changed.
+
+Q: If admin edits email text, what happens?
+A: Next send uses latest content from DB. No extra API needed.
+
+Q: How do customers get enrolled?
+A: Automatically when staff provisions customer from sale. No frontend action.
+
+Q: Can we use hours instead of days?
+A: Yes. delayUnit: "hours" in PATCH /schedule/:stepId.
+
+Q: Do we need a separate cron on frontend?
+A: No. Only backend PM2 server process.
+
+Q: Which permission for menu visibility?
+A: Strict admin (same as Email Template settings). API needs customerAccount:create.
+
+================================================================================
+END OF GUIDE
+================================================================================

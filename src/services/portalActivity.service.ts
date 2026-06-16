@@ -19,12 +19,15 @@ const ACTION_LABELS: Record<PortalActivityAction, string> = {
   view_order: "Viewed order progress",
   dismiss_popup: "Dismissed popup",
   download_invoice: "Downloaded invoice",
+  view_services: "Viewed services",
+  service_form_submitted: "Submitted service form",
 };
 
 /** Log every time — e.g. each login session, each invoice download. */
 const ALWAYS_LOG_ACTIONS = new Set<PortalActivityAction>([
   "login",
   "download_invoice",
+  "service_form_submitted",
 ]);
 
 /** Log once per customer account; repeat visits are not shown in activity. */

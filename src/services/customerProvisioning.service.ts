@@ -264,6 +264,19 @@ export const provisionCustomerFromSale = async (params: {
       })
     : false;
 
+  try {
+    const { enrollCustomerInFollowUps } = await import("./followUpEmail.service");
+    await enrollCustomerInFollowUps({
+      customerAccountId: account.id,
+      enrolledBy: params.agentUserId,
+    });
+  } catch (err: any) {
+    console.warn(
+      "follow-up enrollment warning:",
+      err?.message || err
+    );
+  }
+
   return {
     provisioned: true,
     portalCustomerId: portalCustomer.id,

@@ -28,6 +28,13 @@ import PortalPopup from "./portalPopup.model";
 import PortalActivityEvent from "./portalActivityEvent.model";
 import BulkEmailCampaign from "./bulkEmailCampaign.model";
 import BulkEmailJob from "./bulkEmailJob.model";
+import FollowUpSequence from "./followUpSequence.model";
+import FollowUpStep from "./followUpStep.model";
+import FollowUpStepTiming from "./followUpStepTiming.model";
+import FollowUpEnrollment from "./followUpEnrollment.model";
+import FollowUpScheduledEmail from "./followUpScheduledEmail.model";
+import PortalService from "./portalService.model";
+import PortalServiceSubmission from "./portalServiceSubmission.model";
 
 Role.belongsToMany(Permission, {
   through: RolePermission,
@@ -140,6 +147,120 @@ BulkEmailJob.belongsTo(CustomerAccount, {
 BulkEmailCampaign.belongsTo(User, {
   foreignKey: "createdBy",
   as: "createdByUser",
+  onDelete: "CASCADE",
+});
+
+FollowUpSequence.hasMany(FollowUpStep, {
+  foreignKey: "sequenceId",
+  as: "steps",
+  onDelete: "CASCADE",
+});
+FollowUpStep.belongsTo(FollowUpSequence, {
+  foreignKey: "sequenceId",
+  as: "sequence",
+  onDelete: "CASCADE",
+});
+
+FollowUpStep.hasOne(FollowUpStepTiming, {
+  foreignKey: "stepId",
+  as: "timing",
+  onDelete: "CASCADE",
+});
+FollowUpStepTiming.belongsTo(FollowUpStep, {
+  foreignKey: "stepId",
+  as: "step",
+  onDelete: "CASCADE",
+});
+
+FollowUpSequence.hasMany(FollowUpEnrollment, {
+  foreignKey: "sequenceId",
+  as: "enrollments",
+  onDelete: "CASCADE",
+});
+FollowUpEnrollment.belongsTo(FollowUpSequence, {
+  foreignKey: "sequenceId",
+  as: "sequence",
+  onDelete: "CASCADE",
+});
+
+CustomerAccount.hasMany(FollowUpEnrollment, {
+  foreignKey: "customerAccountId",
+  as: "followUpEnrollments",
+  onDelete: "CASCADE",
+});
+FollowUpEnrollment.belongsTo(CustomerAccount, {
+  foreignKey: "customerAccountId",
+  as: "customerAccount",
+  onDelete: "CASCADE",
+});
+
+FollowUpEnrollment.hasMany(FollowUpScheduledEmail, {
+  foreignKey: "enrollmentId",
+  as: "scheduledEmails",
+  onDelete: "CASCADE",
+});
+FollowUpScheduledEmail.belongsTo(FollowUpEnrollment, {
+  foreignKey: "enrollmentId",
+  as: "enrollment",
+  onDelete: "CASCADE",
+});
+
+FollowUpStep.hasMany(FollowUpScheduledEmail, {
+  foreignKey: "stepId",
+  as: "scheduledEmails",
+  onDelete: "CASCADE",
+});
+FollowUpScheduledEmail.belongsTo(FollowUpStep, {
+  foreignKey: "stepId",
+  as: "step",
+  onDelete: "CASCADE",
+});
+
+FollowUpSequence.belongsTo(User, {
+  foreignKey: "createdBy",
+  as: "createdByUser",
+  onDelete: "SET NULL",
+});
+
+Brand.hasMany(PortalService, {
+  foreignKey: "brandId",
+  as: "portalServices",
+  onDelete: "CASCADE",
+});
+PortalService.belongsTo(Brand, {
+  foreignKey: "brandId",
+  as: "brand",
+  onDelete: "CASCADE",
+});
+PortalService.belongsTo(User, {
+  foreignKey: "createdBy",
+  as: "createdByUser",
+  onDelete: "SET NULL",
+});
+
+PortalService.hasMany(PortalServiceSubmission, {
+  foreignKey: "serviceId",
+  as: "submissions",
+  onDelete: "CASCADE",
+});
+PortalServiceSubmission.belongsTo(PortalService, {
+  foreignKey: "serviceId",
+  as: "service",
+  onDelete: "CASCADE",
+});
+PortalServiceSubmission.belongsTo(Brand, {
+  foreignKey: "brandId",
+  as: "brand",
+  onDelete: "CASCADE",
+});
+PortalServiceSubmission.belongsTo(CustomerAccount, {
+  foreignKey: "customerAccountId",
+  as: "customerAccount",
+  onDelete: "CASCADE",
+});
+PortalServiceSubmission.belongsTo(PortalCustomer, {
+  foreignKey: "portalCustomerId",
+  as: "portalCustomer",
   onDelete: "CASCADE",
 });
 

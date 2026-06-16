@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { CustomRequest } from "../types/custom";
 import * as CustomerAreaService from "../services/customerArea.service";
 import * as CustomerPortalService from "../services/customerPortal.service";
+import * as PortalServicePortal from "../services/portalServicePortal.service";
 import { readPortalHostFromRequest } from "../utils/portalHost";
 
 const portalBrandId = (req: CustomRequest): number => {
@@ -261,6 +262,71 @@ export const trackPortalActivityController = async (
     return res.status(200).json({ success: true, data });
   } catch (error: any) {
     const status = /invalid activity/i.test(error.message) ? 400 : 500;
+    return res.status(status).json({ success: false, message: error.message });
+  }
+};
+
+export const customerServicesController = async (
+  req: CustomRequest,
+  res: Response
+): Promise<any> => {
+  try {
+    const data = await PortalServicePortal.listCustomerPortalServices(
+      req.user!.id,
+      portalBrandId(req)
+    );
+    return res.status(200).json({ success: true, data });
+  } catch (error: any) {
+    const status = /not found|no customer/i.test(error.message) ? 404 : 500;
+    return res.status(status).json({ success: false, message: error.message });
+  }
+};
+
+export const customerServiceDetailController = async (
+  req: CustomRequest,
+  res: Response
+): Promise<any> => {
+  try {
+    const slug = String(req.params.slug || "").trim();
+    if (!slug) {
+      return res.status(400).json({ success: false, message: "Invalid service slug" });
+    }
+    const data = await PortalServicePortal.getCustomerPortalServiceBySlug(
+      req.user!.id,
+      portalBrandId(req),
+      slug
+    );
+    return res.status(200).json({ success: true, data });
+  } catch (error: any) {
+    const status = /not found/i.test(error.message) ? 404 : 500;
+    return res.status(status).json({ success: false, message: error.message });
+  }
+};
+
+export const submitCustomerServiceFormController = async (
+  req: CustomRequest,
+  res: Response
+): Promise<any> => {
+  try {
+    const slug = String(req.params.slug || "").trim();
+    if (!slug) {
+      return res.status(400).json({ success: false, message: "Invalid service slug" });
+    }
+    const data = await PortalServicePortal.submitCustomerPortalServiceForm(
+      req.user!.id,
+      portalBrandId(req),
+      slug,
+      req.body?.formData || req.body || {}
+    );
+    return res.status(201).json({
+      success: true,
+      message: "Form submitted successfully",
+      data,
+    });
+  } catch (error: any) {
+    const status = /not found|no form|required|valid|invalid/i.test(error.message)
+      ? 400
+      : 500;
     return res.status(status).json({ success: false, message: error.message });
   }
 };

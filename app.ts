@@ -58,7 +58,13 @@ app.use(
       callback(null, false);
     },
     credentials: true,
-    allowedHeaders: ["Content-Type", "Authorization", "x-customer-host"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "x-customer-host",
+      "Cache-Control",
+      "Pragma",
+    ],
     methods: ["PUT", "POST", "GET", "DELETE", "PATCH", "OPTIONS"],
     maxAge: 1800,
   })

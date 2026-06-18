@@ -6,9 +6,34 @@ import PortalServiceSubmission from "../models/portalServiceSubmission.model";
 import CustomerAccount from "../models/customerAccount.model";
 import PortalCustomer from "../models/portalCustomer.model";
 import {
+  normalizeFormData,
   normalizeFormFields,
   slugifyServiceName,
 } from "../types/portalServiceForm";
+
+const serializePortalService = (row: PortalService) => {
+  const json = row.toJSON() as unknown as Record<string, unknown>;
+  return {
+    ...json,
+    formFields: normalizeFormFields(json.formFields),
+  };
+};
+
+const serializePortalSubmission = (row: PortalServiceSubmission) => {
+  const json = row.toJSON() as unknown as Record<string, unknown>;
+  const service = json.service as Record<string, unknown> | undefined;
+
+  return {
+    ...json,
+    formData: normalizeFormData(json.formData),
+    service: service
+      ? {
+          ...service,
+          formFields: normalizeFormFields(service.formFields),
+        }
+      : service,
+  };
+};
 
 const ensureUniqueSlug = async (
   brandId: number,
@@ -33,19 +58,21 @@ export const listPortalServicesAdmin = async (brandId?: number) => {
   const where: Record<string, unknown> = {};
   if (brandId) where.brandId = brandId;
 
-  return PortalService.findAll({
+  const rows = await PortalService.findAll({
     where,
     order: [
       ["sortOrder", "ASC"],
       ["id", "ASC"],
     ],
   });
+
+  return rows.map(serializePortalService);
 };
 
 export const getPortalServiceAdmin = async (id: number) => {
   const row = await PortalService.findByPk(id);
   if (!row) throw new Error("Portal service not found");
-  return row;
+  return serializePortalService(row);
 };
 
 export const createPortalServiceAdmin = async (payload: {
@@ -74,7 +101,7 @@ export const createPortalServiceAdmin = async (payload: {
     where: { brandId: payload.brandId },
   })) as number | null;
 
-  return PortalService.create({
+  const created = await PortalService.create({
     brandId: payload.brandId,
     name,
     slug,
@@ -86,6 +113,8 @@ export const createPortalServiceAdmin = async (payload: {
     formFields,
     createdBy: payload.createdBy,
   });
+
+  return serializePortalService(created);
 };
 
 export const updatePortalServiceAdmin = async (
@@ -135,7 +164,7 @@ export const updatePortalServiceAdmin = async (
   }
 
   await row.update(update);
-  return row.reload();
+  return serializePortalService(await row.reload());
 };
 
 export const deletePortalServiceAdmin = async (id: number) => {
@@ -188,11 +217,16 @@ export const listPortalServiceSubmissionsAdmin = async ({
         as: "customerAccount",
         attributes: ["id", "leadId", "status"],
       },
+      {
+        model: Brand,
+        as: "brand",
+        attributes: ["id", "name", "slug"],
+      },
     ],
   });
 
   return {
-    items: rows,
+    items: rows.map(serializePortalSubmission),
     total: count,
     page: safePage,
     limit: safeLimit,
@@ -225,7 +259,7 @@ export const getPortalServiceSubmissionAdmin = async (id: number) => {
     ],
   });
   if (!row) throw new Error("Service submission not found");
-  return row;
+  return serializePortalSubmission(row);
 };
 
 export const updatePortalServiceSubmissionAdmin = async (
@@ -242,14 +276,30 @@ export const updatePortalServiceSubmissionAdmin = async (
       : {}),
   });
 
-  return row.reload({
+  const reloaded = await row.reload({
     include: [
-      { model: PortalService, as: "service", attributes: ["id", "name", "slug"] },
+      {
+        model: PortalService,
+        as: "service",
+        attributes: ["id", "name", "slug", "formFields"],
+      },
       {
         model: PortalCustomer,
         as: "portalCustomer",
-        attributes: ["id", "email", "firstname", "lastname"],
+        attributes: ["id", "email", "firstname", "lastname", "phone"],
+      },
+      {
+        model: CustomerAccount,
+        as: "customerAccount",
+        attributes: ["id", "leadId", "status"],
+      },
+      {
+        model: Brand,
+        as: "brand",
+        attributes: ["id", "name", "slug"],
       },
     ],
   });
+
+  return serializePortalSubmission(reloaded);
 };

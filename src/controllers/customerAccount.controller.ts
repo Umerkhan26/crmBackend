@@ -303,6 +303,7 @@ export const applyCustomerDiscountController = async (
     const accountId = parseAccountId(req);
     const data = await CustomerEngagementService.applyCustomerDiscount({
       accountId,
+      saleId: req.body.saleId != null ? Number(req.body.saleId) : undefined,
       discountPercent: req.body.discountPercent,
       discountCode: req.body.discountCode,
       note: req.body.note,
@@ -328,6 +329,7 @@ export const createCustomerUpsellController = async (
     }
     const data = await CustomerEngagementService.createUpsellOffer({
       accountId,
+      saleId: req.body.saleId != null ? Number(req.body.saleId) : undefined,
       productName: productName.trim(),
       price,
       description,

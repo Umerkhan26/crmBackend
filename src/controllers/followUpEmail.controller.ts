@@ -179,10 +179,14 @@ export const listFollowUpEnrollmentsController = async (
     const page = parseInt(req.query.page as string, 10) || 1;
     const limit = parseInt(req.query.limit as string, 10) || 20;
     const status = req.query.status as string | undefined;
+    const brandId = req.query.brandId
+      ? parseInt(String(req.query.brandId), 10)
+      : undefined;
     const data = await FollowUpEmailService.listFollowUpEnrollments({
       page,
       limit,
       status,
+      brandId: Number.isFinite(brandId) ? brandId : undefined,
     });
     return res.status(200).json({ success: true, data });
   } catch (error: any) {

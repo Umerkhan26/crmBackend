@@ -13,6 +13,28 @@ import {
   sendCustomerPortalEmail,
 } from "../utils/customerPortalEmail";
 import { logLeadActivity } from "../utils/logLeadActivity";
+import ProductSale from "../models/product.model";
+
+const resolveEngagementSaleId = async (
+  account: InstanceType<typeof CustomerAccount>,
+  saleId?: number | null
+): Promise<number | null> => {
+  const target = saleId ?? account.saleId ?? null;
+  if (!target) return null;
+
+  const linkedAccount = await CustomerAccount.findOne({
+    where: {
+      portalCustomerId: account.portalCustomerId,
+      brandId: account.brandId,
+      saleId: target,
+      status: "active",
+    },
+  });
+  if (!linkedAccount) {
+    throw new Error("Order is not linked to this customer");
+  }
+  return target;
+};
 
 const fetchAccountForEngagement = async (accountId: number) => {
   const account = await CustomerAccount.findByPk(accountId, {
@@ -141,6 +163,7 @@ export const sendEmailToCustomerAccount = async ({
 
 export const applyCustomerDiscount = async ({
   accountId,
+  saleId,
   discountPercent,
   discountCode,
   note,
@@ -148,6 +171,7 @@ export const applyCustomerDiscount = async ({
   createdBy,
 }: {
   accountId: number;
+  saleId?: number | null;
   discountPercent?: number;
   discountCode?: string;
   note?: string;
@@ -155,16 +179,42 @@ export const applyCustomerDiscount = async ({
   createdBy: number;
 }) => {
   const { account } = await fetchAccountForEngagement(accountId);
+  const linkedSaleId = await resolveEngagementSaleId(account, saleId);
   const title = discountCode
     ? `Discount code: ${discountCode}`
     : `Discount ${discountPercent ?? 0}%`;
 
+  let originalPrice: number | null = null;
+  let discountedPrice: number | null = null;
+  let discountAmount: number | null = null;
+  if (linkedSaleId && discountPercent != null && discountPercent > 0) {
+    const sale = await ProductSale.findByPk(linkedSaleId, {
+      attributes: ["id", "price"],
+    });
+    if (sale?.price != null) {
+      originalPrice = Number(sale.price);
+      discountAmount =
+        Math.round(originalPrice * (discountPercent / 100) * 100) / 100;
+      discountedPrice =
+        Math.round((originalPrice - discountAmount) * 100) / 100;
+    }
+  }
+
   const engagement = await CustomerEngagement.create({
     customerAccountId: accountId,
+    saleId: linkedSaleId,
     type: "discount",
     title,
     details: note || null,
-    metadata: { discountPercent, discountCode, validUntil },
+    metadata: {
+      discountPercent,
+      discountCode,
+      validUntil,
+      saleId: linkedSaleId,
+      originalPrice,
+      discountedPrice,
+      discountAmount,
+    },
     status: "applied",
     createdBy,
   });
@@ -184,26 +234,52 @@ export const applyCustomerDiscount = async ({
 
 export const createUpsellOffer = async ({
   accountId,
+  saleId,
   productName,
   price,
   description,
   createdBy,
 }: {
   accountId: number;
+  saleId?: number | null;
   productName: string;
   price?: number;
   description?: string;
   createdBy: number;
 }) => {
   const { account } = await fetchAccountForEngagement(accountId);
-  const title = `Upsell: ${productName}`;
+  const linkedSaleId = await resolveEngagementSaleId(account, saleId);
+  const title = linkedSaleId
+    ? `Upsell for order #${linkedSaleId}: ${productName}`
+    : `Upsell: ${productName}`;
+
+  let orderPrice: number | null = null;
+  let combinedTotal: number | null = null;
+  if (linkedSaleId) {
+    const sale = await ProductSale.findByPk(linkedSaleId, {
+      attributes: ["id", "price"],
+    });
+    if (sale?.price != null) {
+      orderPrice = Number(sale.price);
+      if (price != null && price > 0) {
+        combinedTotal = Math.round((orderPrice + price) * 100) / 100;
+      }
+    }
+  }
 
   const engagement = await CustomerEngagement.create({
     customerAccountId: accountId,
+    saleId: linkedSaleId,
     type: "upsell",
     title,
     details: description || null,
-    metadata: { productName, price },
+    metadata: {
+      productName,
+      price,
+      saleId: linkedSaleId,
+      orderPrice,
+      combinedTotal,
+    },
     status: "active",
     createdBy,
   });

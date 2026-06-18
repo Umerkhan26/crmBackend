@@ -9,6 +9,7 @@ import {
   customerOrderProgressController,
   customerInvoicesController,
   customerOffersController,
+  respondToOfferController,
   customerAnnouncementsController,
   customerPopupsController,
   dismissPopupController,
@@ -48,6 +49,11 @@ router.get(
 );
 router.get("/invoices", requirePortalBrand, customerInvoicesController);
 router.get("/offers", requirePortalBrand, customerOffersController);
+router.post(
+  "/offers/:engagementId/respond",
+  requirePortalBrand,
+  respondToOfferController
+);
 router.get(
   "/announcements",
   requirePortalBrand,

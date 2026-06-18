@@ -18,6 +18,7 @@ export type CustomerEngagementStatus =
 export interface CustomerEngagementAttributes {
   id: number;
   customerAccountId: number;
+  saleId?: number | null;
   type: CustomerEngagementType;
   title: string;
   details?: string | null;
@@ -29,7 +30,7 @@ export interface CustomerEngagementAttributes {
 export interface CustomerEngagementCreationAttributes
   extends Optional<
     CustomerEngagementAttributes,
-    "id" | "details" | "metadata" | "status"
+    "id" | "details" | "metadata" | "status" | "saleId"
   > {}
 
 class CustomerEngagement
@@ -41,6 +42,7 @@ class CustomerEngagement
 {
   public id!: number;
   public customerAccountId!: number;
+  public saleId?: number | null;
   public type!: CustomerEngagementType;
   public title!: string;
   public details?: string | null;
@@ -61,6 +63,12 @@ CustomerEngagement.init(
     customerAccountId: {
       type: DataTypes.INTEGER,
       allowNull: false,
+    },
+    saleId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      references: { model: "product_sales", key: "id" },
+      onDelete: "SET NULL",
     },
     type: {
       type: DataTypes.ENUM(
@@ -98,7 +106,10 @@ CustomerEngagement.init(
     sequelize: db,
     tableName: "customer_engagements",
     timestamps: true,
-    indexes: [{ fields: ["customerAccountId", "createdAt"] }],
+    indexes: [
+      { fields: ["customerAccountId", "createdAt"] },
+      { fields: ["saleId"] },
+    ],
   }
 );
 

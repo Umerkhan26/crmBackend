@@ -109,7 +109,11 @@ export const getCustomerPortalServiceBySlug = async (
   });
 
   if (!service) throw new Error("Service not found");
-  return service.toJSON();
+  const json = service.toJSON();
+  return {
+    ...json,
+    formFields: normalizeFormFields(json.formFields),
+  };
 };
 
 export const submitCustomerPortalServiceForm = async (

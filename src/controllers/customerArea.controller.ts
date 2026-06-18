@@ -164,6 +164,40 @@ export const customerOffersController = async (
   }
 };
 
+export const respondToOfferController = async (
+  req: CustomRequest,
+  res: Response
+): Promise<any> => {
+  try {
+    const engagementId = parseInt(req.params.engagementId, 10);
+    if (isNaN(engagementId)) {
+      return res.status(400).json({ success: false, message: "Invalid offer id" });
+    }
+    const action = String(req.body?.action || "claim");
+    if (action !== "interested" && action !== "claim") {
+      return res.status(400).json({ success: false, message: "Invalid action" });
+    }
+    const data = await CustomerPortalService.respondToCustomerOffer(
+      req.user!.id,
+      portalBrandId(req),
+      engagementId,
+      action as "interested" | "claim"
+    );
+    return res.status(200).json({
+      success: true,
+      message: data.alreadyResponded
+        ? "Already recorded"
+        : action === "claim"
+          ? "Offer claimed — your team will follow up"
+          : "Thanks — your team has been notified",
+      data,
+    });
+  } catch (error: any) {
+    const status = /not found/i.test(error.message) ? 404 : 500;
+    return res.status(status).json({ success: false, message: error.message });
+  }
+};
+
 export const customerAnnouncementsController = async (
   req: CustomRequest,
   res: Response

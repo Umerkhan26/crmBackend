@@ -112,6 +112,11 @@ CustomerEngagement.belongsTo(User, {
   as: "createdByUser",
   onDelete: "CASCADE",
 });
+CustomerEngagement.belongsTo(ProductSale, {
+  foreignKey: "saleId",
+  as: "sale",
+  onDelete: "SET NULL",
+});
 
 CustomerAccount.hasMany(PortalActivityEvent, {
   foreignKey: "customerAccountId",

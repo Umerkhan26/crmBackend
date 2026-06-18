@@ -9,6 +9,7 @@ import FollowUpEnrollment from "../models/followUpEnrollment.model";
 import FollowUpScheduledEmail from "../models/followUpScheduledEmail.model";
 import CustomerAccount from "../models/customerAccount.model";
 import PortalCustomer from "../models/portalCustomer.model";
+import Brand from "../models/brand.model";
 
 export const addDelay = (
   base: Date,
@@ -22,6 +23,14 @@ export const addDelay = (
 const getActiveSequence = async () => {
   return FollowUpSequence.findOne({
     where: { trigger: "customer_provisioned", isActive: true },
+    order: [["id", "ASC"]],
+  });
+};
+
+/** Admin UI: load the program even when paused (isActive=false). */
+const getDefaultSequence = async () => {
+  return FollowUpSequence.findOne({
+    where: { trigger: "customer_provisioned" },
     order: [["id", "ASC"]],
   });
 };
@@ -53,7 +62,7 @@ export const listFollowUpStepsContent = async (sequenceId?: number) => {
   const sequence =
     sequenceId != null
       ? await FollowUpSequence.findByPk(sequenceId)
-      : await getActiveSequence();
+      : await getDefaultSequence();
 
   if (!sequence) return { sequence: null, steps: [] };
 
@@ -165,7 +174,7 @@ export const listFollowUpStepTimings = async (sequenceId?: number) => {
   const sequence =
     sequenceId != null
       ? await FollowUpSequence.findByPk(sequenceId)
-      : await getActiveSequence();
+      : await getDefaultSequence();
 
   if (!sequence) return { sequence: null, timings: [] };
 
@@ -357,10 +366,12 @@ export const listFollowUpEnrollments = async ({
   page = 1,
   limit = 20,
   status,
+  brandId,
 }: {
   page?: number;
   limit?: number;
   status?: string;
+  brandId?: number;
 } = {}) => {
   const safePage = Math.max(1, page);
   const safeLimit = Math.min(50, Math.max(5, limit));
@@ -368,6 +379,11 @@ export const listFollowUpEnrollments = async ({
 
   const where: Record<string, unknown> = {};
   if (status) where.status = status;
+
+  const accountWhere: Record<string, unknown> = {};
+  if (brandId != null && Number.isFinite(brandId)) {
+    accountWhere.brandId = brandId;
+  }
 
   const { rows, count } = await FollowUpEnrollment.findAndCountAll({
     where,
@@ -378,12 +394,19 @@ export const listFollowUpEnrollments = async ({
       {
         model: CustomerAccount,
         as: "customerAccount",
-        attributes: ["id", "status", "leadId"],
+        attributes: ["id", "status", "leadId", "brandId"],
+        where: Object.keys(accountWhere).length ? accountWhere : undefined,
+        required: Object.keys(accountWhere).length > 0,
         include: [
           {
             model: PortalCustomer,
             as: "portalCustomer",
             attributes: ["id", "email", "firstname", "lastname"],
+          },
+          {
+            model: Brand,
+            as: "brand",
+            attributes: ["id", "name"],
           },
         ],
       },
@@ -395,8 +418,61 @@ export const listFollowUpEnrollments = async ({
     ],
   });
 
+  const enrollmentIds = rows.map((row) => row.id);
+  const scheduledRows = enrollmentIds.length
+    ? await FollowUpScheduledEmail.findAll({
+        where: { enrollmentId: { [Op.in]: enrollmentIds } },
+        include: [
+          {
+            model: FollowUpStep,
+            as: "step",
+            attributes: ["id", "name", "sortOrder"],
+          },
+        ],
+        order: [["scheduledAt", "ASC"]],
+      })
+    : [];
+
+  const emailsByEnrollment = new Map<number, Array<Record<string, unknown>>>();
+  for (const scheduled of scheduledRows) {
+    const plain = scheduled.toJSON() as unknown as Record<string, unknown> & {
+      step?: { name?: string; sortOrder?: number };
+    };
+    const list = emailsByEnrollment.get(scheduled.enrollmentId) || [];
+    list.push({
+      stepId: scheduled.stepId,
+      stepName: plain.step?.name || `Step #${scheduled.stepId}`,
+      sortOrder: plain.step?.sortOrder ?? 0,
+      status: scheduled.status,
+      scheduledAt: scheduled.scheduledAt,
+      sentAt: scheduled.sentAt,
+    });
+    emailsByEnrollment.set(scheduled.enrollmentId, list);
+  }
+
+  const items = rows.map((row) => {
+    const json = row.toJSON() as unknown as Record<string, unknown>;
+    const emails = emailsByEnrollment.get(row.id) || [];
+    const sent = emails.filter((e) => e.status === "sent").length;
+    const pending = emails.filter(
+      (e) => e.status === "pending" || e.status === "processing"
+    ).length;
+    const failed = emails.filter((e) => e.status === "failed").length;
+
+    return {
+      ...json,
+      emailSummary: {
+        total: emails.length,
+        sent,
+        pending,
+        failed,
+        emails,
+      },
+    };
+  });
+
   return {
-    items: rows,
+    items,
     total: count,
     page: safePage,
     limit: safeLimit,

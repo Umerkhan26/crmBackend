@@ -15,6 +15,24 @@ import {
 } from "./portalActivity.service";
 import type { PortalActivityAction } from "../models/portalActivityEvent.model";
 
+const parseEngagementMetadata = (raw: unknown): Record<string, unknown> => {
+  if (!raw) return {};
+  if (typeof raw === "object" && !Array.isArray(raw)) {
+    return raw as Record<string, unknown>;
+  }
+  if (typeof raw === "string") {
+    try {
+      const parsed = JSON.parse(raw);
+      return typeof parsed === "object" && parsed && !Array.isArray(parsed)
+        ? (parsed as Record<string, unknown>)
+        : {};
+    } catch {
+      return {};
+    }
+  }
+  return {};
+};
+
 const activeWindowWhere = () => {
   const now = new Date();
   return {
@@ -251,25 +269,190 @@ export const listCustomerOffers = async (
   brandId: number,
   _opts?: { skipActivityLog?: boolean }
 ) => {
-  const { account } = await getPortalContext(portalCustomerId, brandId);
+  await getPortalContext(portalCustomerId, brandId);
+
+  const accounts = await CustomerAccount.findAll({
+    where: { portalCustomerId, brandId, status: "active" },
+    attributes: ["id", "saleId"],
+  });
+  const accountIds = accounts.map((a) => a.id);
+  if (!accountIds.length) return [];
+
+  const accountSaleById = new Map(
+    accounts.map((a) => [a.id, a.saleId ?? null])
+  );
+
   const rows = await CustomerEngagement.findAll({
     where: {
-      customerAccountId: account.id,
+      customerAccountId: { [Op.in]: accountIds },
       type: { [Op.in]: ["upsell", "discount"] },
       status: { [Op.in]: ["active", "sent", "applied"] },
     },
     order: [["createdAt", "DESC"]],
     limit: 50,
   });
-  return rows.map((r) => ({
-    id: r.id,
-    type: r.type,
-    title: r.title,
-    details: r.details,
-    status: r.status,
-    metadata: r.metadata,
-    createdAt: r.createdAt,
-  }));
+
+  const saleIds = [
+    ...new Set(
+      rows
+        .map((r) => r.saleId ?? accountSaleById.get(r.customerAccountId) ?? null)
+        .filter((id): id is number => id != null)
+    ),
+  ];
+
+  const sales = saleIds.length
+    ? await ProductSale.findAll({
+        where: { id: { [Op.in]: saleIds } },
+        attributes: ["id", "productType", "price", "status"],
+      })
+    : [];
+  const saleById = new Map(sales.map((s) => [s.id, s]));
+
+  return rows.map((r) => {
+    const meta = (r.metadata || {}) as Record<string, unknown>;
+    const saleId =
+      r.saleId ??
+      (meta.saleId as number | undefined) ??
+      accountSaleById.get(r.customerAccountId) ??
+      null;
+    const sale = saleId ? saleById.get(saleId) : null;
+    const discountPercent =
+      meta.discountPercent != null ? Number(meta.discountPercent) : null;
+    const saleOrderPrice =
+      sale?.price != null ? Number(sale.price) : null;
+    const originalPrice =
+      meta.originalPrice != null
+        ? Number(meta.originalPrice)
+        : saleOrderPrice;
+    let discountedPrice: number | null =
+      meta.discountedPrice != null ? Number(meta.discountedPrice) : null;
+    let discountAmount: number | null =
+      meta.discountAmount != null ? Number(meta.discountAmount) : null;
+    if (
+      discountedPrice == null &&
+      originalPrice != null &&
+      discountPercent != null &&
+      !Number.isNaN(discountPercent) &&
+      discountPercent > 0
+    ) {
+      discountAmount =
+        Math.round(originalPrice * (discountPercent / 100) * 100) / 100;
+      discountedPrice =
+        Math.round((originalPrice - discountAmount) * 100) / 100;
+    }
+    const offerPrice = meta.price != null ? Number(meta.price) : null;
+    const orderPrice =
+      meta.orderPrice != null ? Number(meta.orderPrice) : saleOrderPrice;
+    let combinedTotal: number | null =
+      meta.combinedTotal != null ? Number(meta.combinedTotal) : null;
+    if (
+      combinedTotal == null &&
+      orderPrice != null &&
+      offerPrice != null &&
+      r.type === "upsell"
+    ) {
+      combinedTotal = Math.round((orderPrice + offerPrice) * 100) / 100;
+    }
+
+    return {
+      id: r.id,
+      type: r.type,
+      title: r.title,
+      details: r.details,
+      status: r.status,
+      metadata: r.metadata,
+      createdAt: r.createdAt,
+      saleId,
+      order: sale
+        ? {
+            saleId: sale.id,
+            productType: sale.productType,
+            price: sale.price,
+            currency: "USD",
+            status: sale.status,
+          }
+        : null,
+      discountPercent,
+      discountCode: (meta.discountCode as string) || null,
+      validUntil: (meta.validUntil as string) || null,
+      productName: (meta.productName as string) || null,
+      offerPrice,
+      originalPrice,
+      discountedPrice,
+      discountAmount,
+      orderPrice,
+      combinedTotal,
+      customerResponse: (meta.customerResponse as string) || null,
+      customerRespondedAt: (meta.customerRespondedAt as string) || null,
+    };
+  });
+};
+
+export const respondToCustomerOffer = async (
+  portalCustomerId: number,
+  brandId: number,
+  engagementId: number,
+  action: "interested" | "claim" = "claim"
+) => {
+  const accounts = await CustomerAccount.findAll({
+    where: { portalCustomerId, brandId, status: "active" },
+    attributes: ["id"],
+  });
+  const accountIds = accounts.map((a) => a.id);
+  if (!accountIds.length) throw new Error("No customer account for this brand");
+
+  const engagement = await CustomerEngagement.findOne({
+    where: {
+      id: engagementId,
+      customerAccountId: { [Op.in]: accountIds },
+      type: { [Op.in]: ["upsell", "discount"] },
+    },
+  });
+  if (!engagement) throw new Error("Offer not found");
+
+  const meta = parseEngagementMetadata(engagement.metadata);
+  if (meta.customerResponse === action) {
+    return {
+      id: engagement.id,
+      customerResponse: action,
+      customerRespondedAt: meta.customerRespondedAt,
+      alreadyResponded: true,
+    };
+  }
+
+  const respondedAt = new Date().toISOString();
+  const nextMeta = {
+    ...meta,
+    customerResponse: action,
+    customerRespondedAt: respondedAt,
+  };
+  await engagement.update({ metadata: nextMeta });
+
+  const account =
+    accounts.find((a) => a.id === engagement.customerAccountId) || accounts[0];
+
+  await logPortalActivityFromContext(
+    { id: account.id, brandId },
+    portalCustomerId,
+    "offer_response",
+    {
+      title: portalActivityLabel("offer_response"),
+      metadata: {
+        engagementId: engagement.id,
+        saleId: engagement.saleId,
+        offerType: engagement.type,
+        response: action,
+        customerResponse: action,
+      },
+    }
+  );
+
+  return {
+    id: engagement.id,
+    customerResponse: action,
+    customerRespondedAt: respondedAt,
+    alreadyResponded: false,
+  };
 };
 
 export const listCustomerAnnouncements = async (

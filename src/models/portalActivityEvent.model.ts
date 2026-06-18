@@ -13,7 +13,8 @@ export type PortalActivityAction =
   | "dismiss_popup"
   | "download_invoice"
   | "view_services"
-  | "service_form_submitted";
+  | "service_form_submitted"
+  | "offer_response";
 
 export interface PortalActivityEventAttributes {
   id: number;

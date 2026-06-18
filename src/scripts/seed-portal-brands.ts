@@ -25,6 +25,26 @@ const PORTAL_BRANDS = [
     slug: "dnova",
     subdomain: "dnova",
     customerPortalUrl: PORTAL_BASE_URL,
+    salesFormConfig: {
+      portalTheme: {
+        primaryColor: "#141414",
+        accentColor: "#BA2222",
+        faviconUrl: "/Favicons/dnova.png",
+      },
+    },
+  },
+  {
+    name: "Look for Leeds",
+    slug: "lookforleads",
+    subdomain: "lookforleeds",
+    customerPortalUrl: PORTAL_BASE_URL,
+    salesFormConfig: {
+      portalTheme: {
+        primaryColor: "#0C27BC",
+        accentColor: "#A3CE38",
+        faviconUrl: "/Favicons/Looksforleeds.png",
+      },
+    },
   },
 ];
 

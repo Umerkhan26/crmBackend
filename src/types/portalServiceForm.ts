@@ -20,10 +20,20 @@ export interface PortalServiceFormField {
 export const normalizeFormFields = (
   raw: unknown
 ): PortalServiceFormField[] => {
-  if (!Array.isArray(raw)) return [];
+  let value = raw;
+
+  if (typeof value === "string") {
+    try {
+      value = JSON.parse(value);
+    } catch {
+      return [];
+    }
+  }
+
+  if (!Array.isArray(value)) return [];
 
   const fields: PortalServiceFormField[] = [];
-  for (const item of raw) {
+  for (const item of value) {
     if (!item || typeof item !== "object") continue;
     const row = item as Record<string, unknown>;
     const name = String(row.name || "").trim();
@@ -61,6 +71,26 @@ export const normalizeFormFields = (
   return fields.sort(
     (a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)
   );
+};
+
+export const normalizeFormData = (
+  raw: unknown
+): Record<string, unknown> => {
+  let value = raw;
+
+  if (typeof value === "string") {
+    try {
+      value = JSON.parse(value);
+    } catch {
+      return {};
+    }
+  }
+
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+
+  return value as Record<string, unknown>;
 };
 
 export const slugifyServiceName = (value: string): string =>

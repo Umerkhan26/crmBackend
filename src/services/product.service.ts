@@ -5,6 +5,7 @@ import ProductSale, {
 } from "../models/product.model";
 import Lead from "../models/lead.model";
 import User from "../models/user.model";
+import Brand from "../models/brand.model";
 import { getPagination, getPagingData } from "../utils/paginate";
 import { logActivity } from "./activity.service";
 import { sendNotification } from "./notification.service";
@@ -100,7 +101,31 @@ export const getAllSales = async ({
 }: SaleQueryParams) => {
   try {
     const { offset, limit: pageLimit } = getPagination({ page, limit });
-    const where: any = { ...filters };
+    const {
+      conversionDateFrom,
+      conversionDateTo,
+      brandId,
+      ...restFilters
+    } = filters as Record<string, unknown>;
+
+    const where: any = { ...restFilters };
+
+    if (brandId != null && brandId !== "") {
+      where.brandId = Number(brandId);
+    }
+
+    if (conversionDateFrom || conversionDateTo) {
+      where.conversionDate = {};
+      if (conversionDateFrom) {
+        where.conversionDate[Op.gte] = new Date(String(conversionDateFrom));
+      }
+      if (conversionDateTo) {
+        const end = new Date(String(conversionDateTo));
+        end.setHours(23, 59, 59, 999);
+        where.conversionDate[Op.lte] = end;
+      }
+    }
+
     const include: any = [
       {
         model: Lead,
@@ -110,9 +135,14 @@ export const getAllSales = async ({
         model: User,
         attributes: ["id", "firstname", "email"],
       },
+      {
+        model: Brand,
+        as: "brand",
+        attributes: ["id", "name"],
+      },
     ];
     if (search) {
-      where[Op.or] = [
+      const searchOr: any[] = [
         { productType: { [Op.like]: `%${search}%` } },
         { price: { [Op.like]: `%${search}%` } },
         { notes: { [Op.like]: `%${search}%` } },
@@ -144,6 +174,11 @@ export const getAllSales = async ({
           { [Op.like]: `%${search}%` }
         ),
       ];
+      const numericId = Number(search);
+      if (Number.isFinite(numericId) && numericId > 0) {
+        searchOr.push({ id: numericId });
+      }
+      where[Op.or] = searchOr;
     }
     const data = await ProductSale.findAndCountAll({
       offset,
@@ -169,8 +204,9 @@ export const getSaleById = async (id: number | string) => {
 
     const sale = await ProductSale.findByPk(numericId, {
       include: [
-        { model: Lead, attributes: ["id", "campaignName", "leadData"] },
-        { model: User, attributes: ["id", "firstname", "email"] },
+        { model: Lead, attributes: ["id", "campaignName", "leadData", "brandId"] },
+        { model: User, attributes: ["id", "firstname", "lastname", "email"] },
+        { model: Brand, as: "brand", attributes: ["id", "name"] },
       ],
     });
 

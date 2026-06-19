@@ -1,6 +1,8 @@
 import { Op } from "sequelize";
 import "../models/associations";
 import Brand from "../models/brand.model";
+import Lead from "../models/lead.model";
+import ProductSale from "../models/product.model";
 import PortalService from "../models/portalService.model";
 import PortalServiceSubmission from "../models/portalServiceSubmission.model";
 import CustomerAccount from "../models/customerAccount.model";
@@ -10,6 +12,146 @@ import {
   normalizeFormFields,
   slugifyServiceName,
 } from "../types/portalServiceForm";
+
+const PORTAL_CUSTOMER_ATTRS = [
+  "id",
+  "email",
+  "firstname",
+  "lastname",
+  "phone",
+  "status",
+  "last_login",
+  "createdAt",
+] as const;
+
+const submissionDetailIncludes = [
+  {
+    model: PortalService,
+    as: "service",
+  },
+  {
+    model: PortalCustomer,
+    as: "portalCustomer",
+    attributes: [...PORTAL_CUSTOMER_ATTRS],
+  },
+  {
+    model: CustomerAccount,
+    as: "customerAccount",
+    attributes: [
+      "id",
+      "leadId",
+      "saleId",
+      "status",
+      "brandId",
+      "portalCustomerId",
+      "createdAt",
+    ],
+    include: [
+      {
+        model: PortalCustomer,
+        as: "portalCustomer",
+        attributes: [...PORTAL_CUSTOMER_ATTRS],
+      },
+      {
+        model: Lead,
+        as: "lead",
+        required: false,
+        attributes: ["id", "campaignName", "leadData"],
+      },
+      {
+        model: ProductSale,
+        as: "sale",
+        required: false,
+        attributes: ["id", "status", "conversionDate", "productType", "price"],
+      },
+    ],
+  },
+  {
+    model: Brand,
+    as: "brand",
+    attributes: ["id", "name", "slug"],
+  },
+];
+
+const parseLeadData = (raw: unknown): Record<string, unknown> => {
+  if (!raw) return {};
+  if (typeof raw === "string") {
+    try {
+      return JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+      return {};
+    }
+  }
+  if (typeof raw === "object" && !Array.isArray(raw)) {
+    return raw as Record<string, unknown>;
+  }
+  return {};
+};
+
+const resolveCustomerContact = (json: Record<string, unknown>) => {
+  const portalCustomer = json.portalCustomer as Record<string, unknown> | undefined;
+  const account = json.customerAccount as Record<string, unknown> | undefined;
+  const accountPortalCustomer = account?.portalCustomer as
+    | Record<string, unknown>
+    | undefined;
+  const lead = account?.lead as Record<string, unknown> | undefined;
+  const leadData = parseLeadData(lead?.leadData);
+
+  const firstname =
+    portalCustomer?.firstname ||
+    accountPortalCustomer?.firstname ||
+    leadData.first_name ||
+    null;
+  const lastname =
+    portalCustomer?.lastname ||
+    accountPortalCustomer?.lastname ||
+    leadData.last_name ||
+    null;
+  const email =
+    portalCustomer?.email ||
+    accountPortalCustomer?.email ||
+    leadData.email ||
+    null;
+  const phone =
+    portalCustomer?.phone ||
+    accountPortalCustomer?.phone ||
+    leadData.phone_number ||
+    null;
+
+  const name = [firstname, lastname]
+    .filter((v) => v && String(v).trim())
+    .join(" ")
+    .trim();
+
+  return {
+    name: name || null,
+    firstname: firstname ? String(firstname) : null,
+    lastname: lastname ? String(lastname) : null,
+    email: email ? String(email) : null,
+    phone: phone ? String(phone) : null,
+    accountStatus: account?.status ? String(account.status) : null,
+    memberSince:
+      accountPortalCustomer?.createdAt ||
+      portalCustomer?.createdAt ||
+      account?.createdAt ||
+      null,
+    lastLogin:
+      portalCustomer?.last_login || accountPortalCustomer?.last_login || null,
+  };
+};
+
+const serializeSubmissionHistoryItem = (row: PortalServiceSubmission) => {
+  const json = row.toJSON() as unknown as Record<string, unknown>;
+  const service = json.service as Record<string, unknown> | undefined;
+  return {
+    id: json.id,
+    status: json.status,
+    submittedAt: json.submittedAt,
+    serviceId: json.serviceId,
+    serviceName: service?.name || null,
+    serviceSlug: service?.slug || null,
+  };
+};
 
 const serializePortalService = (row: PortalService) => {
   const json = row.toJSON() as unknown as Record<string, unknown>;
@@ -54,19 +196,39 @@ const ensureUniqueSlug = async (
   }
 };
 
-export const listPortalServicesAdmin = async (brandId?: number) => {
+export const listPortalServicesAdmin = async ({
+  brandId,
+  page = 1,
+  limit = 20,
+}: {
+  brandId?: number;
+  page?: number;
+  limit?: number;
+} = {}) => {
+  const safePage = Math.max(1, page);
+  const safeLimit = Math.min(100, Math.max(5, limit));
+  const offset = (safePage - 1) * safeLimit;
+
   const where: Record<string, unknown> = {};
   if (brandId) where.brandId = brandId;
 
-  const rows = await PortalService.findAll({
+  const { rows, count } = await PortalService.findAndCountAll({
     where,
     order: [
       ["sortOrder", "ASC"],
       ["id", "ASC"],
     ],
+    limit: safeLimit,
+    offset,
   });
 
-  return rows.map(serializePortalService);
+  return {
+    items: rows.map(serializePortalService),
+    total: count,
+    page: safePage,
+    limit: safeLimit,
+    totalPages: Math.ceil(count / safeLimit) || 1,
+  };
 };
 
 export const getPortalServiceAdmin = async (id: number) => {
@@ -236,30 +398,46 @@ export const listPortalServiceSubmissionsAdmin = async ({
 
 export const getPortalServiceSubmissionAdmin = async (id: number) => {
   const row = await PortalServiceSubmission.findByPk(id, {
+    include: submissionDetailIncludes as any,
+  });
+  if (!row) throw new Error("Service submission not found");
+
+  const serialized = serializePortalSubmission(row) as Record<string, unknown>;
+  const customerContact = resolveCustomerContact(serialized);
+
+  const historyWhere: Record<string, unknown> = {
+    id: { [Op.ne]: row.id },
+  };
+  if (row.portalCustomerId) {
+    historyWhere.portalCustomerId = row.portalCustomerId;
+  } else if (row.customerAccountId) {
+    historyWhere.customerAccountId = row.customerAccountId;
+  } else {
+    return {
+      ...serialized,
+      customerContact,
+      relatedSubmissions: [],
+    };
+  }
+
+  const historyRows = await PortalServiceSubmission.findAll({
+    where: historyWhere,
+    order: [["submittedAt", "DESC"]],
+    limit: 15,
     include: [
       {
         model: PortalService,
         as: "service",
-      },
-      {
-        model: PortalCustomer,
-        as: "portalCustomer",
-        attributes: ["id", "email", "firstname", "lastname", "phone"],
-      },
-      {
-        model: CustomerAccount,
-        as: "customerAccount",
-        attributes: ["id", "leadId", "status"],
-      },
-      {
-        model: Brand,
-        as: "brand",
         attributes: ["id", "name", "slug"],
       },
     ],
   });
-  if (!row) throw new Error("Service submission not found");
-  return serializePortalSubmission(row);
+
+  return {
+    ...serialized,
+    customerContact,
+    relatedSubmissions: historyRows.map(serializeSubmissionHistoryItem),
+  };
 };
 
 export const updatePortalServiceSubmissionAdmin = async (
@@ -276,30 +454,5 @@ export const updatePortalServiceSubmissionAdmin = async (
       : {}),
   });
 
-  const reloaded = await row.reload({
-    include: [
-      {
-        model: PortalService,
-        as: "service",
-        attributes: ["id", "name", "slug", "formFields"],
-      },
-      {
-        model: PortalCustomer,
-        as: "portalCustomer",
-        attributes: ["id", "email", "firstname", "lastname", "phone"],
-      },
-      {
-        model: CustomerAccount,
-        as: "customerAccount",
-        attributes: ["id", "leadId", "status"],
-      },
-      {
-        model: Brand,
-        as: "brand",
-        attributes: ["id", "name", "slug"],
-      },
-    ],
-  });
-
-  return serializePortalSubmission(reloaded);
+  return getPortalServiceSubmissionAdmin(id);
 };

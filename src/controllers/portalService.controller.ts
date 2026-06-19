@@ -10,9 +10,13 @@ export const listPortalServicesController = async (
     const brandId = req.query.brandId
       ? parseInt(String(req.query.brandId), 10)
       : undefined;
-    const data = await PortalServiceAdmin.listPortalServicesAdmin(
-      Number.isFinite(brandId) ? brandId : undefined
-    );
+    const page = parseInt(String(req.query.page || "1"), 10) || 1;
+    const limit = parseInt(String(req.query.limit || "20"), 10) || 20;
+    const data = await PortalServiceAdmin.listPortalServicesAdmin({
+      brandId: Number.isFinite(brandId) ? brandId : undefined,
+      page,
+      limit,
+    });
     return res.status(200).json({ success: true, data });
   } catch (e: any) {
     return res.status(500).json({ success: false, message: e.message });

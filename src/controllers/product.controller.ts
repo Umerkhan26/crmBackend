@@ -69,6 +69,16 @@ export const getAllSales = async (
     const filters: any = {};
     if (req.query.productType) filters.productType = req.query.productType;
     if (req.query.status) filters.status = req.query.status;
+    if (req.query.brandId) {
+      const brandId = parseInt(String(req.query.brandId), 10);
+      if (Number.isFinite(brandId)) filters.brandId = brandId;
+    }
+    if (req.query.conversionDateFrom) {
+      filters.conversionDateFrom = String(req.query.conversionDateFrom);
+    }
+    if (req.query.conversionDateTo) {
+      filters.conversionDateTo = String(req.query.conversionDateTo);
+    }
     const salesData = await ProductSaleService.getAllSales({
       page,
       limit,

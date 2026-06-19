@@ -6,6 +6,7 @@
 import db from "../../db";
 import "../models/index";
 import {
+  backfillPortalCustomerIdOnRelatedTables,
   columnExists,
   ensurePortalCustomerIdForeignKey,
   ensurePortalCustomersSchema,
@@ -42,6 +43,7 @@ const run = async () => {
   }
 
   await ensurePortalCustomerIdForeignKey();
+  await backfillPortalCustomerIdOnRelatedTables();
 
   if (await tableExists("portal_activity_events")) {
     const PortalActivityEvent = (

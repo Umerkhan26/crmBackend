@@ -20,7 +20,8 @@
     "sync:portal-domain": "npx ts-node src/scripts/sync-portal-domain.ts",
     "seed:customer-role": "npx ts-node src/scripts/seed-customer-role.ts",
     "migrate:portal-customers": "npx ts-node src/scripts/migrate-portal-customers.ts",
-    "sync:portal-customers": "npx ts-node src/scripts/sync-portal-customers.ts"
+    "sync:portal-customers": "npx ts-node src/scripts/sync-portal-customers.ts",
+    "sync:deploy": "npx ts-node src/scripts/sync-deploy.ts"
   },
   "keywords": [],
   "author": "",

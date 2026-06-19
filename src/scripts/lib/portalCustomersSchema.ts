@@ -268,6 +268,59 @@ export async function migratePortalRelatedUserIdColumns(
   }
 }
 
+/** Backfill portalCustomerId before Sequelize alter NOT NULL (legacy activity rows). */
+export async function backfillPortalCustomerIdOnRelatedTables(): Promise<void> {
+  if (
+    (await tableExists("portal_activity_events")) &&
+    (await columnExists("portal_activity_events", "portalCustomerId"))
+  ) {
+    if (await columnExists("portal_activity_events", "customerAccountId")) {
+      await db.query(`
+        UPDATE portal_activity_events pae
+        INNER JOIN customer_accounts ca ON ca.id = pae.customerAccountId
+        SET pae.portalCustomerId = ca.portalCustomerId
+        WHERE pae.portalCustomerId IS NULL AND ca.portalCustomerId IS NOT NULL
+      `);
+      console.log(
+        "   ✓ Backfilled portal_activity_events.portalCustomerId from customer_accounts"
+      );
+    }
+
+    const nullCountRows = (await db.query(
+      `SELECT COUNT(*) AS c FROM portal_activity_events WHERE portalCustomerId IS NULL`,
+      { type: QueryTypes.SELECT }
+    )) as Array<{ c: number }>;
+    const nullCount = Number(nullCountRows[0]?.c ?? 0);
+    if (nullCount > 0) {
+      await db.query(
+        `DELETE FROM portal_activity_events WHERE portalCustomerId IS NULL`
+      );
+      console.log(
+        `   ✓ Removed ${nullCount} legacy activity row(s) without portalCustomerId`
+      );
+    }
+  }
+
+  if (
+    (await tableExists("portal_popup_dismissals")) &&
+    (await columnExists("portal_popup_dismissals", "portalCustomerId"))
+  ) {
+    const nullCountRows = (await db.query(
+      `SELECT COUNT(*) AS c FROM portal_popup_dismissals WHERE portalCustomerId IS NULL`,
+      { type: QueryTypes.SELECT }
+    )) as Array<{ c: number }>;
+    const nullCount = Number(nullCountRows[0]?.c ?? 0);
+    if (nullCount > 0) {
+      await db.query(
+        `DELETE FROM portal_popup_dismissals WHERE portalCustomerId IS NULL`
+      );
+      console.log(
+        `   ✓ Removed ${nullCount} legacy popup dismissal row(s) without portalCustomerId`
+      );
+    }
+  }
+}
+
 export async function ensurePortalCustomerIdForeignKey(): Promise<void> {
   if (!(await columnExists("customer_accounts", "portalCustomerId"))) return;
 

@@ -544,6 +544,131 @@ export const dismissCustomerPopup = async (
   return { dismissed: true, popupId };
 };
 
+const stripHtmlText = (text: unknown): string =>
+  String(text || "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+export type CustomerActivityFeedItem = {
+  id: number;
+  feedType: "notification" | "announcement" | "offer";
+  title: string;
+  preview: string | null;
+  createdAt: Date | string | null;
+  unread?: boolean;
+};
+
+/** Paginated mixed feed for dashboard Recent activity (scroll to load more). */
+export const listCustomerActivityFeed = async (
+  portalCustomerId: number,
+  brandId: number,
+  opts: { page?: number; limit?: number } = {}
+) => {
+  await getPortalContext(portalCustomerId, brandId);
+
+  const page = Math.max(1, Number(opts.page) || 1);
+  const limit = Math.min(30, Math.max(1, Number(opts.limit) || 10));
+  const offset = (page - 1) * limit;
+  const fetchSize = offset + limit;
+
+  const accounts = await CustomerAccount.findAll({
+    where: { portalCustomerId, brandId, status: "active" },
+    attributes: ["id"],
+  });
+  const accountIds = accounts.map((a) => a.id);
+
+  const engagementWhere =
+    accountIds.length > 0
+      ? {
+          customerAccountId: { [Op.in]: accountIds },
+          type: { [Op.in]: ["notification", "upsell", "discount"] as const },
+        }
+      : null;
+
+  const annWhere = { brandId, ...activeWindowWhere() };
+
+  const [engagementTotal, annTotal] = await Promise.all([
+    engagementWhere
+      ? CustomerEngagement.count({ where: engagementWhere })
+      : Promise.resolve(0),
+    PortalAnnouncement.count({ where: annWhere }),
+  ]);
+  const total = engagementTotal + annTotal;
+
+  const [engagements, announcements] = await Promise.all([
+    engagementWhere
+      ? CustomerEngagement.findAll({
+          where: engagementWhere,
+          order: [["createdAt", "DESC"]],
+          limit: fetchSize,
+          attributes: [
+            "id",
+            "type",
+            "title",
+            "details",
+            "status",
+            "metadata",
+            "createdAt",
+          ],
+        })
+      : Promise.resolve([]),
+    PortalAnnouncement.findAll({
+      where: annWhere,
+      order: [["createdAt", "DESC"]],
+      limit: fetchSize,
+      attributes: ["id", "title", "body", "startsAt", "createdAt"],
+    }),
+  ]);
+
+  type SortableRow = CustomerActivityFeedItem & { sortAt: number };
+
+  const rows: SortableRow[] = [];
+
+  for (const r of engagements) {
+    const feedType = r.type === "notification" ? "notification" : "offer";
+    const meta = (r.metadata || {}) as Record<string, unknown>;
+    rows.push({
+      id: r.id,
+      feedType,
+      title: r.title || (feedType === "offer" ? "Offer" : "Notification"),
+      preview:
+        stripHtmlText(r.details).slice(0, 120) ||
+        (typeof meta.summary === "string" ? meta.summary : null),
+      createdAt: r.createdAt,
+      unread:
+        r.type === "notification" &&
+        !(r.status === "sent" || r.status === "applied"),
+      sortAt: new Date(r.createdAt || 0).getTime(),
+    });
+  }
+
+  for (const r of announcements) {
+    rows.push({
+      id: r.id,
+      feedType: "announcement",
+      title: r.title,
+      preview: stripHtmlText(r.body).slice(0, 120) || null,
+      createdAt: r.startsAt || r.createdAt,
+      unread: false,
+      sortAt: new Date(r.startsAt || r.createdAt || 0).getTime(),
+    });
+  }
+
+  rows.sort((a, b) => b.sortAt - a.sortAt);
+  const items = rows
+    .slice(offset, offset + limit)
+    .map(({ sortAt: _sortAt, ...item }) => item);
+
+  return {
+    items,
+    page,
+    limit,
+    total,
+    hasMore: offset + items.length < total,
+  };
+};
+
 export const listCustomerNotifications = async (
   portalCustomerId: number,
   brandId: number,

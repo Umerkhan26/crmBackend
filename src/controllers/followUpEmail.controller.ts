@@ -197,6 +197,33 @@ export const listFollowUpEnrollmentsController = async (
   }
 };
 
+export const backfillFollowUpEnrollmentsController = async (
+  req: CustomRequest,
+  res: Response
+): Promise<any> => {
+  try {
+    const brandId = req.body?.brandId ?? req.query.brandId;
+    const parsedBrandId =
+      brandId != null && brandId !== ""
+        ? parseInt(String(brandId), 10)
+        : undefined;
+    const data = await FollowUpEmailService.backfillFollowUpEnrollments({
+      brandId: Number.isFinite(parsedBrandId) ? parsedBrandId : undefined,
+      enrolledBy: req.user?.id ?? null,
+    });
+    return res.status(200).json({
+      success: true,
+      message: `Enrolled ${data.enrolled} customer(s); ${data.skipped} skipped.`,
+      data,
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      message: error?.message || "Failed to backfill enrollments",
+    });
+  }
+};
+
 export const getFollowUpStatsController = async (
   _req: CustomRequest,
   res: Response

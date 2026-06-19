@@ -263,6 +263,27 @@ export const customerNotificationsController = async (
   }
 };
 
+export const customerActivityFeedController = async (
+  req: CustomRequest,
+  res: Response
+): Promise<any> => {
+  try {
+    const page = parseInt(String(req.query.page || "1"), 10);
+    const limit = parseInt(String(req.query.limit || "10"), 10);
+    const data = await CustomerPortalService.listCustomerActivityFeed(
+      req.user!.id,
+      portalBrandId(req),
+      {
+        page: Number.isFinite(page) ? page : 1,
+        limit: Number.isFinite(limit) ? limit : 10,
+      }
+    );
+    return res.status(200).json({ success: true, data });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 export const customerStatsController = async (
   req: CustomRequest,
   res: Response

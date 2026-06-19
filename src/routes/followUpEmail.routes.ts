@@ -12,6 +12,7 @@ import {
   listFollowUpStepTimingsController,
   updateFollowUpStepTimingController,
   listFollowUpEnrollmentsController,
+  backfillFollowUpEnrollmentsController,
   getFollowUpStatsController,
   processFollowUpEmailsNowController,
 } from "../controllers/followUpEmail.controller";
@@ -49,6 +50,11 @@ router.patch(
 );
 
 router.get("/enrollments", checkPermission(managePerm), listFollowUpEnrollmentsController);
+router.post(
+  "/enrollments/backfill",
+  checkPermission(managePerm),
+  backfillFollowUpEnrollmentsController
+);
 router.get("/stats", checkPermission(managePerm), getFollowUpStatsController);
 router.post(
   "/process-now",

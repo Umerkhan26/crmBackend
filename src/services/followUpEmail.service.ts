@@ -362,6 +362,61 @@ export const enrollCustomerInFollowUps = async (params: {
   };
 };
 
+/** Enroll active portal customers who were provisioned before follow-ups existed. */
+export const backfillFollowUpEnrollments = async (opts?: {
+  brandId?: number;
+  enrolledBy?: number | null;
+}) => {
+  const sequence = await getActiveSequence();
+  if (!sequence) {
+    return {
+      enrolled: 0,
+      skipped: 0,
+      total: 0,
+      reason: "no_active_sequence" as const,
+    };
+  }
+
+  const accountWhere: Record<string, unknown> = { status: "active" };
+  if (opts?.brandId != null && Number.isFinite(opts.brandId)) {
+    accountWhere.brandId = opts.brandId;
+  }
+
+  const accounts = await CustomerAccount.findAll({
+    where: accountWhere,
+    include: [
+      {
+        model: PortalCustomer,
+        as: "portalCustomer",
+        required: true,
+        attributes: ["id", "email"],
+      },
+    ],
+  });
+
+  let enrolled = 0;
+  let skipped = 0;
+
+  for (const account of accounts) {
+    const existing = await FollowUpEnrollment.findOne({
+      where: { customerAccountId: account.id, sequenceId: sequence.id },
+    });
+    if (existing?.status === "active") {
+      skipped += 1;
+      continue;
+    }
+
+    const result = await enrollCustomerInFollowUps({
+      customerAccountId: account.id,
+      enrolledBy: opts?.enrolledBy ?? null,
+    });
+    if (result.enrolled) enrolled += 1;
+    else skipped += 1;
+  }
+
+  return { enrolled, skipped, total: accounts.length };
+};
+
 export const listFollowUpEnrollments = async ({
   page = 1,
   limit = 20,

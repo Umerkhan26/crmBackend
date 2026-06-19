@@ -14,6 +14,7 @@ import {
   customerPopupsController,
   dismissPopupController,
   customerNotificationsController,
+  customerActivityFeedController,
   customerStatsController,
   trackPortalActivityController,
   customerServicesController,
@@ -69,6 +70,11 @@ router.get(
   "/notifications",
   requirePortalBrand,
   customerNotificationsController
+);
+router.get(
+  "/activity-feed",
+  requirePortalBrand,
+  customerActivityFeedController
 );
 router.get("/services", requirePortalBrand, customerServicesController);
 router.get(

@@ -7,12 +7,17 @@ import PortalAnnouncement from "../models/portalAnnouncement.model";
 import PortalPopup from "../models/portalPopup.model";
 import PortalPopupDismissal from "../models/portalPopupDismissal.model";
 import ProductSale from "../models/product.model";
-import Lead from "../models/lead.model";
+import Lead, { AssigneeWithStatus } from "../models/lead.model";
+import PortalCustomer from "../models/portalCustomer.model";
+import Role from "../models/role.model";
+import { User } from "../models/user.model";
 import { resolvePortalBrand, normalizePortalBaseUrl } from "../utils/portalHost";
+import { getBrandManagerIdsForUser } from "../utils/brandUtils";
 import {
   logPortalActivityFromContext,
   portalActivityLabel,
 } from "./portalActivity.service";
+import { sendNotification } from "./notification.service";
 import type { PortalActivityAction } from "../models/portalActivityEvent.model";
 
 const parseEngagementMetadata = (raw: unknown): Record<string, unknown> => {
@@ -31,6 +36,123 @@ const parseEngagementMetadata = (raw: unknown): Record<string, unknown> => {
     }
   }
   return {};
+};
+
+const parseLeadAssignees = (raw: unknown): AssigneeWithStatus[] => {
+  if (Array.isArray(raw)) return raw as AssigneeWithStatus[];
+  if (typeof raw === "string") {
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? (parsed as AssigneeWithStatus[]) : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+};
+
+const ADMIN_ROLE_NAMES = new Set(["admin", "adminn"]);
+
+const getAdminUserIds = async (): Promise<number[]> => {
+  const roles = await Role.findAll({
+    where: { name: { [Op.in]: [...ADMIN_ROLE_NAMES] } },
+    attributes: ["id"],
+  });
+  const roleIds = roles.map((r) => r.id);
+  if (!roleIds.length) return [];
+
+  const users = await User.findAll({
+    where: { roleId: { [Op.in]: roleIds } },
+    attributes: ["id"],
+  });
+  return users.map((u) => Number(u.id)).filter((id) => id > 0);
+};
+
+/** Assigned agents + their brand managers + all admins. */
+const resolveOfferClaimNotifyUserIds = async (input: {
+  saleId?: number | null;
+  leadId?: number | null;
+  createdBy?: number | null;
+}): Promise<number[]> => {
+  const agentIds = new Set<number>();
+  let leadId = input.leadId ?? null;
+
+  if (input.saleId) {
+    const sale = await ProductSale.findByPk(input.saleId, {
+      attributes: ["assigneeId", "leadId"],
+    });
+    if (sale?.assigneeId) agentIds.add(Number(sale.assigneeId));
+    if (!leadId && sale?.leadId) leadId = sale.leadId;
+  }
+
+  if (leadId) {
+    const lead = await Lead.findByPk(leadId, { attributes: ["assignees"] });
+    for (const row of parseLeadAssignees(lead?.assignees)) {
+      const uid = Number(row?.userId);
+      if (Number.isFinite(uid) && uid > 0) agentIds.add(uid);
+    }
+  }
+
+  if (!agentIds.size && input.createdBy) {
+    agentIds.add(Number(input.createdBy));
+  }
+
+  const recipients = new Set<number>(agentIds);
+
+  for (const agentId of agentIds) {
+    const managerIds = await getBrandManagerIdsForUser(agentId);
+    for (const managerId of managerIds) recipients.add(managerId);
+  }
+
+  for (const adminId of await getAdminUserIds()) {
+    recipients.add(adminId);
+  }
+
+  return [...recipients];
+};
+
+const notifyAgentsOnOfferClaim = async (input: {
+  portalCustomerId: number;
+  engagement: CustomerEngagement;
+  account: CustomerAccount;
+}) => {
+  const { portalCustomerId, engagement, account } = input;
+  const saleId =
+    engagement.saleId ??
+    (parseEngagementMetadata(engagement.metadata).saleId as number | undefined) ??
+    account.saleId ??
+    null;
+
+  const userIds = await resolveOfferClaimNotifyUserIds({
+    saleId,
+    leadId: account.leadId ?? null,
+    createdBy: engagement.createdBy,
+  });
+  if (!userIds.length) return;
+
+  const customer = await PortalCustomer.findByPk(portalCustomerId, {
+    attributes: ["firstname", "lastname", "email"],
+  });
+  const customerName =
+    [customer?.firstname, customer?.lastname].filter(Boolean).join(" ") ||
+    customer?.email ||
+    "A customer";
+
+  const offerLabel = engagement.type === "discount" ? "discount" : "upsell offer";
+  const orderPart = saleId ? ` on order #${saleId}` : "";
+  const message = `${customerName} claimed your ${offerLabel}: "${engagement.title}"${orderPart}`;
+
+  await Promise.all(
+    userIds.map((userId) =>
+      sendNotification(userId, message, customerName, {
+        type: "offer_claim",
+        engagementId: engagement.id,
+        saleId,
+        customerAccountId: account.id,
+        portalCustomerId,
+      })
+    )
+  );
 };
 
 const activeWindowWhere = () => {
@@ -399,7 +521,7 @@ export const respondToCustomerOffer = async (
 ) => {
   const accounts = await CustomerAccount.findAll({
     where: { portalCustomerId, brandId, status: "active" },
-    attributes: ["id"],
+    attributes: ["id", "leadId", "saleId"],
   });
   const accountIds = accounts.map((a) => a.id);
   if (!accountIds.length) throw new Error("No customer account for this brand");
@@ -449,6 +571,18 @@ export const respondToCustomerOffer = async (
       },
     }
   );
+
+  if (action === "claim") {
+    try {
+      await notifyAgentsOnOfferClaim({
+        portalCustomerId,
+        engagement,
+        account,
+      });
+    } catch (err) {
+      console.error("Offer claim agent notification failed:", err);
+    }
+  }
 
   return {
     id: engagement.id,

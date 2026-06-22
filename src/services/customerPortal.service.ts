@@ -72,6 +72,9 @@ export const getBrandConfigForPortal = async (brand: Brand) => {
           ? salesFormConfig.services
           : [],
       ...portalTheme,
+      tawkPropertyId: portalTheme.tawkPropertyId ?? null,
+      tawkWidgetId: portalTheme.tawkWidgetId ?? null,
+      tawkEnabled: portalTheme.tawkEnabled !== false,
     },
     localDev: {
       hint: "On localhost pass ?brandSlug=emrills or header x-customer-host: customer.emrills.com",

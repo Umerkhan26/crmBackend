@@ -12,19 +12,27 @@ interface SendEmailOptions {
     pass?: string;
     fromName?: string;
   };
+  replyTo?: string;
   /** When true, never fall back to DEFAULT_SMTP — customer portal emails only. */
   strict?: boolean;
   to: string;
   subject: string;
   body: string;
+  attachments?: Array<{
+    filename: string;
+    path: string;
+    cid: string;
+  }>;
 }
 
 export const sendEmail = async ({
   smtp,
+  replyTo,
   strict = false,
   to,
   subject,
   body,
+  attachments,
 }: SendEmailOptions): Promise<void> => {
   if (strict) {
     const host = smtp?.host?.trim();
@@ -62,15 +70,25 @@ export const sendEmail = async ({
   });
 
   try {
-    // Check if body is already HTML (contains HTML tags)
     const isHTML = /<[a-z][\s\S]*>/i.test(body);
-    
+    const textBody = isHTML ? body.replace(/<[^>]*>/g, "") : body;
+
     await transporter.sendMail({
       from: `"${fromName}" <${user}>`,
+      replyTo: replyTo?.trim() || user,
       to,
       subject,
-      text: isHTML ? body.replace(/<[^>]*>/g, '') : body, // Strip HTML for text version
-      html: isHTML ? body : body.replace(/\n/g, "<br>"), // Use as-is if HTML, otherwise convert newlines
+      text: textBody,
+      html: isHTML ? body : body.replace(/\n/g, "<br>"),
+      attachments: attachments?.map((file) => ({
+        filename: file.filename,
+        path: file.path,
+        cid: file.cid,
+      })),
+      headers: {
+        "X-Auto-Response-Suppress": "OOF, AutoReply",
+        Precedence: "auto",
+      },
     });
   } catch (error) {
     throw error;

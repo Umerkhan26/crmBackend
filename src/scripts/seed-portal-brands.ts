@@ -20,7 +20,7 @@ const PORTAL_BRANDS = [
       portalTheme: {
         primaryColor: "#ee400a",
         accentColor: "#f55613",
-        faviconUrl: "/Favicons/GWB.png",
+        faviconUrl: "/api/email-assets/Favicons/GWB.png",
         supportEmail: "support@globalwebbuilders.com",
         tawkPropertyId: "6a35b2fc0892181d4aaf0584",
         tawkWidgetId: "1jrgs6bga",
@@ -35,6 +35,7 @@ const PORTAL_BRANDS = [
     customerPortalUrl: PORTAL_BASE_URL,
     salesFormConfig: {
       portalTheme: {
+        logoUrl: "/api/email-assets/brands/emrills/logo.png",
         tawkPropertyId: "6a35b3bf16fcef1d436fb9d5",
         tawkWidgetId: "1jrgsc9q3",
         tawkEnabled: true,
@@ -50,7 +51,7 @@ const PORTAL_BRANDS = [
       portalTheme: {
         primaryColor: "#141414",
         accentColor: "#BA2222",
-        faviconUrl: "/Favicons/dnova.png",
+        faviconUrl: "/api/email-assets/Favicons/dnova.png",
         tawkPropertyId: "6a35b4310f767c1d42224904",
         tawkWidgetId: "1jrgsfojg",
         tawkEnabled: true,
@@ -66,7 +67,7 @@ const PORTAL_BRANDS = [
       portalTheme: {
         primaryColor: "#0C27BC",
         accentColor: "#A3CE38",
-        faviconUrl: "/Favicons/Looksforleeds.png",
+        faviconUrl: "/api/email-assets/Favicons/Looksforleeds.png",
         tawkPropertyId: "6a35a648c398881d47976c4e",
         tawkWidgetId: "1jrgp3381",
         tawkEnabled: true,

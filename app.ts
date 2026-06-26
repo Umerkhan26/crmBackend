@@ -70,6 +70,22 @@ app.use(
   })
 );
 
+/** Customer email logos/favicons — crmBackend/public/ → /api/email-assets/Favicons/... */
+const emailPublicCandidates = [
+  path.join(__dirname, "public"),
+  path.join(__dirname, "..", "public"),
+];
+const emailPublicDir =
+  emailPublicCandidates.find((dir) =>
+    fs.existsSync(path.join(dir, "Favicons"))
+  ) || emailPublicCandidates[0];
+app.use(
+  "/api/email-assets",
+  express.static(emailPublicDir, { maxAge: "7d", fallthrough: false })
+);
+
+export const emailAssetsPublicDir = emailPublicDir;
+
 // Route files that need specific mount paths or load order
 // IMPORTANT: More specific paths (e.g. /api/brands) must load BEFORE generic /api
 // so /api/brands is not caught by a router with /api/:id

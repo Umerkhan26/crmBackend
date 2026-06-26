@@ -6,6 +6,8 @@ import Brand from "../models/brand.model";
 import Lead, { AssigneeWithStatus, LeadStatus } from "../models/lead.model";
 import ProductSale from "../models/product.model";
 import PortalPopupDismissal from "../models/portalPopupDismissal.model";
+import FollowUpEnrollment from "../models/followUpEnrollment.model";
+import FollowUpScheduledEmail from "../models/followUpScheduledEmail.model";
 import { getPagination, getPagingData } from "../utils/paginate";
 import {
   provisionCustomerFromSale,
@@ -508,6 +510,23 @@ export const deleteCustomerAccount = async (id: number) => {
   let portalCustomerDeleted = false;
 
   await db.transaction(async (transaction) => {
+    const enrollments = await FollowUpEnrollment.findAll({
+      where: { customerAccountId: id },
+      attributes: ["id"],
+      transaction,
+    });
+    const enrollmentIds = enrollments.map((row) => row.id);
+    if (enrollmentIds.length) {
+      await FollowUpScheduledEmail.destroy({
+        where: { enrollmentId: { [Op.in]: enrollmentIds } },
+        transaction,
+      });
+      await FollowUpEnrollment.destroy({
+        where: { id: { [Op.in]: enrollmentIds } },
+        transaction,
+      });
+    }
+
     await account.destroy({ transaction });
 
     if (saleId) {

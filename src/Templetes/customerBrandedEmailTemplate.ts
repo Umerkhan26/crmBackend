@@ -28,9 +28,27 @@ export const customerBrandedEmailTemplate = (
   const year = new Date().getFullYear();
   const headerImage = getCustomerEmailHeaderImage(theme);
 
-  const logoBlock = headerImage
-    ? `<img src="${escapeHtml(headerImage.url)}" alt="${escapeHtml(theme.brandLabel)}" width="56" height="56" style="display:block;margin:0 auto 14px;border-radius:12px;background:#ffffff;padding:8px;box-shadow:0 4px 12px rgba(0,0,0,0.1);" />`
-    : `<div style="display:inline-block;width:72px;height:72px;line-height:72px;border-radius:14px;background:#ffffff;color:${theme.primaryColor};font-size:28px;font-weight:700;margin:0 auto 14px;box-shadow:0 4px 16px rgba(0,0,0,0.12);">${escapeHtml(theme.brandName.slice(0, 2).toUpperCase())}</div>`;
+  const iconImg = headerImage
+    ? headerImage.variant === "icon"
+      ? `<img src="${escapeHtml(headerImage.url)}" alt="${escapeHtml(theme.brandLabel)}" width="52" height="52" style="display:block;border-radius:12px;background:#ffffff;padding:8px;box-shadow:0 2px 8px rgba(0,0,0,0.12);" />`
+      : `<img src="${escapeHtml(headerImage.url)}" alt="${escapeHtml(theme.brandLabel)}" style="display:block;max-width:200px;max-height:56px;height:auto;width:auto;border-radius:8px;" />`
+    : `<div style="display:inline-block;min-width:52px;height:52px;line-height:52px;border-radius:12px;background:#ffffff;color:${theme.primaryColor};font-size:18px;font-weight:700;padding:0 14px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,0.12);">${escapeHtml(theme.brandName.slice(0, 2).toUpperCase())}</div>`;
+
+  const headerBlock =
+    headerImage?.variant === "logo"
+      ? `<div style="text-align:left;">${iconImg}</div>`
+      : `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+      <tr>
+        <td align="left" valign="middle" style="width:52px;padding-right:16px;">
+          ${iconImg}
+        </td>
+        <td align="left" valign="middle">
+          <p style="margin:0;font-size:20px;font-weight:700;color:#ffffff;letter-spacing:-0.02em;line-height:1.25;">${escapeHtml(theme.brandLabel)}</p>
+          <p style="margin:6px 0 0;font-size:13px;color:rgba(255,255,255,0.92);line-height:1.4;">${escapeHtml(theme.tagline)}</p>
+        </td>
+      </tr>
+    </table>`;
 
   const greetingBlock = greeting
     ? `<p style="margin:0 0 18px 0;font-size:17px;font-weight:600;color:${theme.primaryColor};line-height:1.4;">${escapeHtml(greeting)}</p>`
@@ -69,10 +87,8 @@ export const customerBrandedEmailTemplate = (
       <td align="center" style="padding:36px 16px;">
         <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;background-color:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 8px 32px rgba(15,23,42,0.1);">
           <tr>
-            <td style="background:linear-gradient(135deg, ${theme.primaryColor} 0%, ${theme.accentColor} 100%);padding:32px 28px 28px;text-align:center;">
-              ${logoBlock}
-              <p style="margin:0;font-size:22px;font-weight:700;color:#ffffff;letter-spacing:-0.02em;">${escapeHtml(theme.brandLabel)}</p>
-              <p style="margin:8px 0 0;font-size:13px;color:rgba(255,255,255,0.92);line-height:1.4;">${escapeHtml(theme.tagline)}</p>
+            <td style="background:linear-gradient(135deg, ${theme.primaryColor} 0%, ${theme.accentColor} 100%);padding:28px 32px;text-align:left;">
+              ${headerBlock}
             </td>
           </tr>
           <tr>

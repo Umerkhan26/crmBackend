@@ -7,6 +7,10 @@ import {
   type CustomerEmailBrandTheme,
   buildCustomerEmailBrandTheme,
 } from "./customerEmailBrandTheme";
+import {
+  applyCustomerEmailHeaderDelivery,
+  getCustomerEmailHeaderDelivery,
+} from "./customerEmailAssetFiles";
 
 /** Sender display name + sign-off for all customer-facing emails (all brands). */
 export const CUSTOMER_EMAIL_BRAND_NAME =
@@ -34,11 +38,30 @@ export const sendCustomerPortalEmail = async (params: {
     params.theme?.brandLabel?.trim() ||
     CUSTOMER_EMAIL_BRAND_NAME;
   const smtp = getCustomerPortalSmtpForSend(senderName);
+  const replyTo =
+    params.theme?.supportEmail?.trim() ||
+    process.env.CUSTOMER_PORTAL_REPLY_TO?.trim() ||
+    smtp.user;
+  let body = params.body;
+  let attachments:
+    | Array<{ filename: string; path: string; cid: string }>
+    | undefined;
+
+  if (params.theme) {
+    const delivery = getCustomerEmailHeaderDelivery(params.theme);
+    if (delivery?.attachment) {
+      body = applyCustomerEmailHeaderDelivery(body, params.theme, delivery);
+      attachments = [delivery.attachment];
+    }
+  }
+
   await sendEmail({
     smtp,
+    replyTo,
     to: params.to,
     subject: params.subject,
-    body: params.body,
+    body,
+    attachments,
     strict: true,
   });
 };

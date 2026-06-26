@@ -10,6 +10,7 @@ import FollowUpScheduledEmail from "../models/followUpScheduledEmail.model";
 import CustomerAccount from "../models/customerAccount.model";
 import PortalCustomer from "../models/portalCustomer.model";
 import Brand from "../models/brand.model";
+import db from "../../db";
 
 export const addDelay = (
   base: Date,
@@ -18,6 +19,26 @@ export const addDelay = (
 ): Date => {
   const ms = unit === "hours" ? amount * 3_600_000 : amount * 86_400_000;
   return new Date(base.getTime() + ms);
+};
+
+/** Remove enrollments/emails left after step or customer deletion. */
+export const purgeOrphanFollowUpData = async () => {
+  await db.query(`
+    DELETE se FROM follow_up_scheduled_emails se
+    LEFT JOIN follow_up_steps st ON st.id = se.stepId
+    WHERE st.id IS NULL
+  `);
+  await db.query(`
+    DELETE se FROM follow_up_scheduled_emails se
+    INNER JOIN follow_up_enrollments e ON e.id = se.enrollmentId
+    LEFT JOIN customer_accounts ca ON ca.id = e.customerAccountId
+    WHERE ca.id IS NULL
+  `);
+  await db.query(`
+    DELETE e FROM follow_up_enrollments e
+    LEFT JOIN customer_accounts ca ON ca.id = e.customerAccountId
+    WHERE ca.id IS NULL
+  `);
 };
 
 const getActiveSequence = async () => {
@@ -161,11 +182,8 @@ export const deleteFollowUpStep = async (stepId: number) => {
   const step = await FollowUpStep.findByPk(stepId);
   if (!step) throw new Error("Follow-up step not found");
 
-  await FollowUpScheduledEmail.update(
-    { status: "cancelled" },
-    { where: { stepId, status: { [Op.in]: ["pending", "processing"] } } }
-  );
-
+  await FollowUpScheduledEmail.destroy({ where: { stepId } });
+  await FollowUpStepTiming.destroy({ where: { stepId } });
   await step.destroy();
   return { deleted: true };
 };
@@ -428,6 +446,8 @@ export const listFollowUpEnrollments = async ({
   status?: string;
   brandId?: number;
 } = {}) => {
+  await purgeOrphanFollowUpData();
+
   const safePage = Math.max(1, page);
   const safeLimit = Math.min(50, Math.max(5, limit));
   const offset = (safePage - 1) * safeLimit;
@@ -451,7 +471,7 @@ export const listFollowUpEnrollments = async ({
         as: "customerAccount",
         attributes: ["id", "status", "leadId", "brandId"],
         where: Object.keys(accountWhere).length ? accountWhere : undefined,
-        required: Object.keys(accountWhere).length > 0,
+        required: true,
         include: [
           {
             model: PortalCustomer,
@@ -476,12 +496,16 @@ export const listFollowUpEnrollments = async ({
   const enrollmentIds = rows.map((row) => row.id);
   const scheduledRows = enrollmentIds.length
     ? await FollowUpScheduledEmail.findAll({
-        where: { enrollmentId: { [Op.in]: enrollmentIds } },
+        where: {
+          enrollmentId: { [Op.in]: enrollmentIds },
+          status: { [Op.notIn]: ["cancelled", "skipped"] },
+        },
         include: [
           {
             model: FollowUpStep,
             as: "step",
             attributes: ["id", "name", "sortOrder"],
+            required: true,
           },
         ],
         order: [["scheduledAt", "ASC"]],

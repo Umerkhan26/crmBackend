@@ -1,5 +1,10 @@
+import fs from "fs";
+import path from "path";
 import Brand from "../models/brand.model";
 import { normalizePortalBaseUrl } from "./portalHost";
+
+/** CRM API path prefix for email template images (see app.ts static mount). */
+export const EMAIL_ASSET_ROUTE_PREFIX = "/api/email-assets";
 
 export type CustomerEmailBrandTheme = {
   themeKey: string;
@@ -17,7 +22,7 @@ export type CustomerEmailBrandTheme = {
   portalUrl: string;
 };
 
-const FAVICON_FILE: Record<string, string> = {
+export const CUSTOMER_EMAIL_FAVICON_FILES: Record<string, string> = {
   gwb: "GWB.png",
   emrills: "emrills.png",
   dnova: "dnova.png",
@@ -89,25 +94,46 @@ const STATIC_THEMES: Record<string, ThemeBase> = {
   },
 };
 
-const PRODUCTION_EMAIL_ASSET_BASE = "https://customerarea.live";
-
-const assetBaseUrl = (): string => {
-  const explicit = process.env.CUSTOMER_PORTAL_EMAIL_ASSET_BASE_URL?.trim();
+/** Public URL where CRM serves email assets via /api/email-assets. */
+export const getCustomerEmailAssetBaseUrl = (): string => {
+  const explicit =
+    process.env.CUSTOMER_EMAIL_ASSET_BASE_URL?.trim() ||
+    process.env.CUSTOMER_PORTAL_EMAIL_ASSET_BASE_URL?.trim();
   if (explicit) return normalizePortalBaseUrl(explicit);
 
-  const base = normalizePortalBaseUrl();
-  if (/localhost|127\.0\.0\.1/i.test(base)) {
-    return PRODUCTION_EMAIL_ASSET_BASE;
-  }
-  return base;
+  const backendPublic =
+    process.env.BACKEND_PUBLIC_URL?.trim() ||
+    process.env.API_PUBLIC_URL?.trim();
+  if (backendPublic) return normalizePortalBaseUrl(backendPublic);
+
+  // CRM API is served on the same host as the frontend (e.g. https://xcrm.live/api/...).
+  const frontEnd = process.env.FRONT_END_URL?.trim();
+  if (frontEnd) return normalizePortalBaseUrl(frontEnd);
+
+  const port = process.env.PORT || "3000";
+  return `http://localhost:${port}`;
+};
+
+const assetBaseUrl = (): string => getCustomerEmailAssetBaseUrl();
+
+/** Map legacy portal paths to CRM email-assets route. */
+export const normalizeEmailAssetPath = (rawPath?: string | null): string | null => {
+  const raw = String(rawPath || "").trim();
+  if (!raw) return null;
+  if (raw.startsWith(EMAIL_ASSET_ROUTE_PREFIX)) return raw;
+  if (raw.startsWith("/Favicons/")) return `${EMAIL_ASSET_ROUTE_PREFIX}${raw}`;
+  if (raw.startsWith("/brands/")) return `${EMAIL_ASSET_ROUTE_PREFIX}${raw}`;
+  if (raw.startsWith("Favicons/")) return `${EMAIL_ASSET_ROUTE_PREFIX}/${raw}`;
+  if (raw.startsWith("brands/")) return `${EMAIL_ASSET_ROUTE_PREFIX}/${raw}`;
+  return raw;
 };
 
 export const toAbsoluteAssetUrl = (path?: string | null): string | null => {
-  const raw = String(path || "").trim();
-  if (!raw) return null;
-  if (/^https?:\/\//i.test(raw)) return raw;
+  const normalized = normalizeEmailAssetPath(path);
+  if (!normalized) return null;
+  if (/^https?:\/\//i.test(normalized)) return normalized;
   const base = assetBaseUrl().replace(/\/$/, "");
-  return `${base}${raw.startsWith("/") ? raw : `/${raw}`}`;
+  return `${base}${normalized.startsWith("/") ? normalized : `/${normalized}`}`;
 };
 
 export const resolveCustomerEmailThemeKey = (brand?: {
@@ -131,16 +157,15 @@ export const resolveCustomerEmailThemeKey = (brand?: {
 };
 
 const defaultLogoPath = (themeKey: string): string | null => {
-  if (themeKey === "emrills") return "/brands/emrills/logo.png";
-  return null;
+  if (!themeKey) return null;
+  return `${EMAIL_ASSET_ROUTE_PREFIX}/brands/${themeKey}/logo.png`;
 };
 
 const defaultIconPath = (themeKey: string): string | null => {
-  const file = FAVICON_FILE[themeKey];
-  return file ? `/Favicons/${file}` : null;
+  const file = CUSTOMER_EMAIL_FAVICON_FILES[themeKey];
+  return file ? `${EMAIL_ASSET_ROUTE_PREFIX}/Favicons/${file}` : null;
 };
 
-/** Known brands always use canonical favicon filename (case-sensitive on server). */
 const resolveEmailIconPath = (
   themeKey: string,
   faviconOverride?: string | null
@@ -148,10 +173,10 @@ const resolveEmailIconPath = (
   const canonical = defaultIconPath(themeKey);
   if (canonical) return canonical;
 
-  const override = String(faviconOverride || "").trim();
+  const override = normalizeEmailAssetPath(faviconOverride);
   if (override) return override;
 
-  return `/brands/${themeKey}/logo.png`;
+  return defaultLogoPath(themeKey);
 };
 
 export const buildCustomerEmailBrandTheme = (
@@ -168,7 +193,7 @@ export const buildCustomerEmailBrandTheme = (
 ): CustomerEmailBrandTheme => {
   const base = STATIC_THEMES[themeKey] || STATIC_THEMES.gwb;
   const logoUrl = toAbsoluteAssetUrl(
-    overrides?.logoUrl || defaultLogoPath(themeKey)
+    normalizeEmailAssetPath(overrides?.logoUrl) || defaultLogoPath(themeKey)
   );
   const iconUrl = toAbsoluteAssetUrl(
     resolveEmailIconPath(themeKey, overrides?.faviconUrl)
@@ -183,7 +208,7 @@ export const buildCustomerEmailBrandTheme = (
     logoUrl,
     iconUrl,
     supportEmail: overrides?.supportEmail?.trim() || null,
-    portalUrl: assetBaseUrl(),
+    portalUrl: normalizePortalBaseUrl(),
   };
 };
 
@@ -214,15 +239,19 @@ export const getCustomerEmailBrandTheme = async (
   return getCustomerEmailBrandThemeFromBrand(brand);
 };
 
-/** Header image — square favicon preferred (wordmark logos look poor in email headers). */
+/** Email header — favicon + brand text. */
 export const getCustomerEmailHeaderImage = (
   theme: CustomerEmailBrandTheme
-): { url: string; isSquare: boolean } | null => {
-  if (theme.iconUrl) return { url: theme.iconUrl, isSquare: true };
-
-  const brandLogo = toAbsoluteAssetUrl(`/brands/${theme.themeKey}/logo.png`);
-  if (brandLogo) return { url: brandLogo, isSquare: false };
-
-  if (theme.logoUrl) return { url: theme.logoUrl, isSquare: false };
+): { url: string; variant: "logo" | "icon" } | null => {
+  if (theme.iconUrl) return { url: theme.iconUrl, variant: "icon" };
+  if (theme.logoUrl) return { url: theme.logoUrl, variant: "logo" };
   return null;
+};
+
+export const resolveEmailHeaderImageSrc = (
+  theme: CustomerEmailBrandTheme
+): { src: string; variant: "logo" | "icon" } | null => {
+  const header = getCustomerEmailHeaderImage(theme);
+  if (!header) return null;
+  return { src: header.url, variant: header.variant };
 };

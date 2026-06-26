@@ -3,7 +3,7 @@ import db from "./db";
 import "./src/models/index";
 import http from "http";
 import { Server as SocketIOServer } from "socket.io";
-import app, { loadRoutes } from './app';
+import app, { emailAssetsPublicDir, loadRoutes } from "./app";
 import { resumeStaleBulkEmailCampaigns } from "./src/services/bulkCustomerEmail.service";
 import { startFollowUpEmailCron } from "./src/utils/followUpEmailJob";
 dotenv.config();
@@ -39,6 +39,9 @@ const startServer = async () => {
     // Connect to database
     await db.authenticate();
     console.log("✅ Database connected successfully.");
+    console.log(
+      `   ↳ Email assets: ${emailAssetsPublicDir} → /api/email-assets/Favicons/...`
+    );
 
     // Load routes
     loadRoutes(app);

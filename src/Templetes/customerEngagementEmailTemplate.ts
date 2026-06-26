@@ -1,15 +1,17 @@
-import {
-  buildCustomerPortalEmailHtml,
-  CUSTOMER_EMAIL_BRAND_NAME,
-} from "../utils/customerPortalEmail";
+import { buildCustomerPortalEmailHtml } from "../utils/customerPortalEmail";
+import { type CustomerEmailBrandTheme } from "../utils/customerEmailBrandTheme";
 
 export const customerEngagementEmailTemplate = (data: {
   firstname?: string | null;
   lastname?: string | null;
   subject: string;
   body: string;
+  theme?: CustomerEmailBrandTheme;
 }): { subject: string; html: string; brandName: string } => {
-  const subject = String(data.subject || "").trim() || `Message from ${CUSTOMER_EMAIL_BRAND_NAME}`;
+  const subject =
+    String(data.subject || "").trim() ||
+    `Message from ${data.theme?.brandLabel || "GWB"}`;
+
   return {
     subject,
     html: buildCustomerPortalEmailHtml({
@@ -17,7 +19,8 @@ export const customerEngagementEmailTemplate = (data: {
       lastname: data.lastname,
       subject,
       body: data.body,
+      theme: data.theme,
     }),
-    brandName: CUSTOMER_EMAIL_BRAND_NAME,
+    brandName: data.theme?.brandName || "GWB",
   };
 };

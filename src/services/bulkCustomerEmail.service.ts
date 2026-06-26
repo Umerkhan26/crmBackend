@@ -14,6 +14,7 @@ import {
   getCustomerPortalSmtpAuditSnapshot,
   sendCustomerPortalEmail,
 } from "../utils/customerPortalEmail";
+import { getCustomerEmailBrandTheme } from "../utils/customerEmailBrandTheme";
 import { fillTemplate } from "../utils/fillTemplate";
 import { logLeadActivity } from "../utils/logLeadActivity";
 
@@ -169,16 +170,22 @@ const processOneJob = async (
   };
   const subject = fillTemplate(campaign.subject, templateData);
   const bodyPlain = fillTemplate(campaign.body, templateData);
+  const account = await CustomerAccount.findByPk(job.customerAccountId, {
+    attributes: ["brandId", "leadId"],
+  });
+  const theme = await getCustomerEmailBrandTheme(account?.brandId);
   const { subject: mailSubject, html } = customerEngagementEmailTemplate({
     firstname: job.recipientFirstname,
     lastname: job.recipientLastname,
     subject,
     body: bodyPlain,
+    theme,
   });
   await sendCustomerPortalEmail({
     to: job.toEmail,
     subject: mailSubject,
     body: html,
+    theme,
   });
 
   await EmailLog.create({
@@ -204,9 +211,6 @@ const processOneJob = async (
     createdBy: campaign.createdBy,
   });
 
-  const account = await CustomerAccount.findByPk(job.customerAccountId, {
-    attributes: ["leadId"],
-  });
   if (account?.leadId) {
     await logLeadActivity({
       entityId: account.leadId,

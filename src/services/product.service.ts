@@ -105,10 +105,18 @@ export const getAllSales = async ({
       conversionDateFrom,
       conversionDateTo,
       brandId,
+      status,
       ...restFilters
     } = filters as Record<string, unknown>;
 
     const where: any = { ...restFilters };
+
+    // Pending rows belong on Products — All Sales shows real sales only.
+    if (status) {
+      where.status = status;
+    } else {
+      where.status = { [Op.in]: ["converted", "cancelled"] };
+    }
 
     if (brandId != null && brandId !== "") {
       where.brandId = Number(brandId);
@@ -257,19 +265,11 @@ export const deleteSale = async (
     const sale = await ProductSale.findByPk(id);
     if (!sale) throw new Error("Sale not found");
 
-    if (sale.status !== "converted") {
-      throw new Error("Only converted sales can be deleted");
-    }
-
     await sale.destroy();
 
     if (userId) {
-      await logActivity(
-        userId,
-        "delete",
-        `Converted sale deleted with ID ${id}`
-      );
-      await sendNotification(userId, `Converted sale deleted with ID ${id}`);
+      await logActivity(userId, "delete", `Sale deleted with ID ${id} (${sale.status})`);
+      await sendNotification(userId, `Sale deleted with ID ${id}`);
     }
   } catch (error: any) {
     throw new Error(`Error deleting sale: ${error.message}`);

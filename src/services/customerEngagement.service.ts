@@ -8,10 +8,8 @@ import User from "../models/user.model";
 import PortalCustomer from "../models/portalCustomer.model";
 import EmailLog from "../models/emailLog.model";
 import { customerEngagementEmailTemplate } from "../Templetes/customerEngagementEmailTemplate";
-import {
-  CUSTOMER_EMAIL_BRAND_NAME,
-  sendCustomerPortalEmail,
-} from "../utils/customerPortalEmail";
+import { sendCustomerPortalEmail } from "../utils/customerPortalEmail";
+import { getCustomerEmailBrandTheme } from "../utils/customerEmailBrandTheme";
 import { logLeadActivity } from "../utils/logLeadActivity";
 import ProductSale from "../models/product.model";
 
@@ -117,16 +115,19 @@ export const sendEmailToCustomerAccount = async ({
   const { account, email, portalCustomer } =
     await fetchAccountForEngagement(accountId);
 
+  const theme = await getCustomerEmailBrandTheme(account.brandId);
   const { subject: mailSubject, html } = customerEngagementEmailTemplate({
     firstname: portalCustomer?.firstname,
     lastname: portalCustomer?.lastname,
     subject,
     body,
+    theme,
   });
   await sendCustomerPortalEmail({
     to: email,
     subject: mailSubject,
     body: html,
+    theme,
   });
 
   await EmailLog.create({
@@ -322,17 +323,20 @@ export const sendCustomerNotification = async ({
   });
 
   if (sendEmailAlso) {
-    const notifySubject = `Notification from ${CUSTOMER_EMAIL_BRAND_NAME}`;
+    const theme = await getCustomerEmailBrandTheme(account.brandId);
+    const notifySubject = `Notification from ${theme.brandLabel}`;
     const { subject: mailSubject, html } = customerEngagementEmailTemplate({
       firstname: portalCustomer?.firstname,
       lastname: portalCustomer?.lastname,
       subject: notifySubject,
       body: message,
+      theme,
     });
     await sendCustomerPortalEmail({
       to: email,
       subject: mailSubject,
       body: html,
+      theme,
     });
     await EmailLog.create({
       to: email,

@@ -1,29 +1,39 @@
-import { baseEmailTemplate } from "../Templetes/baseEmailTemplate";
+import { customerBrandedEmailTemplate } from "../Templetes/customerBrandedEmailTemplate";
 import {
   getCustomerPortalSmtpConfig,
   type SmtpCredentials,
 } from "./getCustomerPortalSmtpConfig";
+import {
+  type CustomerEmailBrandTheme,
+  buildCustomerEmailBrandTheme,
+} from "./customerEmailBrandTheme";
 
 /** Sender display name + sign-off for all customer-facing emails (all brands). */
 export const CUSTOMER_EMAIL_BRAND_NAME =
   process.env.CUSTOMER_PORTAL_EMAIL_BRAND_NAME?.trim() || "GWB";
 
-export const getCustomerPortalSmtpForSend = (): SmtpCredentials => {
+export const getCustomerPortalSmtpForSend = (fromName?: string): SmtpCredentials => {
   const cfg = getCustomerPortalSmtpConfig();
   return {
     ...cfg,
-    fromName: CUSTOMER_EMAIL_BRAND_NAME,
+    fromName: fromName?.trim() || CUSTOMER_EMAIL_BRAND_NAME,
   };
 };
 
-/** Customer-facing mail — always GWB SMTP, never DEFAULT_SMTP fallback. */
+/** Customer-facing mail — GWB SMTP, brand-wise sender display name. */
 export const sendCustomerPortalEmail = async (params: {
   to: string;
   subject: string;
   body: string;
+  fromName?: string;
+  theme?: CustomerEmailBrandTheme;
 }): Promise<void> => {
   const { sendEmail } = await import("./email");
-  const smtp = getCustomerPortalSmtpForSend();
+  const senderName =
+    params.fromName?.trim() ||
+    params.theme?.brandLabel?.trim() ||
+    CUSTOMER_EMAIL_BRAND_NAME;
+  const smtp = getCustomerPortalSmtpForSend(senderName);
   await sendEmail({
     smtp,
     to: params.to,
@@ -69,29 +79,27 @@ export const buildCustomerPortalEmailHtml = (params: {
   lastname?: string | null;
   subject: string;
   body: string;
+  theme?: CustomerEmailBrandTheme;
 }): string => {
+  const theme = params.theme || buildCustomerEmailBrandTheme("gwb");
   const name = [params.firstname, params.lastname]
     .map((s) => String(s || "").trim())
     .filter(Boolean)
     .join(" ");
   const greeting = name ? `Hello ${name},` : "Hello,";
-  const brand = CUSTOMER_EMAIL_BRAND_NAME;
   const bodyHtml = bodyToHtml(params.body);
 
-  const content = `
-    <p style="margin:0 0 14px 0; text-align:center; font-size:16px; color:#5664d2; font-weight:600;">${escapeHtml(greeting)}</p>
-    <div style="color:#212529;">${bodyHtml}</div>
-    <p style="margin:20px 0 0 0; text-align:center; color:#5664d2; line-height:1.5;">
-      <strong>Best regards,</strong><br/>${escapeHtml(brand)} Team
-    </p>
-  `;
+  const contentHtml = `<div>${bodyHtml}</div>`;
 
-  return baseEmailTemplate({
+  return customerBrandedEmailTemplate({
+    theme,
     title: params.subject,
-    content,
-    primaryColor: "#5664d2",
-    accentColor: "#764ba2",
-    footerText: `© ${new Date().getFullYear()} ${brand}. All rights reserved.`,
-    replyNotice: `This is an automated email from ${brand}. Please do not reply.`,
+    preheader: params.subject,
+    greeting,
+    contentHtml,
+    cta: {
+      label: "Open customer portal",
+      url: theme.portalUrl,
+    },
   });
 };

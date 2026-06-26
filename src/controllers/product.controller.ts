@@ -167,14 +167,12 @@ export const deleteSale = async (req: Request, res: Response): Promise<any> => {
       message: "Sale deleted successfully",
     });
   } catch (error: any) {
-    if (error.message === "Sale not found") {
-      return res.status(404).json({ success: false, message: error.message });
-    }
-    if (error.message === "Only converted sales can be deleted") {
-      return res.status(400).json({ success: false, message: error.message });
+    const message = String(error.message || "");
+    if (message.includes("Sale not found")) {
+      return res.status(404).json({ success: false, message: "Sale not found" });
     }
 
-    return res.status(500).json({ success: false, message: error.message });
+    return res.status(500).json({ success: false, message });
   }
 };
 

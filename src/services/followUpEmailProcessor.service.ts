@@ -11,6 +11,7 @@ import EmailLog from "../models/emailLog.model";
 import CustomerEngagement from "../models/customerEngagement.model";
 import { customerEngagementEmailTemplate } from "../Templetes/customerEngagementEmailTemplate";
 import { sendCustomerPortalEmail } from "../utils/customerPortalEmail";
+import { getCustomerEmailBrandTheme } from "../utils/customerEmailBrandTheme";
 import { fillTemplate } from "../utils/fillTemplate";
 import { logLeadActivity } from "../utils/logLeadActivity";
 
@@ -135,17 +136,20 @@ const processOneScheduledEmail = async (scheduled: FollowUpScheduledEmail) => {
 
   const subject = fillTemplate(step.subject, templateData);
   const bodyPlain = fillTemplate(step.body, templateData);
+  const theme = await getCustomerEmailBrandTheme(account.brandId);
   const { subject: mailSubject, html } = customerEngagementEmailTemplate({
     firstname: portalCustomer.firstname,
     lastname: portalCustomer.lastname,
     subject,
     body: bodyPlain,
+    theme,
   });
 
   await sendCustomerPortalEmail({
     to: email,
     subject: mailSubject,
     body: html,
+    theme,
   });
 
   await EmailLog.create({

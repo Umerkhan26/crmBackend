@@ -10,11 +10,10 @@ import {
   extractEmailFromLeadData,
   extractNameFromLeadData,
 } from "../utils/extractLeadContact";
-import {
-  CUSTOMER_EMAIL_BRAND_NAME,
-  sendCustomerPortalEmail,
-} from "../utils/customerPortalEmail";
+import { sendCustomerPortalEmail } from "../utils/customerPortalEmail";
+import { getCustomerEmailBrandThemeFromBrand } from "../utils/customerEmailBrandTheme";
 import { customerCredentialsTemplate } from "../Templetes/customerCredentialsTemplate";
+import { customerInvoiceEmailTemplate } from "../Templetes/customerInvoiceEmailTemplate";
 import { normalizePortalBaseUrl } from "../utils/portalHost";
 
 const resolveBrandPortalUrl = (_brand: Brand | null) => normalizePortalBaseUrl();
@@ -28,6 +27,7 @@ export interface ProvisionCustomerResult {
   userId?: number;
   customerAccountId?: number;
   emailSent?: boolean;
+  invoiceEmailSent?: boolean;
 }
 
 async function hashPassword(plainPassword: string): Promise<string> {
@@ -35,27 +35,98 @@ async function hashPassword(plainPassword: string): Promise<string> {
   return bcrypt.hash(plainPassword, salt);
 }
 
+async function sendInvoiceEmail(params: {
+  to: string;
+  firstname: string;
+  lastname: string;
+  leadId: number;
+  saleId: number;
+  brand?: Brand | null;
+  portalUrl?: string;
+}): Promise<boolean> {
+  try {
+    const { getInvoiceByLeadId } = await import("./product.service");
+    const invoice = await getInvoiceByLeadId(params.leadId);
+    const theme = getCustomerEmailBrandThemeFromBrand(params.brand);
+    const { subject, html } = customerInvoiceEmailTemplate({
+      firstname: params.firstname,
+      lastname: params.lastname,
+      brand: params.brand,
+      theme,
+      portalUrl: params.portalUrl,
+      invoiceNumber: invoice.invoiceNumber,
+      invoiceDate: invoice.date,
+      saleId: params.saleId,
+      status: invoice.sale?.status,
+      products: invoice.products,
+      totalAmount: invoice.totalAmount,
+    });
+    await sendCustomerPortalEmail({
+      to: params.to,
+      subject,
+      body: html,
+      theme,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function sendWelcomeEmails(params: {
+  to: string;
+  firstname: string;
+  lastname: string;
+  plainPassword: string;
+  leadId: number;
+  saleId: number;
+  brand?: Brand | null;
+  portalUrl?: string;
+}): Promise<{ credentialsSent: boolean; invoiceSent: boolean }> {
+  const credentialsSent = await sendCredentialsEmail({
+    to: params.to,
+    firstname: params.firstname,
+    lastname: params.lastname,
+    plainPassword: params.plainPassword,
+    brand: params.brand,
+    portalUrl: params.portalUrl,
+  });
+  const invoiceSent = await sendInvoiceEmail({
+    to: params.to,
+    firstname: params.firstname,
+    lastname: params.lastname,
+    leadId: params.leadId,
+    saleId: params.saleId,
+    brand: params.brand,
+    portalUrl: params.portalUrl,
+  });
+  return { credentialsSent, invoiceSent };
+}
+
 async function sendCredentialsEmail(params: {
   to: string;
   firstname: string;
   lastname: string;
   plainPassword: string;
-  brandName: string;
+  brand?: Brand | null;
   portalUrl?: string;
 }): Promise<boolean> {
   try {
+    const theme = getCustomerEmailBrandThemeFromBrand(params.brand);
     const { subject, html } = customerCredentialsTemplate({
       firstname: params.firstname,
       lastname: params.lastname,
       email: params.to,
       password: params.plainPassword,
-      brandName: CUSTOMER_EMAIL_BRAND_NAME,
+      brand: params.brand,
+      theme,
       portalUrl: params.portalUrl,
     });
     await sendCustomerPortalEmail({
       to: params.to,
       subject,
       body: html,
+      theme,
     });
     return true;
   } catch {
@@ -145,12 +216,14 @@ export const resendCustomerCredentials = async (params: {
     brandId: brandId ?? portalCustomer.brandId,
   });
 
-  const emailSent = await sendCredentialsEmail({
+  const { credentialsSent, invoiceSent } = await sendWelcomeEmails({
     to: email,
     firstname,
     lastname,
     plainPassword,
-    brandName: CUSTOMER_EMAIL_BRAND_NAME,
+    leadId,
+    saleId,
+    brand,
     portalUrl: resolveBrandPortalUrl(brand),
   });
 
@@ -161,7 +234,8 @@ export const resendCustomerCredentials = async (params: {
     portalCustomerId: portalCustomer.id,
     userId: portalCustomer.id,
     customerAccountId: account.id,
-    emailSent,
+    emailSent: credentialsSent,
+    invoiceEmailSent: invoiceSent,
   };
 };
 
@@ -253,16 +327,18 @@ export const provisionCustomerFromSale = async (params: {
     customerProvisionedAt: new Date(),
   });
 
-  const emailSent = shouldSendCredentialsEmail
-    ? await sendCredentialsEmail({
+  const welcomeEmails = shouldSendCredentialsEmail
+    ? await sendWelcomeEmails({
         to: email,
         firstname,
         lastname,
         plainPassword,
-        brandName: CUSTOMER_EMAIL_BRAND_NAME,
+        leadId,
+        saleId,
+        brand,
         portalUrl: resolveBrandPortalUrl(brand),
       })
-    : false;
+    : { credentialsSent: false, invoiceSent: false };
 
   try {
     const { enrollCustomerInFollowUps } = await import("./followUpEmail.service");
@@ -282,6 +358,7 @@ export const provisionCustomerFromSale = async (params: {
     portalCustomerId: portalCustomer.id,
     userId: portalCustomer.id,
     customerAccountId: account.id,
-    emailSent,
+    emailSent: welcomeEmails.credentialsSent,
+    invoiceEmailSent: welcomeEmails.invoiceSent,
   };
 };

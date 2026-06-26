@@ -18,6 +18,10 @@ const PORTAL_BRANDS = [
     customerPortalUrl: PORTAL_BASE_URL,
     salesFormConfig: {
       portalTheme: {
+        primaryColor: "#ee400a",
+        accentColor: "#f55613",
+        faviconUrl: "/Favicons/GWB.png",
+        supportEmail: "support@globalwebbuilders.com",
         tawkPropertyId: "6a35b2fc0892181d4aaf0584",
         tawkWidgetId: "1jrgs6bga",
         tawkEnabled: true,

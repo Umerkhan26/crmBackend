@@ -22,6 +22,8 @@ export const createBulkCustomerEmailController = async (
       emailType,
       filters,
       createdBy: req.user!.id,
+      viewerUserId: req.user!.id,
+      viewerPermissions: req.user?.permissions || [],
     });
 
     BulkCustomerEmailService.scheduleBulkCustomerEmailCampaign(result.campaignId);
@@ -48,6 +50,8 @@ export const listBulkCustomerEmailCampaignsController = async (
     const data = await BulkCustomerEmailService.listBulkCustomerEmailCampaigns({
       page,
       limit,
+      viewerUserId: req.user?.id,
+      viewerPermissions: req.user?.permissions || [],
     });
     return res.status(200).json({ success: true, data });
   } catch (error: any) {
@@ -68,12 +72,18 @@ export const getBulkCustomerEmailStatusController = async (
       return res.status(400).json({ success: false, message: "Invalid campaign id" });
     }
     const data = await BulkCustomerEmailService.getBulkCustomerEmailCampaignStatus(
-      campaignId
+      campaignId,
+      req.user?.id,
+      req.user?.permissions || [],
     );
     return res.status(200).json({ success: true, data });
   } catch (error: any) {
     const msg = error?.message || "Failed to get campaign status";
-    const status = /not found/i.test(msg) ? 404 : 500;
+    const status = /not found/i.test(msg)
+      ? 404
+      : /do not have access/i.test(msg)
+        ? 403
+        : 500;
     return res.status(status).json({ success: false, message: msg });
   }
 };
@@ -88,7 +98,9 @@ export const cancelBulkCustomerEmailController = async (
       return res.status(400).json({ success: false, message: "Invalid campaign id" });
     }
     const data = await BulkCustomerEmailService.cancelBulkCustomerEmailCampaign(
-      campaignId
+      campaignId,
+      req.user?.id,
+      req.user?.permissions || [],
     );
     return res.status(200).json({
       success: true,
@@ -116,7 +128,9 @@ export const listBulkCustomerEmailFailuresController = async (
     const data = await BulkCustomerEmailService.listBulkCustomerEmailCampaignFailures(
       campaignId,
       page,
-      limit
+      limit,
+      req.user?.id,
+      req.user?.permissions || [],
     );
     return res.status(200).json({ success: true, data });
   } catch (error: any) {

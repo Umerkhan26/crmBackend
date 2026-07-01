@@ -18,6 +18,7 @@ import {
   sendCustomerNotificationController,
   provisionCustomerFromSaleController,
   previewCustomerEngagementEmailController,
+  listScopedCustomerEngagementsController,
 } from "../controllers/customerAccount.controller";
 import {
   createBulkCustomerEmailController,
@@ -33,39 +34,45 @@ router.use(verifyToken);
 
 router.get("/", checkCustomerAccountReadAccess, listCustomerAccountsController);
 
+router.get(
+  "/engagements",
+  checkCustomerAccountReadAccess,
+  listScopedCustomerEngagementsController,
+);
+
 router.post(
   "/email-preview",
-  checkPermission(PERMISSIONS.CUSTOMER_ACCOUNT_CREATE),
+  checkCustomerAccountReadAccess,
   previewCustomerEngagementEmailController
 );
 
 router.post(
   "/bulk-email",
-  checkPermission(PERMISSIONS.CUSTOMER_ACCOUNT_CREATE),
+  checkCustomerAccountReadAccess,
   createBulkCustomerEmailController
 );
 
 router.get(
   "/bulk-email",
-  checkPermission(PERMISSIONS.CUSTOMER_ACCOUNT_CREATE),
+  checkCustomerAccountReadAccess,
   listBulkCustomerEmailCampaignsController
 );
 
 router.get(
   "/bulk-email/:campaignId/failures",
-  checkPermission(PERMISSIONS.CUSTOMER_ACCOUNT_CREATE),
+  checkCustomerAccountReadAccess,
   listBulkCustomerEmailFailuresController
 );
 
 router.post(
   "/bulk-email/:campaignId/cancel",
-  checkPermission(PERMISSIONS.CUSTOMER_ACCOUNT_CREATE),
+  checkCustomerAccountReadAccess,
   cancelBulkCustomerEmailController
 );
 
 router.get(
   "/bulk-email/:campaignId",
-  checkPermission(PERMISSIONS.CUSTOMER_ACCOUNT_CREATE),
+  checkCustomerAccountReadAccess,
   getBulkCustomerEmailStatusController
 );
 
@@ -101,25 +108,25 @@ router.get(
 
 router.post(
   "/:id/send-email",
-  checkPermission(PERMISSIONS.CUSTOMER_ACCOUNT_CREATE),
+  checkCustomerAccountReadAccess,
   sendCustomerEmailController
 );
 
 router.post(
   "/:id/upsell",
-  checkPermission(PERMISSIONS.CUSTOMER_ACCOUNT_CREATE),
+  checkCustomerAccountReadAccess,
   createCustomerUpsellController
 );
 
 router.post(
   "/:id/discount",
-  checkPermission(PERMISSIONS.CUSTOMER_ACCOUNT_CREATE),
+  checkCustomerAccountReadAccess,
   applyCustomerDiscountController
 );
 
 router.post(
   "/:id/notify",
-  checkPermission(PERMISSIONS.CUSTOMER_ACCOUNT_CREATE),
+  checkCustomerAccountReadAccess,
   sendCustomerNotificationController
 );
 

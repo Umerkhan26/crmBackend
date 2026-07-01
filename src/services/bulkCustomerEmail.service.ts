@@ -10,6 +10,12 @@ import BulkEmailJob from "../models/bulkEmailJob.model";
 import EmailLog from "../models/emailLog.model";
 import CustomerEngagement from "../models/customerEngagement.model";
 import {
+  buildCustomerAccountSaleScopeWhere,
+  buildEngagementCreatedByScopeWhere,
+  resolveCustomerListScope,
+} from "../utils/customerAccountScope";
+import ProductSale from "../models/product.model";
+import {
   categoryToCustomerEmailType,
   parseCustomerEmailType,
   type CustomerEmailType,
@@ -60,6 +66,8 @@ export const createBulkCustomerEmailCampaign = async ({
   emailType: emailTypeRaw,
   filters,
   createdBy,
+  viewerUserId,
+  viewerPermissions = [],
 }: {
   subject: string;
   body: string;
@@ -67,6 +75,8 @@ export const createBulkCustomerEmailCampaign = async ({
   emailType?: CustomerEmailType | string;
   filters?: BulkEmailCampaignFilters;
   createdBy: number;
+  viewerUserId?: number;
+  viewerPermissions?: string[];
 }) => {
   const emailType = emailTypeRaw
     ? parseCustomerEmailType(emailTypeRaw)
@@ -76,6 +86,11 @@ export const createBulkCustomerEmailCampaign = async ({
     emailType,
   });
 
+  const scopeResult = viewerUserId
+    ? await resolveCustomerListScope(viewerUserId, viewerPermissions)
+    : { scope: "all" as const, saleUserIds: [], brandIds: [] };
+  const saleScope = buildCustomerAccountSaleScopeWhere(scopeResult);
+
   const accounts = await CustomerAccount.findAll({
     where: buildRecipientWhere(filters),
     include: [
@@ -84,6 +99,13 @@ export const createBulkCustomerEmailCampaign = async ({
         as: "portalCustomer",
         attributes: ["id", "email", "firstname", "lastname"],
         required: true,
+      },
+      {
+        model: ProductSale,
+        as: "sale",
+        required: scopeResult.scope !== "all",
+        where: saleScope || undefined,
+        attributes: ["id"],
       },
     ],
   });
@@ -350,15 +372,32 @@ export const resumeStaleBulkEmailCampaigns = async () => {
 export const listBulkCustomerEmailCampaigns = async ({
   page = 1,
   limit = 20,
+  viewerUserId,
+  viewerPermissions = [],
 }: {
   page?: number;
   limit?: number;
+  viewerUserId?: number;
+  viewerPermissions?: string[];
 } = {}) => {
   const safePage = Math.max(1, page);
   const safeLimit = Math.min(50, Math.max(5, limit));
   const offset = (safePage - 1) * safeLimit;
 
+  let scope: "all" | "own" | "team" = "all";
+  const where: Record<string, unknown> = {};
+  if (viewerUserId) {
+    const scopeResult = await resolveCustomerListScope(
+      viewerUserId,
+      viewerPermissions,
+    );
+    scope = scopeResult.scope;
+    const createdByScope = buildEngagementCreatedByScopeWhere(scopeResult);
+    if (createdByScope) Object.assign(where, createdByScope);
+  }
+
   const { rows, count } = await BulkEmailCampaign.findAndCountAll({
+    where,
     order: [["createdAt", "DESC"]],
     limit: safeLimit,
     offset,
@@ -397,10 +436,43 @@ export const listBulkCustomerEmailCampaigns = async ({
     page: safePage,
     limit: safeLimit,
     totalPages: Math.ceil(count / safeLimit) || 1,
+    scope,
   };
 };
 
-export const getBulkCustomerEmailCampaignStatus = async (campaignId: number) => {
+export const assertBulkCustomerEmailCampaignAccess = async (
+  campaignId: number,
+  viewerUserId?: number,
+  viewerPermissions: string[] = [],
+) => {
+  const campaign = await BulkEmailCampaign.findByPk(campaignId, {
+    attributes: ["id", "createdBy"],
+  });
+  if (!campaign) throw new Error("Campaign not found");
+  if (!viewerUserId) return campaign;
+
+  const scopeResult = await resolveCustomerListScope(
+    viewerUserId,
+    viewerPermissions,
+  );
+  if (scopeResult.scope === "all") return campaign;
+
+  if (!scopeResult.saleUserIds.includes(Number(campaign.createdBy))) {
+    throw new Error("You do not have access to this campaign");
+  }
+  return campaign;
+};
+
+export const getBulkCustomerEmailCampaignStatus = async (
+  campaignId: number,
+  viewerUserId?: number,
+  viewerPermissions: string[] = [],
+) => {
+  await assertBulkCustomerEmailCampaignAccess(
+    campaignId,
+    viewerUserId,
+    viewerPermissions,
+  );
   const campaign = await BulkEmailCampaign.findByPk(campaignId, {
     attributes: [
       "id",
@@ -429,7 +501,16 @@ export const getBulkCustomerEmailCampaignStatus = async (campaignId: number) => 
   };
 };
 
-export const cancelBulkCustomerEmailCampaign = async (campaignId: number) => {
+export const cancelBulkCustomerEmailCampaign = async (
+  campaignId: number,
+  viewerUserId?: number,
+  viewerPermissions: string[] = [],
+) => {
+  await assertBulkCustomerEmailCampaignAccess(
+    campaignId,
+    viewerUserId,
+    viewerPermissions,
+  );
   const campaign = await BulkEmailCampaign.findByPk(campaignId);
   if (!campaign) throw new Error("Bulk email campaign not found");
   if (["completed", "cancelled"].includes(campaign.status)) {
@@ -441,19 +522,30 @@ export const cancelBulkCustomerEmailCampaign = async (campaignId: number) => {
     { where: { campaignId, status: { [Op.in]: ["pending", "processing"] } } }
   );
 
-  await campaign.update({
-    status: "cancelled",
-    completedAt: new Date(),
-  });
+  await BulkEmailCampaign.update(
+    { status: "cancelled", completedAt: new Date() },
+    { where: { id: campaignId } },
+  );
 
-  return getBulkCustomerEmailCampaignStatus(campaignId);
+  return getBulkCustomerEmailCampaignStatus(
+    campaignId,
+    viewerUserId,
+    viewerPermissions,
+  );
 };
 
 export const listBulkCustomerEmailCampaignFailures = async (
   campaignId: number,
   page = 1,
-  limit = 20
+  limit = 20,
+  viewerUserId?: number,
+  viewerPermissions: string[] = [],
 ) => {
+  await assertBulkCustomerEmailCampaignAccess(
+    campaignId,
+    viewerUserId,
+    viewerPermissions,
+  );
   const offset = (page - 1) * limit;
   const { rows, count } = await BulkEmailJob.findAndCountAll({
     where: { campaignId, status: "failed" },

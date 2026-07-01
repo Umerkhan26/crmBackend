@@ -77,6 +77,20 @@ export function buildCustomerAccountSaleScopeWhere(
   return saleUserFilter;
 }
 
+/** Filter customer_engagements to actions by agents in the viewer's scope. */
+export function buildEngagementCreatedByScopeWhere(
+  scopeResult: CustomerListScopeResult,
+): Record<string, unknown> | null {
+  if (scopeResult.scope === "all") return null;
+
+  const userIds = scopeResult.saleUserIds;
+  if (!userIds.length) {
+    return { createdBy: { [Op.in]: [] } };
+  }
+
+  return { createdBy: { [Op.in]: userIds } };
+}
+
 export async function assertCustomerAccountAccess(
   account: {
     id: number;

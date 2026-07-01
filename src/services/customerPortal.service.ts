@@ -480,13 +480,13 @@ export const listCustomerOffers = async (
     }
 
     return {
-      id: r.id,
-      type: r.type,
-      title: r.title,
-      details: r.details,
-      status: r.status,
-      metadata: r.metadata,
-      createdAt: r.createdAt,
+    id: r.id,
+    type: r.type,
+    title: r.title,
+    details: r.details,
+    status: r.status,
+    metadata: r.metadata,
+    createdAt: r.createdAt,
       saleId,
       order: sale
         ? {

@@ -16,6 +16,12 @@ import {
   attachPortalCustomerAsUser,
   mapPortalCustomerAsUser,
 } from "../utils/portalCustomerResponse";
+import {
+  buildCustomerAccountSaleScopeWhere,
+  buildEngagementCreatedByScopeWhere,
+  resolveCustomerListScope,
+  type CustomerListScope,
+} from "../utils/customerAccountScope";
 
 const accountIncludes = [
   {
@@ -67,6 +73,43 @@ export type InsightsQuery = {
   activitiesPage?: number;
   activitiesLimit?: number;
 };
+
+export type InsightsViewer = {
+  viewerUserId?: number;
+  viewerPermissions?: string[];
+};
+
+const ENGAGEMENT_ACTION_TYPES = [
+  "promotional_email",
+  "upsell",
+  "discount",
+  "notification",
+] as const;
+
+async function resolveEngagementScope(viewer?: InsightsViewer) {
+  if (!viewer?.viewerUserId) {
+    return {
+      scope: "all" as CustomerListScope,
+      engagementWhereExtra: null as Record<string, unknown> | null,
+    };
+  }
+  const scopeResult = await resolveCustomerListScope(
+    viewer.viewerUserId,
+    viewer.viewerPermissions || [],
+  );
+  return {
+    scope: scopeResult.scope,
+    engagementWhereExtra: buildEngagementCreatedByScopeWhere(scopeResult),
+  };
+}
+
+function mergeEngagementWhere(
+  base: Record<string, unknown>,
+  extra: Record<string, unknown> | null,
+) {
+  if (!extra) return base;
+  return { ...base, ...extra };
+}
 
 const enrichEmail = (row: any) => ({
   ...row,
@@ -154,7 +197,8 @@ const buildTimelineEvents = (
 
 export const getCustomerAccountInsights = async (
   accountId: number,
-  query: InsightsQuery = {}
+  query: InsightsQuery = {},
+  viewer?: InsightsViewer,
 ) => {
   const emailsPage = Math.max(1, query.emailsPage || 1);
   const emailsLimit = Math.min(50, Math.max(5, query.emailsLimit || 30));
@@ -164,6 +208,13 @@ export const getCustomerAccountInsights = async (
   const timelineLimit = Math.min(50, Math.max(5, query.timelineLimit || 30));
   const activitiesPage = Math.max(1, query.activitiesPage || 1);
   const activitiesLimit = Math.min(50, Math.max(5, query.activitiesLimit || 30));
+
+  const { scope: engagementScope, engagementWhereExtra } =
+    await resolveEngagementScope(viewer);
+  const engagementWhere = mergeEngagementWhere(
+    { customerAccountId: accountId },
+    engagementWhereExtra,
+  );
 
   const account = await fetchCustomerAccountById(accountId);
   const portalCustomerId = account.portalCustomerId;
@@ -211,7 +262,7 @@ export const getCustomerAccountInsights = async (
   );
 
   const engagementResult = await CustomerEngagement.findAndCountAll({
-    where: { customerAccountId: accountId },
+    where: engagementWhere,
     order: [["createdAt", "DESC"]],
     offset: (engagementsPage - 1) * engagementsLimit,
     limit: engagementsLimit,
@@ -299,7 +350,7 @@ export const getCustomerAccountInsights = async (
           })
         : Promise.resolve([]),
       CustomerEngagement.findAll({
-        where: { customerAccountId: accountId },
+        where: engagementWhere,
         order: [["createdAt", "DESC"]],
         limit: timelineFetchCap,
       }),
@@ -353,10 +404,10 @@ export const getCustomerAccountInsights = async (
     notesCount: Object.values(notesByLead).reduce((n, arr) => n + arr.length, 0),
     engagementsCount: engagementTotal,
     upsellOffers: await CustomerEngagement.count({
-      where: { customerAccountId: accountId, type: "upsell" },
+      where: { ...engagementWhere, type: "upsell" },
     }),
     discountsApplied: await CustomerEngagement.count({
-      where: { customerAccountId: accountId, type: "discount" },
+      where: { ...engagementWhere, type: "discount" },
     }),
     portalActivityCount: await PortalActivityEvent.count({
       where: { customerAccountId: accountId },
@@ -379,6 +430,7 @@ export const getCustomerAccountInsights = async (
     timeline: timelinePageItems,
     timelinePagination: pagingMeta(timelinePage, timelineLimit, timelineTotal),
     summary,
+    engagementScope,
   };
 };
 
@@ -386,14 +438,22 @@ export const getCustomerAccountInsights = async (
 export const getCustomerEngagementsFeed = async (
   accountId: number,
   page = 1,
-  limit = 30
+  limit = 30,
+  viewer?: InsightsViewer,
 ) => {
   const safePage = Math.max(1, page);
   const safeLimit = Math.min(50, Math.max(5, limit));
   await fetchCustomerAccountById(accountId);
 
+  const { scope: engagementScope, engagementWhereExtra } =
+    await resolveEngagementScope(viewer);
+  const engagementWhere = mergeEngagementWhere(
+    { customerAccountId: accountId },
+    engagementWhereExtra,
+  );
+
   const result = await CustomerEngagement.findAndCountAll({
-    where: { customerAccountId: accountId },
+    where: engagementWhere,
     order: [["createdAt", "DESC"]],
     offset: (safePage - 1) * safeLimit,
     limit: safeLimit,
@@ -410,6 +470,7 @@ export const getCustomerEngagementsFeed = async (
   return {
     engagements: result.rows.map((e) => e.get({ plain: true })),
     pagination: pagingMeta(safePage, safeLimit, result.count),
+    engagementScope,
   };
 };
 
@@ -417,13 +478,20 @@ export const getCustomerEngagementsFeed = async (
 export const getCustomerTimelineFeed = async (
   accountId: number,
   page = 1,
-  limit = 30
+  limit = 30,
+  viewer?: InsightsViewer,
 ) => {
   const safePage = Math.max(1, page);
   const safeLimit = Math.min(50, Math.max(5, limit));
   const account = await fetchCustomerAccountById(accountId);
   const portalCustomerId = account.portalCustomerId;
   const email = (account as any).portalCustomer?.email?.trim();
+
+  const { engagementWhereExtra } = await resolveEngagementScope(viewer);
+  const engagementWhere = mergeEngagementWhere(
+    { customerAccountId: accountId },
+    engagementWhereExtra,
+  );
 
   const relatedAccounts = await CustomerAccount.findAll({
     where: { portalCustomerId },
@@ -463,7 +531,7 @@ export const getCustomerTimelineFeed = async (
           where: { entityId: { [Op.in]: leadIds }, entityType: "lead" },
         })
       : Promise.resolve(0),
-    CustomerEngagement.count({ where: { customerAccountId: accountId } }),
+    CustomerEngagement.count({ where: engagementWhere }),
   ]);
 
   const timelineTotal =
@@ -493,7 +561,7 @@ export const getCustomerTimelineFeed = async (
           })
         : Promise.resolve([]),
       CustomerEngagement.findAll({
-        where: { customerAccountId: accountId },
+        where: engagementWhere,
         order: [["createdAt", "DESC"]],
         limit: timelineFetchCap,
       }),
@@ -513,5 +581,106 @@ export const getCustomerTimelineFeed = async (
   return {
     timeline,
     pagination: pagingMeta(safePage, safeLimit, timelineTotal),
+  };
+};
+
+export type ListScopedEngagementsQuery = {
+  page?: number;
+  limit?: number;
+  type?: string;
+  search?: string;
+  brandId?: number;
+  viewerUserId: number;
+  viewerPermissions?: string[];
+};
+
+/** Cross-customer list of emails, upsells, discounts, notifications scoped to viewer. */
+export const listScopedCustomerEngagements = async ({
+  page = 1,
+  limit = 30,
+  type,
+  search,
+  brandId,
+  viewerUserId,
+  viewerPermissions = [],
+}: ListScopedEngagementsQuery) => {
+  const safePage = Math.max(1, page);
+  const safeLimit = Math.min(50, Math.max(5, limit));
+  const offset = (safePage - 1) * safeLimit;
+
+  const scopeResult = await resolveCustomerListScope(
+    viewerUserId,
+    viewerPermissions,
+  );
+  const saleScope = buildCustomerAccountSaleScopeWhere(scopeResult);
+  const createdByScope = buildEngagementCreatedByScopeWhere(scopeResult);
+
+  const where: Record<string, unknown> = {
+    type:
+      type && ENGAGEMENT_ACTION_TYPES.includes(type as any)
+        ? type
+        : { [Op.in]: [...ENGAGEMENT_ACTION_TYPES] },
+  };
+  if (createdByScope) Object.assign(where, createdByScope);
+
+  const accountWhere: Record<string, unknown> = {};
+  if (brandId != null && Number.isFinite(brandId)) {
+    accountWhere.brandId = brandId;
+  }
+  if (search?.trim()) {
+    const q = `%${search.trim()}%`;
+    where[Op.or as any] = [
+      { title: { [Op.like]: q } },
+      { details: { [Op.like]: q } },
+    ];
+  }
+
+  const result = await CustomerEngagement.findAndCountAll({
+    where,
+    order: [["createdAt", "DESC"]],
+    offset,
+    limit: safeLimit,
+    distinct: true,
+    subQuery: false,
+    include: [
+      {
+        model: CustomerAccount,
+        as: "customerAccount",
+        required: true,
+        where: Object.keys(accountWhere).length ? accountWhere : undefined,
+        attributes: ["id", "brandId", "leadId", "saleId"],
+        include: [
+          {
+            model: PortalCustomer,
+            as: "portalCustomer",
+            attributes: ["id", "firstname", "lastname", "email"],
+            required: false,
+          },
+          { model: Brand, as: "brand", required: false, attributes: ["id", "name"] },
+          {
+            model: ProductSale,
+            as: "sale",
+            required: scopeResult.scope !== "all",
+            where: saleScope || undefined,
+            attributes: ["id", "assigneeId", "createdBy"],
+          },
+        ],
+      },
+      {
+        model: User,
+        as: "createdByUser",
+        attributes: ["id", "firstname", "lastname", "email"],
+        required: false,
+      },
+    ],
+  });
+
+  return {
+    data: result.rows.map((row) => row.get({ plain: true })),
+    scope: scopeResult.scope,
+    totalItems: result.count,
+    currentPage: safePage,
+    pageSize: safeLimit,
+    totalPages: Math.max(1, Math.ceil(result.count / safeLimit) || 1),
   };
 };

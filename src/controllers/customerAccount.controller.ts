@@ -5,6 +5,7 @@ import {
   getCustomerAccountInsights,
   getCustomerEngagementsFeed,
   getCustomerTimelineFeed,
+  listScopedCustomerEngagements,
 } from "../services/customerAccountInsights.service";
 import * as CustomerEngagementService from "../services/customerEngagement.service";
 import { getCustomerPortalActivity } from "../services/portalActivity.service";
@@ -205,6 +206,11 @@ export const getCustomerTimelineFeedController = async (
     if (isNaN(id)) {
       return res.status(400).json({ success: false, message: "Invalid ID" });
     }
+    await CustomerAccountService.getCustomerAccountById(
+      id,
+      req.user?.id,
+      req.user?.permissions || [],
+    );
     const { page, limit } = parsePageLimit(req, 30);
     const data = await getCustomerTimelineFeed(id, page, limit);
     return res.status(200).json({ success: true, data });
@@ -220,6 +226,51 @@ const parseAccountId = (req: CustomRequest) => {
   const id = parseInt(req.params.id, 10);
   if (isNaN(id)) throw new Error("Invalid customer account ID");
   return id;
+};
+
+const assertCustomerWriteAccess = async (req: CustomRequest, accountId: number) => {
+  await CustomerAccountService.getCustomerAccountById(
+    accountId,
+    req.user?.id,
+    req.user?.permissions || [],
+  );
+};
+
+export const listScopedCustomerEngagementsController = async (
+  req: CustomRequest,
+  res: Response
+): Promise<any> => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+    const page = parseInt(String(req.query.page || "1"), 10) || 1;
+    const limit = parseInt(String(req.query.limit || "30"), 10) || 30;
+    const type = typeof req.query.type === "string" ? req.query.type : undefined;
+    const search = typeof req.query.search === "string" ? req.query.search : undefined;
+    const brandId = req.query.brandId
+      ? parseInt(String(req.query.brandId), 10)
+      : undefined;
+
+    const data = await listScopedCustomerEngagements({
+      page,
+      limit,
+      type,
+      search,
+      brandId: Number.isFinite(brandId) ? brandId : undefined,
+      viewerUserId: userId,
+      viewerPermissions: req.user?.permissions || [],
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Customer engagements fetched",
+      ...data,
+    });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
 };
 
 export const getCustomerPortalActivityController = async (
@@ -298,6 +349,7 @@ export const sendCustomerEmailController = async (
 ): Promise<any> => {
   try {
     const accountId = parseAccountId(req);
+    await assertCustomerWriteAccess(req, accountId);
     const { subject, body, category, emailType } = req.body;
     if (!subject?.trim() || !body?.trim()) {
       return res.status(400).json({ success: false, message: "Subject and body required" });
@@ -312,8 +364,13 @@ export const sendCustomerEmailController = async (
     });
     return res.status(200).json({ success: true, message: "Email sent", data });
   } catch (error: any) {
-    const status = /not found/i.test(error.message) ? 404 : 500;
-    return res.status(status).json({ success: false, message: error.message });
+    const msg = error?.message || "Failed to send email";
+    const status = /not found/i.test(msg)
+      ? 404
+      : /do not have access/i.test(msg)
+        ? 403
+        : 500;
+    return res.status(status).json({ success: false, message: msg });
   }
 };
 
@@ -323,6 +380,7 @@ export const applyCustomerDiscountController = async (
 ): Promise<any> => {
   try {
     const accountId = parseAccountId(req);
+    await assertCustomerWriteAccess(req, accountId);
     const data = await CustomerEngagementService.applyCustomerDiscount({
       accountId,
       saleId: req.body.saleId != null ? Number(req.body.saleId) : undefined,
@@ -334,8 +392,13 @@ export const applyCustomerDiscountController = async (
     });
     return res.status(200).json({ success: true, message: "Discount applied", data });
   } catch (error: any) {
-    const status = /not found/i.test(error.message) ? 404 : 500;
-    return res.status(status).json({ success: false, message: error.message });
+    const msg = error?.message || "Failed to apply discount";
+    const status = /not found/i.test(msg)
+      ? 404
+      : /do not have access/i.test(msg)
+        ? 403
+        : 500;
+    return res.status(status).json({ success: false, message: msg });
   }
 };
 
@@ -345,6 +408,7 @@ export const createCustomerUpsellController = async (
 ): Promise<any> => {
   try {
     const accountId = parseAccountId(req);
+    await assertCustomerWriteAccess(req, accountId);
     const { productName, price, description } = req.body;
     if (!productName?.trim()) {
       return res.status(400).json({ success: false, message: "Product name required" });
@@ -359,8 +423,13 @@ export const createCustomerUpsellController = async (
     });
     return res.status(200).json({ success: true, message: "Upsell offer created", data });
   } catch (error: any) {
-    const status = /not found/i.test(error.message) ? 404 : 500;
-    return res.status(status).json({ success: false, message: error.message });
+    const msg = error?.message || "Failed to create upsell";
+    const status = /not found/i.test(msg)
+      ? 404
+      : /do not have access/i.test(msg)
+        ? 403
+        : 500;
+    return res.status(status).json({ success: false, message: msg });
   }
 };
 
@@ -370,6 +439,7 @@ export const sendCustomerNotificationController = async (
 ): Promise<any> => {
   try {
     const accountId = parseAccountId(req);
+    await assertCustomerWriteAccess(req, accountId);
     const { message, sendEmailAlso, emailType } = req.body;
     if (!message?.trim()) {
       return res.status(400).json({ success: false, message: "Message required" });
@@ -383,8 +453,13 @@ export const sendCustomerNotificationController = async (
     });
     return res.status(200).json({ success: true, message: "Notification sent", data });
   } catch (error: any) {
-    const status = /not found/i.test(error.message) ? 404 : 500;
-    return res.status(status).json({ success: false, message: error.message });
+    const msg = error?.message || "Failed to send notification";
+    const status = /not found/i.test(msg)
+      ? 404
+      : /do not have access/i.test(msg)
+        ? 403
+        : 500;
+    return res.status(status).json({ success: false, message: msg });
   }
 };
 

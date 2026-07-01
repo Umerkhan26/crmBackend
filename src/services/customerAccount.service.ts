@@ -407,6 +407,16 @@ export const updateCustomerAccount = async (
       if (!brand) throw new Error("Brand not found");
     }
     await account.update({ brandId });
+    const sale = (account as { sale?: InstanceType<typeof ProductSale> }).sale ?? null;
+    if (sale) {
+      await sale.update({ brandId });
+    }
+    const portalCustomer = (account as any).portalCustomer as InstanceType<
+      typeof PortalCustomer
+    > | undefined;
+    if (portalCustomer) {
+      await portalCustomer.update({ brandId });
+    }
   }
 
   const portalCustomer = (account as any).portalCustomer as InstanceType<
@@ -581,7 +591,10 @@ export const provisionFromSaleId = async (
   const sale = await ProductSale.findByPk(saleId);
   if (!sale?.leadId) throw new Error("Sale or linked lead not found");
 
-  const resolvedBrandId = brandId ?? sale.brandId ?? null;
+  const lead = await Lead.findByPk(sale.leadId);
+  const account = await CustomerAccount.findOne({ where: { saleId } });
+  const resolvedBrandId =
+    brandId ?? account?.brandId ?? sale.brandId ?? lead?.brandId ?? null;
 
   if (options.resend) {
     return resendCustomerCredentials({

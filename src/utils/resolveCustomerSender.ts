@@ -9,8 +9,23 @@ import type { SmtpCredentials } from "./getCustomerPortalSmtpConfig";
 export type ResolvedCustomerSender = SmtpCredentials & {
   emailType: CustomerEmailType;
   brandId: number | null;
-  source: "brand" | "env" | "legacy";
+  source: "brand" | "env";
   replyTo?: string;
+};
+
+/** Only these mailbox prefixes are valid for customer sends (never support@). */
+export const ALLOWED_CUSTOMER_MAILBOX_PREFIXES = [
+  "care@",
+  "invoice@",
+  "promotions@",
+] as const;
+
+export const isAllowedCustomerMailbox = (smtpUser: string): boolean => {
+  const user = String(smtpUser || "").trim().toLowerCase();
+  if (!user || user.startsWith("support@")) return false;
+  return ALLOWED_CUSTOMER_MAILBOX_PREFIXES.some((prefix) =>
+    user.startsWith(prefix)
+  );
 };
 
 const envKey = (emailType: CustomerEmailType, field: string): string =>
@@ -23,6 +38,7 @@ const readEnvSender = (
   const user = process.env[envKey(emailType, "USER")]?.trim();
   const pass = process.env[envKey(emailType, "PASSWORD")]?.trim();
   if (!host || !user || !pass) return null;
+  if (!isAllowedCustomerMailbox(user)) return null;
 
   const port = Number(process.env[envKey(emailType, "PORT")] || "465");
   const fromName =
@@ -33,37 +49,6 @@ const readEnvSender = (
   return {
     emailType,
     source: "env",
-    host,
-    port: Number.isFinite(port) && port > 0 ? port : 465,
-    user,
-    pass,
-    fromName,
-    replyTo,
-  };
-};
-
-const readLegacyPortalSender = (
-  emailType: CustomerEmailType
-): Omit<ResolvedCustomerSender, "brandId"> | null => {
-  const pass = process.env.CUSTOMER_PORTAL_SMTP_PASSWORD?.trim();
-  if (!pass) return null;
-
-  const host =
-    process.env.CUSTOMER_PORTAL_SMTP_HOST?.trim() || "globalwebbuilders.com";
-  const user =
-    process.env.CUSTOMER_PORTAL_SMTP_EMAIL?.trim() ||
-    "support@globalwebbuilders.com";
-  const port = Number(process.env.CUSTOMER_PORTAL_SMTP_PORT || "465");
-  const fromName =
-    process.env.CUSTOMER_PORTAL_EMAIL_BRAND_NAME?.trim() ||
-    process.env.CUSTOMER_PORTAL_SMTP_FROM_NAME?.trim() ||
-    CUSTOMER_EMAIL_TYPE_LABELS[emailType];
-  const replyTo =
-    process.env.CUSTOMER_PORTAL_REPLY_TO?.trim() || user;
-
-  return {
-    emailType,
-    source: "legacy",
     host,
     port: Number.isFinite(port) && port > 0 ? port : 465,
     user,
@@ -84,8 +69,15 @@ export const resolveCustomerSender = async (params: {
     const row = await BrandEmailSender.findOne({
       where: { brandId, emailType, isActive: true },
     });
-    if (row) {
-      const pass = decryptSmtpPassword(row.smtpPassword);
+    if (row && isAllowedCustomerMailbox(row.smtpUser)) {
+      let pass = "";
+      try {
+        pass = decryptSmtpPassword(row.smtpPassword);
+      } catch (err) {
+        console.warn(
+          `[email] Brand ${brandId} ${emailType} password decrypt failed — using env fallback`
+        );
+      }
       if (pass) {
         return {
           emailType,
@@ -96,12 +88,16 @@ export const resolveCustomerSender = async (params: {
           user: row.smtpUser,
           pass,
           fromName:
-            fromNameOverride?.trim() ||
             row.fromName?.trim() ||
+            fromNameOverride?.trim() ||
             CUSTOMER_EMAIL_TYPE_LABELS[emailType],
           replyTo: row.replyTo?.trim() || row.smtpUser,
         };
       }
+    } else if (row && !isAllowedCustomerMailbox(row.smtpUser)) {
+      console.warn(
+        `[email] Brand ${brandId} ${emailType} uses disallowed mailbox ${row.smtpUser} — using env fallback`
+      );
     }
   }
 
@@ -114,19 +110,32 @@ export const resolveCustomerSender = async (params: {
     };
   }
 
-  const legacy = readLegacyPortalSender(emailType);
-  if (legacy) {
-    return {
-      ...legacy,
-      brandId: brandId ?? null,
-      fromName: fromNameOverride?.trim() || legacy.fromName,
-    };
-  }
-
   throw new Error(
     `No SMTP configured for customer email type "${emailType}"` +
       (brandId != null ? ` (brand ${brandId})` : "") +
-      `. Set brand sender in CRM or CUSTOMER_EMAIL_${emailType.toUpperCase()}_* in .env`
+      `. Configure brand sender (care@ / invoice@ / promotions@) in CRM or CUSTOMER_EMAIL_${emailType.toUpperCase()}_* in .env`
+  );
+};
+
+/** .env CUSTOMER_EMAIL_{TYPE}_* fallback (GWB defaults). */
+export const resolveEnvCustomerSender = (
+  emailType: CustomerEmailType,
+  brandId?: number | null
+): ResolvedCustomerSender | null => {
+  const fromEnv = readEnvSender(emailType);
+  if (!fromEnv) return null;
+  return { ...fromEnv, brandId: brandId ?? null };
+};
+
+export const isSmtpAuthError = (err: unknown): boolean => {
+  const e = err as { message?: string; code?: string; responseCode?: number };
+  const msg = String(e?.message || err || "").toLowerCase();
+  return (
+    e?.code === "EAUTH" ||
+    e?.responseCode === 535 ||
+    msg.includes("535") ||
+    msg.includes("authentication") ||
+    msg.includes("invalid login")
   );
 };
 

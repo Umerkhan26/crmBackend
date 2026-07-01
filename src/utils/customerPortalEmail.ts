@@ -15,6 +15,9 @@ import {
 import {
   getCustomerSenderAuditSnapshot,
   resolveCustomerSender,
+  resolveEnvCustomerSender,
+  isSmtpAuthError,
+  type ResolvedCustomerSender,
 } from "./resolveCustomerSender";
 
 /** Sender display name + sign-off for all customer-facing emails (all brands). */
@@ -51,30 +54,17 @@ export const sendCustomerPortalEmail = async (params: {
 }): Promise<void> => {
   const { sendEmail } = await import("./email");
   const emailType = params.emailType || CUSTOMER_EMAIL_TYPE_DEFAULTS.promotional;
-  const senderName =
-    params.fromName?.trim() ||
-    params.theme?.brandLabel?.trim() ||
-    CUSTOMER_EMAIL_BRAND_NAME;
 
   const resolved = await resolveCustomerSender({
     brandId: params.brandId,
     emailType,
-    fromNameOverride: senderName,
   });
-
-  const smtp: SmtpCredentials = {
-    host: resolved.host,
-    port: resolved.port,
-    user: resolved.user,
-    pass: resolved.pass,
-    fromName: resolved.fromName,
-  };
 
   const replyTo =
     resolved.replyTo?.trim() ||
     params.theme?.supportEmail?.trim() ||
     process.env.CUSTOMER_PORTAL_REPLY_TO?.trim() ||
-    smtp.user;
+    resolved.user;
 
   let body = params.body;
   let attachments:
@@ -89,15 +79,50 @@ export const sendCustomerPortalEmail = async (params: {
     }
   }
 
-  await sendEmail({
-    smtp,
+  const mailPayload = {
     replyTo,
     to: params.to,
     subject: params.subject,
     body,
     attachments,
-    strict: true,
-  });
+  };
+
+  const dispatch = async (sender: ResolvedCustomerSender) => {
+    // Brand label in From (e.g. Emrills) even when env SMTP is @globalwebbuilders.com
+    const displayFromName =
+      params.theme?.brandLabel?.trim() ||
+      params.fromName?.trim() ||
+      sender.fromName?.trim() ||
+      CUSTOMER_EMAIL_BRAND_NAME;
+
+    await sendEmail({
+      smtp: {
+        host: sender.host,
+        port: sender.port,
+        user: sender.user,
+        pass: sender.pass,
+        fromName: displayFromName,
+      },
+      ...mailPayload,
+      strict: true,
+    });
+  };
+
+  try {
+    await dispatch(resolved);
+  } catch (err) {
+    if (resolved.source === "brand" && isSmtpAuthError(err)) {
+      const envSender = resolveEnvCustomerSender(emailType, params.brandId);
+      if (envSender) {
+        console.warn(
+          `[email] Brand SMTP auth failed (${resolved.user}) — retrying with env ${envSender.user}`
+        );
+        await dispatch(envSender);
+        return;
+      }
+    }
+    throw err;
+  }
 };
 
 /** Audit snapshot for DB — never store SMTP password. */

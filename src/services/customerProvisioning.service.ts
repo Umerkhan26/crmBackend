@@ -19,6 +19,29 @@ import { normalizePortalBaseUrl } from "../utils/portalHost";
 
 const resolveBrandPortalUrl = (_brand: Brand | null) => normalizePortalBaseUrl();
 
+/** Sale → account → lead → explicit param (customer emails must use the sale's brand). */
+async function resolveProvisionBrand(params: {
+  brandId?: number | null;
+  saleId: number;
+  leadId: number;
+}): Promise<{ brandId: number | null; brand: Brand | null }> {
+  const sale = await ProductSale.findByPk(params.saleId);
+  const lead = await Lead.findByPk(params.leadId);
+  const account = await CustomerAccount.findOne({
+    where: { saleId: params.saleId },
+  });
+
+  const resolvedId =
+    params.brandId ??
+    account?.brandId ??
+    sale?.brandId ??
+    lead?.brandId ??
+    null;
+
+  const brand = resolvedId ? await Brand.findByPk(resolvedId) : null;
+  return { brandId: resolvedId, brand };
+}
+
 export interface ProvisionCustomerResult {
   provisioned: boolean;
   skipped?: boolean;
@@ -76,6 +99,39 @@ async function sendInvoiceEmail(params: {
   }
 }
 
+const INVOICE_EMAIL_DELAY_MS = Math.max(
+  0,
+  Number(process.env.CUSTOMER_INVOICE_EMAIL_DELAY_MS || "20000") || 20_000
+);
+
+function scheduleInvoiceEmail(
+  params: {
+    to: string;
+    firstname: string;
+    lastname: string;
+    leadId: number;
+    saleId: number;
+    brand?: Brand | null;
+    portalUrl?: string;
+  },
+  delayMs = INVOICE_EMAIL_DELAY_MS
+): void {
+  const run = () => {
+    sendInvoiceEmail(params).catch((err) => {
+      console.error(
+        "[provision] invoice email failed:",
+        err?.message || err
+      );
+    });
+  };
+  if (delayMs <= 0) {
+    run();
+    return;
+  }
+  const timer = setTimeout(run, delayMs);
+  if (typeof timer.unref === "function") timer.unref();
+}
+
 async function sendWelcomeEmails(params: {
   to: string;
   firstname: string;
@@ -94,7 +150,9 @@ async function sendWelcomeEmails(params: {
     brand: params.brand,
     portalUrl: params.portalUrl,
   });
-  const invoiceSent = await sendInvoiceEmail({
+
+  // Stagger invoice so Gmail does not flag back-to-back login + billing mail.
+  scheduleInvoiceEmail({
     to: params.to,
     firstname: params.firstname,
     lastname: params.lastname,
@@ -103,7 +161,8 @@ async function sendWelcomeEmails(params: {
     brand: params.brand,
     portalUrl: params.portalUrl,
   });
-  return { credentialsSent, invoiceSent };
+
+  return { credentialsSent, invoiceSent: true };
 }
 
 async function sendCredentialsEmail(params: {
@@ -211,14 +270,18 @@ export const resendCustomerCredentials = async (params: {
   const portalCustomer = await PortalCustomer.findByPk(account.portalCustomerId);
   if (!portalCustomer) throw new Error("Portal customer not found");
 
-  const brand = brandId ? await Brand.findByPk(brandId) : null;
+  const { brandId: resolvedBrandId, brand } = await resolveProvisionBrand({
+    brandId,
+    saleId,
+    leadId,
+  });
   const { firstname, lastname } = extractNameFromLeadData(lead.leadData);
   const plainPassword = generateTemporaryPassword();
   const hashedPassword = await hashPassword(plainPassword);
 
   await portalCustomer.update({
     password: hashedPassword,
-    brandId: brandId ?? portalCustomer.brandId,
+    brandId: resolvedBrandId ?? portalCustomer.brandId,
   });
 
   const { credentialsSent, invoiceSent } = await sendWelcomeEmails({
@@ -291,7 +354,11 @@ export const provisionCustomerFromSale = async (params: {
     };
   }
 
-  const brand = brandId ? await Brand.findByPk(brandId) : null;
+  const { brandId: resolvedBrandId, brand } = await resolveProvisionBrand({
+    brandId,
+    saleId,
+    leadId,
+  });
 
   const { firstname, lastname } = extractNameFromLeadData(lead.leadData);
   const plainPassword = generateTemporaryPassword();
@@ -302,7 +369,7 @@ export const provisionCustomerFromSale = async (params: {
     firstname,
     lastname,
     hashedPassword,
-    brandId,
+    brandId: resolvedBrandId,
   });
 
   let account = await CustomerAccount.findOne({ where: { saleId } });
@@ -310,7 +377,7 @@ export const provisionCustomerFromSale = async (params: {
   if (!account) {
     account = await CustomerAccount.create({
       portalCustomerId: portalCustomer.id,
-      brandId: brandId ?? null,
+      brandId: resolvedBrandId,
       leadId,
       saleId,
       status: "active",
@@ -319,16 +386,16 @@ export const provisionCustomerFromSale = async (params: {
     await account.update({
       portalCustomerId: portalCustomer.id,
       leadId,
-      brandId: brandId ?? account.brandId,
+      brandId: resolvedBrandId ?? account.brandId,
     });
   }
 
-  if (brandId && !lead.brandId) {
-    await lead.update({ brandId });
+  if (resolvedBrandId && !lead.brandId) {
+    await lead.update({ brandId: resolvedBrandId });
   }
 
   await sale.update({
-    brandId: brandId ?? sale.brandId,
+    brandId: resolvedBrandId ?? sale.brandId,
     customerProvisionedAt: new Date(),
   });
 

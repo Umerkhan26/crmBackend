@@ -87,6 +87,7 @@ const run = async () => {
   const entries = loadSeedFile(jsonPath);
   let saved = 0;
   let skipped = 0;
+  const seededBrandIds = new Set<number>();
 
   for (const entry of entries) {
     const brand = await findBrand(entry);
@@ -99,6 +100,7 @@ const run = async () => {
     }
 
     console.log(`\n   Brand: ${brand.name} (id=${brand.id}, slug=${brand.slug})`);
+    seededBrandIds.add(brand.id);
 
     for (const sender of entry.senders || []) {
       if (!sender.smtpUser?.trim() || !sender.smtpPassword?.trim()) {
@@ -122,6 +124,22 @@ const run = async () => {
       console.log(`      ✓ ${sender.emailType} → ${sender.smtpUser}`);
       saved += 1;
     }
+  }
+
+  const stale = await BrandEmailSender.findAll({
+    where: { isActive: true },
+  });
+  let deactivated = 0;
+  for (const row of stale) {
+    if (!seededBrandIds.has(row.brandId)) {
+      await row.update({ isActive: false });
+      deactivated += 1;
+    }
+  }
+  if (deactivated) {
+    console.log(
+      `\n   ✓ Deactivated ${deactivated} sender row(s) for brands not in seed (use .env fallback)`
+    );
   }
 
   console.log(`\n✅ Done. Saved ${saved} sender(s), skipped ${skipped}.`);

@@ -36,6 +36,7 @@ const PORTAL_BRANDS = [
     salesFormConfig: {
       portalTheme: {
         logoUrl: "/api/email-assets/brands/emrills/logo.png",
+        faviconUrl: "/api/email-assets/Favicons/emrills.png",
         tawkPropertyId: "6a35b3bf16fcef1d436fb9d5",
         tawkWidgetId: "1jrgsc9q3",
         tawkEnabled: true,

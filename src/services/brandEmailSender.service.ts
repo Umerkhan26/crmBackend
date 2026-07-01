@@ -13,6 +13,7 @@ import {
 import {
   getCustomerSenderAuditSnapshot,
   resolveCustomerSender,
+  resolveEnvCustomerSender,
 } from "../utils/resolveCustomerSender";
 import {
   buildCustomerPortalEmailHtml,
@@ -35,10 +36,14 @@ const toPublicSender = (row: BrandEmailSender) => ({
 });
 
 export const listCustomerEmailTypes = () =>
-  CUSTOMER_EMAIL_TYPES.map((emailType) => ({
-    emailType,
-    label: CUSTOMER_EMAIL_TYPE_LABELS[emailType],
-  }));
+  CUSTOMER_EMAIL_TYPES.map((emailType) => {
+    const envSender = resolveEnvCustomerSender(emailType);
+    return {
+      emailType,
+      label: CUSTOMER_EMAIL_TYPE_LABELS[emailType],
+      defaultUser: envSender?.user || null,
+    };
+  });
 
 export const listBrandEmailSenders = async (brandId: number) => {
   const brand = await Brand.findByPk(brandId);

@@ -1,6 +1,8 @@
 
+import crypto from "crypto";
 import nodemailer from "nodemailer";
 import dotenv from "dotenv";
+import { htmlToPlainText } from "./emailPlainText";
 
 dotenv.config();
 
@@ -23,7 +25,13 @@ interface SendEmailOptions {
     path: string;
     cid: string;
   }>;
-}
+};
+
+const buildMessageId = (smtpUser: string): string => {
+  const domain = smtpUser.split("@")[1]?.trim() || "localhost";
+  const unique = `${Date.now()}.${crypto.randomBytes(10).toString("hex")}`;
+  return `<${unique}@${domain}>`;
+};
 
 export const sendEmail = async ({
   smtp,
@@ -71,9 +79,9 @@ export const sendEmail = async ({
 
   try {
     const isHTML = /<[a-z][\s\S]*>/i.test(body);
-    const textBody = isHTML ? body.replace(/<[^>]*>/g, "") : body;
+    const textBody = isHTML ? htmlToPlainText(body) : body;
 
-    await transporter.sendMail({
+    const mailOptions: nodemailer.SendMailOptions = {
       from: `"${fromName}" <${user}>`,
       replyTo: replyTo?.trim() || user,
       to,
@@ -85,11 +93,25 @@ export const sendEmail = async ({
         path: file.path,
         cid: file.cid,
       })),
-      headers: {
+    };
+
+    if (user) {
+      mailOptions.messageId = buildMessageId(user);
+    }
+
+    if (strict) {
+      // Transactional customer mail — no bulk Precedence header; aligned Message-ID above.
+      mailOptions.headers = {
+        "X-Auto-Response-Suppress": "OOF, AutoReply",
+      };
+    } else {
+      mailOptions.headers = {
         "X-Auto-Response-Suppress": "OOF, AutoReply",
         Precedence: "auto",
-      },
-    });
+      };
+    }
+
+    await transporter.sendMail(mailOptions);
   } catch (error) {
     throw error;
   }

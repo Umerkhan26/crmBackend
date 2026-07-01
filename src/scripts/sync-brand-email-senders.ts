@@ -51,6 +51,25 @@ const run = async () => {
     "ENUM('care','invoice','promotions') NOT NULL DEFAULT 'promotions'"
   );
 
+  const [deactivated] = await db.query(`
+    UPDATE brand_email_senders
+    SET isActive = 0, updatedAt = NOW()
+    WHERE isActive = 1
+      AND (
+        LOWER(smtpUser) LIKE 'support@%'
+        OR LOWER(smtpUser) NOT LIKE 'care@%'
+           AND LOWER(smtpUser) NOT LIKE 'invoice@%'
+           AND LOWER(smtpUser) NOT LIKE 'promotions@%'
+      )
+  `);
+  const affected =
+    typeof deactivated === "object" && deactivated && "affectedRows" in deactivated
+      ? (deactivated as { affectedRows?: number }).affectedRows
+      : 0;
+  if (affected) {
+    console.log(`   ✓ Deactivated ${affected} invalid sender row(s) (support@ / non-standard)`);
+  }
+
   console.log("\n✅ Brand email senders schema sync complete.");
   process.exit(0);
 };

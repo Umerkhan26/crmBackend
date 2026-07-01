@@ -31,6 +31,13 @@ export const resolveLocalEmailHeaderImagePath = (
   if (faviconFile) {
     const faviconPath = path.join(baseDir, "Favicons", faviconFile);
     if (fs.existsSync(faviconPath)) return faviconPath;
+    const faviconDir = path.join(baseDir, "Favicons");
+    if (fs.existsSync(faviconDir)) {
+      const match = fs
+        .readdirSync(faviconDir)
+        .find((f) => f.toLowerCase() === faviconFile.toLowerCase());
+      if (match) return path.join(faviconDir, match);
+    }
   }
 
   const logoPath = path.join(baseDir, "brands", theme.themeKey, "logo.png");
@@ -77,10 +84,36 @@ export const applyCustomerEmailHeaderDelivery = (
 ): string => {
   if (!delivery.attachment) return html;
 
+  const cid = delivery.headerImageSrc;
+  const urls = new Set<string>();
   const header = getCustomerEmailHeaderImage(theme);
-  if (!header?.url || header.url === delivery.headerImageSrc) {
-    return html;
+  if (header?.url) urls.add(header.url);
+  if (theme.iconUrl) urls.add(theme.iconUrl);
+  if (theme.logoUrl) urls.add(theme.logoUrl);
+
+  let out = html;
+  for (const url of urls) {
+    if (!url || url === cid) continue;
+    out = out.split(url).join(cid);
+    const escaped = url
+      .replace(/&/g, "&amp;")
+      .replace(/"/g, "&quot;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+    if (escaped !== url) out = out.split(escaped).join(cid);
   }
 
-  return html.split(header.url).join(delivery.headerImageSrc);
+  // Fallback when URL base differed (localhost vs production) but path matches.
+  const themeKey = theme.themeKey;
+  if (themeKey) {
+    out = out.replace(
+      new RegExp(
+        `src="[^"]*/api/email-assets/(?:Favicons/[^"]+|brands/${themeKey}/[^"]+)"`,
+        "gi"
+      ),
+      `src="${cid}"`
+    );
+  }
+
+  return out;
 };

@@ -59,21 +59,36 @@ const getDefaultSequence = async () => {
 export const listFollowUpSequences = async () => {
   const sequences = await FollowUpSequence.findAll({
     order: [["id", "ASC"]],
-    attributes: ["id", "name", "trigger", "isActive", "createdAt", "updatedAt"],
+    attributes: [
+      "id",
+      "name",
+      "trigger",
+      "emailType",
+      "isActive",
+      "createdAt",
+      "updatedAt",
+    ],
   });
   return sequences;
 };
 
 export const updateFollowUpSequence = async (
   sequenceId: number,
-  data: { name?: string; isActive?: boolean }
+  data: { name?: string; isActive?: boolean; emailType?: string }
 ) => {
   const sequence = await FollowUpSequence.findByPk(sequenceId);
   if (!sequence) throw new Error("Follow-up sequence not found");
 
+  const { parseCustomerEmailType } = await import(
+    "../constants/customerEmailTypes"
+  );
+
   await sequence.update({
     ...(data.name != null ? { name: data.name.trim() } : {}),
     ...(data.isActive != null ? { isActive: data.isActive } : {}),
+    ...(data.emailType != null
+      ? { emailType: parseCustomerEmailType(data.emailType) }
+      : {}),
   });
 
   return sequence;

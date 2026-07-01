@@ -19,6 +19,13 @@ import {
 import { verifyToken } from "../middleware/verifyToken.middleware";
 import { checkPermission } from "../middleware/checkPermission";
 import { PERMISSIONS } from "../constants/permissions";
+import {
+  listCustomerEmailTypesController,
+  listBrandEmailSendersController,
+  upsertBrandEmailSenderController,
+  deactivateBrandEmailSenderController,
+  testBrandEmailSenderController,
+} from "../controllers/brandEmailSender.controller";
 
 const router = express.Router();
 
@@ -42,6 +49,31 @@ router.get("/portal/list", getPortalBrandsController);
 
 // Sales form config — active brand only; assignment not required for agents
 router.get("/portal/:brandId/sales-form", getBrandSalesFormController);
+
+// Customer email sender types (care / invoice / promotions)
+router.get("/email-sender-types", listCustomerEmailTypesController);
+
+// Brand-wise customer email SMTP (care / invoice / promotions)
+router.get(
+  "/:id/email-senders",
+  checkPermission(PERMISSIONS.BRAND_GET),
+  listBrandEmailSendersController
+);
+router.put(
+  "/:id/email-senders/:emailType",
+  checkPermission(PERMISSIONS.BRAND_UPDATE),
+  upsertBrandEmailSenderController
+);
+router.delete(
+  "/:id/email-senders/:emailType",
+  checkPermission(PERMISSIONS.BRAND_UPDATE),
+  deactivateBrandEmailSenderController
+);
+router.post(
+  "/:id/email-senders/:emailType/test",
+  checkPermission(PERMISSIONS.BRAND_UPDATE),
+  testBrandEmailSenderController
+);
 
 // Get brand by ID
 router.get(

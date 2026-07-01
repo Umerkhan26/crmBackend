@@ -9,6 +9,11 @@ import BulkEmailCampaign, {
 import BulkEmailJob from "../models/bulkEmailJob.model";
 import EmailLog from "../models/emailLog.model";
 import CustomerEngagement from "../models/customerEngagement.model";
+import {
+  categoryToCustomerEmailType,
+  parseCustomerEmailType,
+  type CustomerEmailType,
+} from "../constants/customerEmailTypes";
 import { customerEngagementEmailTemplate } from "../Templetes/customerEngagementEmailTemplate";
 import {
   getCustomerPortalSmtpAuditSnapshot,
@@ -52,16 +57,24 @@ export const createBulkCustomerEmailCampaign = async ({
   subject,
   body,
   category = "promotional",
+  emailType: emailTypeRaw,
   filters,
   createdBy,
 }: {
   subject: string;
   body: string;
   category?: string;
+  emailType?: CustomerEmailType | string;
   filters?: BulkEmailCampaignFilters;
   createdBy: number;
 }) => {
-  const smtp = getCustomerPortalSmtpAuditSnapshot();
+  const emailType = emailTypeRaw
+    ? parseCustomerEmailType(emailTypeRaw)
+    : categoryToCustomerEmailType(category);
+  const smtp = await getCustomerPortalSmtpAuditSnapshot({
+    brandId: filters?.brandId,
+    emailType,
+  });
 
   const accounts = await CustomerAccount.findAll({
     where: buildRecipientWhere(filters),
@@ -109,6 +122,7 @@ export const createBulkCustomerEmailCampaign = async ({
     subject: subject.trim(),
     body: body.trim(),
     category: category.trim() || "promotional",
+    emailType,
     filters: filters || null,
     status: "queued",
     totalRecipients: recipients.length,
@@ -186,6 +200,8 @@ const processOneJob = async (
     subject: mailSubject,
     body: html,
     theme,
+    brandId: account?.brandId,
+    emailType: (campaign.emailType as CustomerEmailType) || categoryToCustomerEmailType(campaign.category),
   });
 
   await EmailLog.create({

@@ -1,5 +1,6 @@
 import { DataTypes, Model, Optional } from "sequelize";
 import db from "../../db";
+import type { CustomerEmailType } from "../constants/customerEmailTypes";
 
 export type BulkEmailCampaignStatus =
   | "queued"
@@ -20,6 +21,8 @@ export interface BulkEmailCampaignSmtpConfig {
   port: number;
   user: string;
   fromName?: string;
+  emailType?: CustomerEmailType;
+  source?: string;
 }
 
 export interface BulkEmailCampaignAttributes {
@@ -27,6 +30,7 @@ export interface BulkEmailCampaignAttributes {
   subject: string;
   body: string;
   category: string;
+  emailType: CustomerEmailType;
   filters: BulkEmailCampaignFilters | null;
   status: BulkEmailCampaignStatus;
   totalRecipients: number;
@@ -47,6 +51,7 @@ export interface BulkEmailCampaignCreationAttributes
     | "totalRecipients"
     | "sentCount"
     | "failedCount"
+    | "emailType"
     | "startedAt"
     | "completedAt"
   > {}
@@ -59,6 +64,7 @@ class BulkEmailCampaign
   public subject!: string;
   public body!: string;
   public category!: string;
+  public emailType!: CustomerEmailType;
   public filters!: BulkEmailCampaignFilters | null;
   public status!: BulkEmailCampaignStatus;
   public totalRecipients!: number;
@@ -91,6 +97,11 @@ BulkEmailCampaign.init(
       type: DataTypes.STRING(64),
       allowNull: false,
       defaultValue: "promotional",
+    },
+    emailType: {
+      type: DataTypes.ENUM("care", "invoice", "promotions"),
+      allowNull: false,
+      defaultValue: "promotions",
     },
     filters: {
       type: DataTypes.JSON,

@@ -1,8 +1,5 @@
 import { customerBrandedEmailTemplate } from "../Templetes/customerBrandedEmailTemplate";
-import {
-  getCustomerPortalSmtpConfig,
-  type SmtpCredentials,
-} from "./getCustomerPortalSmtpConfig";
+import type { SmtpCredentials } from "./getCustomerPortalSmtpConfig";
 import {
   type CustomerEmailBrandTheme,
   buildCustomerEmailBrandTheme,
@@ -11,37 +8,74 @@ import {
   applyCustomerEmailHeaderDelivery,
   getCustomerEmailHeaderDelivery,
 } from "./customerEmailAssetFiles";
+import {
+  type CustomerEmailType,
+  CUSTOMER_EMAIL_TYPE_DEFAULTS,
+} from "../constants/customerEmailTypes";
+import {
+  getCustomerSenderAuditSnapshot,
+  resolveCustomerSender,
+} from "./resolveCustomerSender";
 
 /** Sender display name + sign-off for all customer-facing emails (all brands). */
 export const CUSTOMER_EMAIL_BRAND_NAME =
   process.env.CUSTOMER_PORTAL_EMAIL_BRAND_NAME?.trim() || "GWB";
 
+/** @deprecated Use resolveCustomerSender — kept for callers not yet migrated */
 export const getCustomerPortalSmtpForSend = (fromName?: string): SmtpCredentials => {
-  const cfg = getCustomerPortalSmtpConfig();
+  const host =
+    process.env.CUSTOMER_PORTAL_SMTP_HOST?.trim() || "globalwebbuilders.com";
+  const port = Number(process.env.CUSTOMER_PORTAL_SMTP_PORT || "465");
+  const user =
+    process.env.CUSTOMER_PORTAL_SMTP_EMAIL?.trim() ||
+    "support@globalwebbuilders.com";
+  const pass = process.env.CUSTOMER_PORTAL_SMTP_PASSWORD?.trim() || "";
   return {
-    ...cfg,
+    host,
+    port: Number.isFinite(port) && port > 0 ? port : 465,
+    user,
+    pass,
     fromName: fromName?.trim() || CUSTOMER_EMAIL_BRAND_NAME,
   };
 };
 
-/** Customer-facing mail — GWB SMTP, brand-wise sender display name. */
+/** Customer-facing mail — brand + type resolves SMTP (care / invoice / promotions). */
 export const sendCustomerPortalEmail = async (params: {
   to: string;
   subject: string;
   body: string;
   fromName?: string;
   theme?: CustomerEmailBrandTheme;
+  brandId?: number | null;
+  emailType?: CustomerEmailType;
 }): Promise<void> => {
   const { sendEmail } = await import("./email");
+  const emailType = params.emailType || CUSTOMER_EMAIL_TYPE_DEFAULTS.promotional;
   const senderName =
     params.fromName?.trim() ||
     params.theme?.brandLabel?.trim() ||
     CUSTOMER_EMAIL_BRAND_NAME;
-  const smtp = getCustomerPortalSmtpForSend(senderName);
+
+  const resolved = await resolveCustomerSender({
+    brandId: params.brandId,
+    emailType,
+    fromNameOverride: senderName,
+  });
+
+  const smtp: SmtpCredentials = {
+    host: resolved.host,
+    port: resolved.port,
+    user: resolved.user,
+    pass: resolved.pass,
+    fromName: resolved.fromName,
+  };
+
   const replyTo =
+    resolved.replyTo?.trim() ||
     params.theme?.supportEmail?.trim() ||
     process.env.CUSTOMER_PORTAL_REPLY_TO?.trim() ||
     smtp.user;
+
   let body = params.body;
   let attachments:
     | Array<{ filename: string; path: string; cid: string }>
@@ -67,14 +101,14 @@ export const sendCustomerPortalEmail = async (params: {
 };
 
 /** Audit snapshot for DB — never store SMTP password. */
-export const getCustomerPortalSmtpAuditSnapshot = () => {
-  const smtp = getCustomerPortalSmtpForSend();
-  return {
-    host: smtp.host,
-    port: smtp.port,
-    user: smtp.user,
-    fromName: smtp.fromName,
-  };
+export const getCustomerPortalSmtpAuditSnapshot = async (params?: {
+  brandId?: number | null;
+  emailType?: CustomerEmailType;
+}) => {
+  return getCustomerSenderAuditSnapshot({
+    brandId: params?.brandId,
+    emailType: params?.emailType || CUSTOMER_EMAIL_TYPE_DEFAULTS.promotional,
+  });
 };
 
 const escapeHtml = (raw: string) =>

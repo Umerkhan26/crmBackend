@@ -1,0 +1,211 @@
+================================================================================
+BRAND EMAIL SENDERS + CUSTOMER EMAIL TYPES — API REFERENCE (NEW)
+Base: {API_HOST}/api
+Auth: Staff JWT (Authorization: Bearer <token>) unless noted
+================================================================================
+
+WHAT THIS IS
+  Customer-facing emails (credentials, invoice, promos, bulk, follow-ups) now send
+  from typed mailboxes per brand: care | invoice | promotions.
+
+RESOLUTION ORDER (backend — frontend does not pick SMTP host/password)
+  1. brand_email_senders row for brand + emailType (configured in CRM)
+  2. .env CUSTOMER_EMAIL_{TYPE}_* global defaults
+  3. Legacy CUSTOMER_PORTAL_SMTP_* fallback
+
+EMAIL TYPES (use these values in UI dropdowns)
+  care        — Care / support       (auto: credentials, resend password, notifications)
+  invoice     — Invoice / billing    (auto: invoice email on customer provision)
+  promotions  — Promotions / marketing (default: manual send, bulk, follow-ups)
+
+BACKEND SETUP (once on server)
+  npm run sync:brand-email-senders
+  Set SMTP_CREDENTIALS_KEY in .env (encrypts stored passwords)
+  Optional .env fallbacks: CUSTOMER_EMAIL_CARE_*, CUSTOMER_EMAIL_INVOICE_*,
+  CUSTOMER_EMAIL_PROMOTIONS_* (HOST, PORT, USER, PASSWORD, FROM_NAME, REPLY_TO)
+
+================================================================================
+NEW APIs — BRAND EMAIL SENDER CONFIGURATION
+Mount: /api/brands
+================================================================================
+
+GET /brands/email-sender-types
+  Returns the 3 sender types for dropdowns (care, invoice, promotions).
+  No special permission beyond logged-in user. Use on compose + settings screens.
+
+GET /brands/:id/email-senders
+  List all 3 sender slots for one brand: configured row + effective sender in use.
+  Auth: brand:get. Use on Brand Settings → Email Senders page.
+
+PUT /brands/:id/email-senders/:emailType
+  Create or update SMTP for one brand + type. :emailType = care | invoice | promotions.
+  Auth: brand:update. Password required on first save; omit password to keep existing.
+
+DELETE /brands/:id/email-senders/:emailType
+  Deactivate sender (falls back to .env / legacy). Auth: brand:update.
+
+POST /brands/:id/email-senders/:emailType/test
+  Send a test email to verify SMTP. Auth: brand:update.
+  Body: { "toEmail": "you@company.com" }
+
+--- PUT body example ---
+{
+  "smtpHost": "globalwebbuilders.com",
+  "smtpPort": 465,
+  "smtpUser": "invoice@globalwebbuilders.com",
+  "smtpPassword": "Invoice@2026",
+  "fromName": "GWB Billing",
+  "replyTo": "invoice@globalwebbuilders.com",
+  "isActive": true
+}
+
+--- GET /brands/:id/email-senders response shape ---
+{
+  "success": true,
+  "data": {
+    "brandId": 1,
+    "brandName": "GWB",
+    "senders": [
+      {
+        "emailType": "care",
+        "label": "Care / support",
+        "configured": { "smtpUser": "care@...", "passwordMasked": "Ca********", ... } | null,
+        "effective": { "emailType": "care", "source": "brand|env|legacy", "user": "...", ... }
+      },
+      { "emailType": "invoice", ... },
+      { "emailType": "promotions", ... }
+    ]
+  }
+}
+
+Note: API never returns full smtpPassword — only passwordMasked + hasPassword.
+
+================================================================================
+UPDATED APIs — PASS emailType ON SEND (optional)
+Mount: /api/customer-accounts
+================================================================================
+
+POST /customer-accounts/:id/send-email
+  Send one email to a customer. Auth: customerAccount:create.
+  NEW optional field emailType (care|invoice|promotions). Default: promotions.
+
+POST /customer-accounts/:id/notify
+  In-app notification; optional email copy. Auth: customerAccount:create.
+  NEW optional emailType when sendEmailAlso=true. Default: care.
+
+POST /customer-accounts/bulk-email
+  Queue bulk email to many customers. Auth: customerAccount:create.
+  NEW optional emailType. Default: promotions. Per-recipient brand resolved on send.
+
+--- Single send body ---
+{
+  "subject": "Hello",
+  "body": "Message text",
+  "category": "promotional",
+  "emailType": "promotions"
+}
+
+--- Bulk send body ---
+{
+  "subject": "Summer offer",
+  "body": "Hi {{firstname}}, ...",
+  "category": "promotional",
+  "emailType": "promotions",
+  "filters": {
+    "brandId": 2,
+    "status": "active",
+    "customerAccountIds": [10, 11, 12]
+  }
+}
+
+filters.brandId     — send to all active customers of that brand only
+filters.customerAccountIds — send to selected accounts only (optional subset)
+Omit brandId        — all active customers (respect existing list permissions)
+
+--- Notify body ---
+{
+  "message": "Your order shipped",
+  "sendEmailAlso": true,
+  "emailType": "care"
+}
+
+================================================================================
+UPDATED API — FOLLOW-UP SEQUENCE SENDER
+Mount: /api/follow-up-emails
+================================================================================
+
+GET /follow-up-emails/sequences
+  Response now includes emailType per sequence (default promotions).
+
+PATCH /follow-up-emails/sequences/:sequenceId
+  Update sequence settings. Auth: customerAccount:create.
+  NEW optional body field: { "emailType": "promotions" }
+
+================================================================================
+AUTOMATIC BACKEND MAPPING (no API change — for reference)
+================================================================================
+
+  Customer provision → credentials email uses care; invoice email uses invoice
+  Resend credentials   → care
+  Manual / bulk send   → emailType from request (default promotions)
+  Notification email   → emailType from request (default care)
+  Follow-up cron       → sequence.emailType (default promotions)
+
+================================================================================
+FRONTEND IMPLEMENTATION STEPS
+================================================================================
+
+STEP 1 — Service file
+  Create src/services/brandEmailSenderService.js (or .ts)
+  Methods: getEmailTypes(), getBrandSenders(brandId), saveSender(brandId, type, body),
+  deactivateSender(brandId, type), testSender(brandId, type, toEmail)
+  Base URL: /api/brands — attach JWT from existing auth helper.
+
+STEP 2 — Brand Settings → Email Senders page
+  Route e.g. /settings/brands/:brandId/email-senders (admin / brand:update).
+  On load: GET /brands/email-sender-types + GET /brands/:id/email-senders.
+  Show 3 cards (Care, Invoice, Promotions). Each card: host, port, user, password,
+  from name, reply-to, Save button, Test button, Deactivate link.
+  On save: PUT /brands/:id/email-senders/:emailType (send password only if changed).
+  On test: POST .../test with modal asking for recipient email.
+  Show effective.source badge (brand / env / legacy) when configured is null.
+
+STEP 3 — Customer single-email compose
+  On customer detail send-email modal: add dropdown "Send from" loaded from
+  GET /brands/email-sender-types. Default promotions.
+  POST /customer-accounts/:id/send-email with emailType in body.
+
+STEP 4 — Customer bulk-email screen
+  Add same "Send from" dropdown (default promotions).
+  Keep existing brand filter dropdown (filters.brandId).
+  POST /customer-accounts/bulk-email with emailType + filters.
+
+STEP 5 — Customer notify modal
+  When "Also send email" checked, show optional sender dropdown (default care).
+  POST /customer-accounts/:id/notify with sendEmailAlso + emailType.
+
+STEP 6 — Follow-up settings (if you have that UI)
+  On sequence edit: dropdown for emailType. PATCH /follow-up-emails/sequences/:id.
+
+STEP 7 — Permissions / UX
+  Email sender config: hide save/test if user lacks brand:update.
+  List/view senders: brand:get is enough.
+  Customer send/bulk: customerAccount:create (unchanged).
+
+STEP 8 — Error handling
+  If send fails with "No SMTP configured for customer email type ...", prompt admin
+  to configure brand sender or .env fallback for that type.
+
+================================================================================
+EXAMPLE BRAND MAILBOXES (configure via PUT per brand)
+================================================================================
+
+  GWB / Dnova / LookForLeads — each brand gets 3 rows:
+    care@<brand-domain>        → emailType care
+    invoice@<brand-domain>     → emailType invoice
+    promotions@<brand-domain>  → emailType promotions
+
+  smtpHost is usually the mail server host (often same as domain).
+  smtpPort is typically 465 (SSL) or 587 (TLS) per your provider.
+
+================================================================================

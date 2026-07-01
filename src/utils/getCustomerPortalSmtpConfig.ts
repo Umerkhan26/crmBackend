@@ -1,6 +1,10 @@
 /**
  * SMTP for customer portal emails (credentials, promos, bulk to customers).
- * Configure in .env — does not use agent/default CRM SMTP.
+ *
+ * Resolution order per send:
+ * 1. brand_email_senders row (brand + type: care | invoice | promotions)
+ * 2. CUSTOMER_EMAIL_{TYPE}_HOST|PORT|USER|PASSWORD|FROM_NAME|REPLY_TO
+ * 3. Legacy CUSTOMER_PORTAL_SMTP_* (fallback)
  *
  * CUSTOMER_PORTAL_SMTP_HOST=globalwebbuilders.com
  * CUSTOMER_PORTAL_SMTP_PORT=465

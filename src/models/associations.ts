@@ -35,6 +35,7 @@ import FollowUpEnrollment from "./followUpEnrollment.model";
 import FollowUpScheduledEmail from "./followUpScheduledEmail.model";
 import PortalService from "./portalService.model";
 import PortalServiceSubmission from "./portalServiceSubmission.model";
+import BrandEmailSender from "./brandEmailSender.model";
 
 Role.belongsToMany(Permission, {
   through: RolePermission,
@@ -93,6 +94,17 @@ CustomerAccount.belongsTo(PortalCustomer, {
 
 Brand.hasMany(CustomerAccount, { foreignKey: "brandId", as: "customerAccounts", onDelete: "CASCADE" });
 CustomerAccount.belongsTo(Brand, { foreignKey: "brandId", as: "brand", onDelete: "CASCADE" });
+
+Brand.hasMany(BrandEmailSender, {
+  foreignKey: "brandId",
+  as: "emailSenders",
+  onDelete: "CASCADE",
+});
+BrandEmailSender.belongsTo(Brand, {
+  foreignKey: "brandId",
+  as: "brand",
+  onDelete: "CASCADE",
+});
 
 CustomerAccount.belongsTo(Lead, { foreignKey: "leadId", as: "lead", onDelete: "SET NULL" });
 CustomerAccount.belongsTo(ProductSale, { foreignKey: "saleId", as: "sale", onDelete: "SET NULL" });

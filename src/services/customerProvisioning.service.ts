@@ -11,6 +11,7 @@ import {
   extractNameFromLeadData,
 } from "../utils/extractLeadContact";
 import { sendCustomerPortalEmail } from "../utils/customerPortalEmail";
+import { CUSTOMER_EMAIL_TYPE_DEFAULTS } from "../constants/customerEmailTypes";
 import { getCustomerEmailBrandThemeFromBrand } from "../utils/customerEmailBrandTheme";
 import { customerCredentialsTemplate } from "../Templetes/customerCredentialsTemplate";
 import { customerInvoiceEmailTemplate } from "../Templetes/customerInvoiceEmailTemplate";
@@ -66,6 +67,8 @@ async function sendInvoiceEmail(params: {
       subject,
       body: html,
       theme,
+      brandId: params.brand?.id ?? null,
+      emailType: CUSTOMER_EMAIL_TYPE_DEFAULTS.invoice,
     });
     return true;
   } catch {
@@ -127,6 +130,8 @@ async function sendCredentialsEmail(params: {
       subject,
       body: html,
       theme,
+      brandId: params.brand?.id ?? null,
+      emailType: CUSTOMER_EMAIL_TYPE_DEFAULTS.credentials,
     });
     return true;
   } catch {

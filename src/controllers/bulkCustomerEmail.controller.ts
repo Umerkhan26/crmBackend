@@ -7,7 +7,7 @@ export const createBulkCustomerEmailController = async (
   res: Response
 ): Promise<any> => {
   try {
-    const { subject, body, category, filters } = req.body;
+    const { subject, body, category, emailType, filters } = req.body;
     if (!subject?.trim() || !body?.trim()) {
       return res.status(400).json({
         success: false,
@@ -19,6 +19,7 @@ export const createBulkCustomerEmailController = async (
       subject: subject.trim(),
       body: body.trim(),
       category: category || "promotional",
+      emailType,
       filters,
       createdBy: req.user!.id,
     });

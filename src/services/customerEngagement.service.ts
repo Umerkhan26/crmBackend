@@ -7,6 +7,12 @@ import CustomerEngagement, {
 import User from "../models/user.model";
 import PortalCustomer from "../models/portalCustomer.model";
 import EmailLog from "../models/emailLog.model";
+import {
+  CUSTOMER_EMAIL_TYPE_DEFAULTS,
+  categoryToCustomerEmailType,
+  parseCustomerEmailType,
+  type CustomerEmailType,
+} from "../constants/customerEmailTypes";
 import { customerEngagementEmailTemplate } from "../Templetes/customerEngagementEmailTemplate";
 import { sendCustomerPortalEmail } from "../utils/customerPortalEmail";
 import { getCustomerEmailBrandTheme } from "../utils/customerEmailBrandTheme";
@@ -104,16 +110,22 @@ export const sendEmailToCustomerAccount = async ({
   subject,
   body,
   category = "promotional",
+  emailType: emailTypeRaw,
   createdBy,
 }: {
   accountId: number;
   subject: string;
   body: string;
   category?: string;
+  emailType?: CustomerEmailType | string;
   createdBy: number;
 }) => {
   const { account, email, portalCustomer } =
     await fetchAccountForEngagement(accountId);
+
+  const emailType = emailTypeRaw
+    ? parseCustomerEmailType(emailTypeRaw)
+    : categoryToCustomerEmailType(category);
 
   const theme = await getCustomerEmailBrandTheme(account.brandId);
   const { subject: mailSubject, html } = customerEngagementEmailTemplate({
@@ -128,6 +140,8 @@ export const sendEmailToCustomerAccount = async ({
     subject: mailSubject,
     body: html,
     theme,
+    brandId: account.brandId,
+    emailType,
   });
 
   await EmailLog.create({
@@ -144,7 +158,7 @@ export const sendEmailToCustomerAccount = async ({
     type: "promotional_email",
     title: mailSubject,
     details: body,
-    metadata: { category, recipient: email },
+    metadata: { category, emailType, recipient: email },
     status: "sent",
     createdBy,
   });
@@ -302,11 +316,13 @@ export const sendCustomerNotification = async ({
   accountId,
   message,
   sendEmailAlso,
+  emailType: emailTypeRaw,
   createdBy,
 }: {
   accountId: number;
   message: string;
   sendEmailAlso?: boolean;
+  emailType?: CustomerEmailType | string;
   createdBy: number;
 }) => {
   const { account, email, portalCustomer } =
@@ -323,6 +339,9 @@ export const sendCustomerNotification = async ({
   });
 
   if (sendEmailAlso) {
+    const emailType = emailTypeRaw
+      ? parseCustomerEmailType(emailTypeRaw, CUSTOMER_EMAIL_TYPE_DEFAULTS.notification)
+      : CUSTOMER_EMAIL_TYPE_DEFAULTS.notification;
     const theme = await getCustomerEmailBrandTheme(account.brandId);
     const notifySubject = `Notification from ${theme.brandLabel}`;
     const { subject: mailSubject, html } = customerEngagementEmailTemplate({
@@ -337,6 +356,8 @@ export const sendCustomerNotification = async ({
       subject: mailSubject,
       body: html,
       theme,
+      brandId: account.brandId,
+      emailType,
     });
     await EmailLog.create({
       to: email,

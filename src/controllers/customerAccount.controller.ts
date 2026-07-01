@@ -277,7 +277,7 @@ export const sendCustomerEmailController = async (
 ): Promise<any> => {
   try {
     const accountId = parseAccountId(req);
-    const { subject, body, category } = req.body;
+    const { subject, body, category, emailType } = req.body;
     if (!subject?.trim() || !body?.trim()) {
       return res.status(400).json({ success: false, message: "Subject and body required" });
     }
@@ -286,6 +286,7 @@ export const sendCustomerEmailController = async (
       subject: subject.trim(),
       body: body.trim(),
       category: category || "promotional",
+      emailType,
       createdBy: req.user!.id,
     });
     return res.status(200).json({ success: true, message: "Email sent", data });
@@ -348,7 +349,7 @@ export const sendCustomerNotificationController = async (
 ): Promise<any> => {
   try {
     const accountId = parseAccountId(req);
-    const { message, sendEmailAlso } = req.body;
+    const { message, sendEmailAlso, emailType } = req.body;
     if (!message?.trim()) {
       return res.status(400).json({ success: false, message: "Message required" });
     }
@@ -356,6 +357,7 @@ export const sendCustomerNotificationController = async (
       accountId,
       message: message.trim(),
       sendEmailAlso: !!sendEmailAlso,
+      emailType,
       createdBy: req.user!.id,
     });
     return res.status(200).json({ success: true, message: "Notification sent", data });

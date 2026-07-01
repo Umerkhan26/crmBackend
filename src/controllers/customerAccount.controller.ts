@@ -76,6 +76,27 @@ export const listCustomerAccountsController = async (
   }
 };
 
+export const previewCustomerEngagementEmailController = async (
+  req: CustomRequest,
+  res: Response
+): Promise<any> => {
+  try {
+    const brandId = req.body.brandId
+      ? parseInt(String(req.body.brandId), 10)
+      : null;
+    const data = await CustomerEngagementService.previewCustomerEngagementEmail({
+      subject: req.body.subject,
+      body: req.body.body,
+      brandId: Number.isFinite(brandId) ? brandId : null,
+      firstname: req.body.firstname,
+      lastname: req.body.lastname,
+    });
+    return res.status(200).json({ success: true, data });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 export const getCustomerAccountByIdController = async (
   req: CustomRequest,
   res: Response

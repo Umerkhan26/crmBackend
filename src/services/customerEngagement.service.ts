@@ -381,3 +381,30 @@ export const sendCustomerNotification = async ({
 
   return engagement;
 };
+
+/** Full branded HTML preview (header, logo, CTA) — inner body may include HTML/CSS. */
+export const previewCustomerEngagementEmail = async (params: {
+  subject?: string;
+  body?: string;
+  brandId?: number | null;
+  firstname?: string | null;
+  lastname?: string | null;
+}) => {
+  const theme = await getCustomerEmailBrandTheme(params.brandId);
+  const subject =
+    String(params.subject || "").trim() ||
+    `Message from ${theme.brandLabel || "GWB"}`;
+  const { html, brandName } = customerEngagementEmailTemplate({
+    firstname: params.firstname ?? "Customer",
+    lastname: params.lastname ?? "",
+    subject,
+    body: params.body || "",
+    theme,
+  });
+  return {
+    subject,
+    html,
+    brandName,
+    brandLabel: theme.brandLabel,
+  };
+};

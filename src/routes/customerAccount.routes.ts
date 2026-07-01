@@ -17,6 +17,7 @@ import {
   createCustomerUpsellController,
   sendCustomerNotificationController,
   provisionCustomerFromSaleController,
+  previewCustomerEngagementEmailController,
 } from "../controllers/customerAccount.controller";
 import {
   createBulkCustomerEmailController,
@@ -31,6 +32,12 @@ const router = Router();
 router.use(verifyToken);
 
 router.get("/", checkCustomerAccountReadAccess, listCustomerAccountsController);
+
+router.post(
+  "/email-preview",
+  checkPermission(PERMISSIONS.CUSTOMER_ACCOUNT_CREATE),
+  previewCustomerEngagementEmailController
+);
 
 router.post(
   "/bulk-email",

@@ -15,6 +15,7 @@
     "sync:customer-area": "npx ts-node src/scripts/sync-customer-area.ts",
     "sync:bulk-email": "npx ts-node src/scripts/sync-bulk-email.ts",
     "sync:brand-email-senders": "npx ts-node src/scripts/sync-brand-email-senders.ts",
+    "seed:brand-email-senders": "npx ts-node src/scripts/seed-brand-email-senders.ts",
     "sync:follow-up-email": "npx ts-node src/scripts/sync-follow-up-email.ts",
     "sync:portal-services": "npx ts-node src/scripts/sync-portal-services.ts",
     "sync:portal-activity": "npx ts-node src/scripts/sync-portal-activity.ts",

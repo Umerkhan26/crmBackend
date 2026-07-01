@@ -1,0 +1,86 @@
+[
+  {
+    "brandSlug": "gwb",
+    "smtpHost": "globalwebbuilders.com",
+    "smtpPort": 465,
+    "senders": [
+      {
+        "emailType": "care",
+        "smtpUser": "care@globalwebbuilders.com",
+        "smtpPassword": "Care@2026",
+        "fromName": "GWB Care",
+        "replyTo": "care@globalwebbuilders.com"
+      },
+      {
+        "emailType": "invoice",
+        "smtpUser": "invoice@globalwebbuilders.com",
+        "smtpPassword": "Invoice@2026",
+        "fromName": "GWB Billing",
+        "replyTo": "invoice@globalwebbuilders.com"
+      },
+      {
+        "emailType": "promotions",
+        "smtpUser": "promotions@globalwebbuilders.com",
+        "smtpPassword": "Promotions@2026",
+        "fromName": "GWB Promotions",
+        "replyTo": "promotions@globalwebbuilders.com"
+      }
+    ]
+  },
+  {
+    "brandSlug": "dnova",
+    "smtpHost": "dnovawebstudios.com",
+    "smtpPort": 465,
+    "senders": [
+      {
+        "emailType": "care",
+        "smtpUser": "care@dnovawebstudios.com",
+        "smtpPassword": "Care@2026",
+        "fromName": "Dnova Care",
+        "replyTo": "care@dnovawebstudios.com"
+      },
+      {
+        "emailType": "invoice",
+        "smtpUser": "invoice@dnovawebstudios.com",
+        "smtpPassword": "Invoice@2026",
+        "fromName": "Dnova Billing",
+        "replyTo": "invoice@dnovawebstudios.com"
+      },
+      {
+        "emailType": "promotions",
+        "smtpUser": "promotions@dnovawebstudios.com",
+        "smtpPassword": "Promotions@2026",
+        "fromName": "Dnova Promotions",
+        "replyTo": "promotions@dnovawebstudios.com"
+      }
+    ]
+  },
+  {
+    "brandSlug": "lookforleads",
+    "smtpHost": "lookforleads.com",
+    "smtpPort": 465,
+    "senders": [
+      {
+        "emailType": "care",
+        "smtpUser": "care@lookforleads.com",
+        "smtpPassword": "Care@2026",
+        "fromName": "LookForLeads Care",
+        "replyTo": "care@lookforleads.com"
+      },
+      {
+        "emailType": "invoice",
+        "smtpUser": "invoice@lookforleads.com",
+        "smtpPassword": "Invoice@2026",
+        "fromName": "LookForLeads Billing",
+        "replyTo": "invoice@lookforleads.com"
+      },
+      {
+        "emailType": "promotions",
+        "smtpUser": "promotions@lookforleads.com",
+        "smtpPassword": "Promotions@2026",
+        "fromName": "LookForLeads Promotions",
+        "replyTo": "promotions@lookforleads.com"
+      }
+    ]
+  }
+]

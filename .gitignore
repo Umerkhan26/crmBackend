@@ -32,6 +32,7 @@ coverage/
 .env.development.local
 .env.test.local
 .env.production.local
+src/scripts/data/brand-email-senders.seed.json
 
 # OS-specific files
 .DS_Store

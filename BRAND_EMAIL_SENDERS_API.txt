@@ -20,6 +20,9 @@ EMAIL TYPES (use these values in UI dropdowns)
 
 BACKEND SETUP (once on server)
   npm run sync:brand-email-senders
+  npm run seed:brand-email-senders
+  (Seed reads src/scripts/data/brand-email-senders.seed.json — copy from
+   brand-email-senders.seed.example.json and edit passwords. File is gitignored.)
   Set SMTP_CREDENTIALS_KEY in .env (encrypts stored passwords)
   Optional .env fallbacks: CUSTOMER_EMAIL_CARE_*, CUSTOMER_EMAIL_INVOICE_*,
   CUSTOMER_EMAIL_PROMOTIONS_* (HOST, PORT, USER, PASSWORD, FROM_NAME, REPLY_TO)

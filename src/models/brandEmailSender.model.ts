@@ -51,7 +51,7 @@ BrandEmailSender.init(
       allowNull: false,
     },
     emailType: {
-      type: DataTypes.ENUM("care", "invoice", "promotions"),
+      type: DataTypes.STRING(64),
       allowNull: false,
     },
     smtpHost: {

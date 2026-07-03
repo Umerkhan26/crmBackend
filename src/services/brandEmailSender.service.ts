@@ -1,11 +1,15 @@
 import Brand from "../models/brand.model";
 import BrandEmailSender from "../models/brandEmailSender.model";
 import {
-  CUSTOMER_EMAIL_TYPES,
-  CUSTOMER_EMAIL_TYPE_LABELS,
   type CustomerEmailType,
   parseCustomerEmailType,
 } from "../constants/customerEmailTypes";
+import {
+  ensureCustomerEmailTypesCache,
+  getCustomerEmailTypeLabel,
+  isMailboxAllowedForEmailType,
+  listCustomerEmailTypes as listDynamicCustomerEmailTypes,
+} from "../services/customerEmailType.service";
 import {
   encryptSmtpPassword,
   maskSmtpPassword,
@@ -19,6 +23,7 @@ import {
   buildCustomerPortalEmailHtml,
   sendCustomerPortalEmail,
 } from "../utils/customerPortalEmail";
+import { buildCustomerEmailBrandTheme } from "../utils/customerEmailBrandTheme";
 
 const toPublicSender = (row: BrandEmailSender) => ({
   id: row.id,
@@ -35,19 +40,27 @@ const toPublicSender = (row: BrandEmailSender) => ({
   updatedAt: row.updatedAt,
 });
 
-export const listCustomerEmailTypes = () =>
-  CUSTOMER_EMAIL_TYPES.map((emailType) => {
-    const envSender = resolveEnvCustomerSender(emailType);
+export const listCustomerEmailTypes = async () => {
+  await ensureCustomerEmailTypesCache();
+  const types = await listDynamicCustomerEmailTypes();
+  return types.map((t) => {
+    const envSender = resolveEnvCustomerSender(t.slug);
     return {
-      emailType,
-      label: CUSTOMER_EMAIL_TYPE_LABELS[emailType],
+      emailType: t.slug,
+      slug: t.slug,
+      label: t.label,
+      mailboxPrefix: t.mailboxPrefix,
       defaultUser: envSender?.user || null,
     };
   });
+};
 
 export const listBrandEmailSenders = async (brandId: number) => {
   const brand = await Brand.findByPk(brandId);
   if (!brand) throw new Error("Brand not found");
+
+  await ensureCustomerEmailTypesCache();
+  const typeRows = await listDynamicCustomerEmailTypes();
 
   const rows = await BrandEmailSender.findAll({
     where: { brandId },
@@ -57,7 +70,8 @@ export const listBrandEmailSenders = async (brandId: number) => {
   const byType = new Map(rows.map((r) => [r.emailType, r]));
 
   const senders = await Promise.all(
-    CUSTOMER_EMAIL_TYPES.map(async (emailType) => {
+    typeRows.map(async (typeRow) => {
+      const emailType = typeRow.slug;
       const configured = byType.get(emailType);
       let effective = null;
       try {
@@ -67,7 +81,8 @@ export const listBrandEmailSenders = async (brandId: number) => {
       }
       return {
         emailType,
-        label: CUSTOMER_EMAIL_TYPE_LABELS[emailType],
+        label: typeRow.label,
+        mailboxPrefix: typeRow.mailboxPrefix,
         configured: configured ? toPublicSender(configured) : null,
         effective,
       };
@@ -101,9 +116,15 @@ export const upsertBrandEmailSender = async ({
   const brand = await Brand.findByPk(brandId);
   if (!brand) throw new Error("Brand not found");
 
+  await ensureCustomerEmailTypesCache();
   const emailType = parseCustomerEmailType(rawType);
   if (!smtpHost?.trim() || !smtpUser?.trim()) {
     throw new Error("SMTP host and user are required");
+  }
+  if (!isMailboxAllowedForEmailType(smtpUser.trim(), emailType)) {
+    throw new Error(
+      `SMTP user must start with the mailbox prefix for type "${emailType}" (e.g. ${emailType}@yourdomain.com)`
+    );
   }
   const port = Number(smtpPort);
   if (!Number.isFinite(port) || port <= 0) {
@@ -146,6 +167,7 @@ export const deactivateBrandEmailSender = async (
   brandId: number,
   emailTypeRaw: string
 ) => {
+  await ensureCustomerEmailTypesCache();
   const emailType = parseCustomerEmailType(emailTypeRaw);
   const row = await BrandEmailSender.findOne({ where: { brandId, emailType } });
   if (!row) throw new Error("Sender not configured for this brand and type");
@@ -172,11 +194,13 @@ export const sendBrandEmailSenderTest = async ({
   if (!brand) throw new Error("Brand not found");
 
   const resolved = await resolveCustomerSender({ brandId, emailType });
-  const subject = `Test — ${CUSTOMER_EMAIL_TYPE_LABELS[emailType]} (${brand.name})`;
+  const theme = buildCustomerEmailBrandTheme(brand.slug || brand.name);
+  const subject = `Test — ${getCustomerEmailTypeLabel(emailType)} (${brand.name})`;
   const body = buildCustomerPortalEmailHtml({
     subject,
     body:
-      `This is a test email from ${brand.name} using the **${CUSTOMER_EMAIL_TYPE_LABELS[emailType]}** sender (${resolved.user}).`,
+      `This is a test email from ${brand.name} using the **${getCustomerEmailTypeLabel(emailType)}** sender (${resolved.user}).`,
+    theme,
   });
 
   await sendCustomerPortalEmail({
@@ -185,6 +209,7 @@ export const sendBrandEmailSenderTest = async ({
     body,
     brandId,
     emailType,
+    theme,
   });
 
   return {

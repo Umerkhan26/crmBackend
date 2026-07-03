@@ -1,8 +1,11 @@
 import BrandEmailSender from "../models/brandEmailSender.model";
+import { type CustomerEmailType } from "../constants/customerEmailTypes";
 import {
-  type CustomerEmailType,
-  CUSTOMER_EMAIL_TYPE_LABELS,
-} from "../constants/customerEmailTypes";
+  ensureCustomerEmailTypesCache,
+  getCustomerEmailTypeLabel,
+  isMailboxAllowedForEmailType,
+  getActiveMailboxPrefixes,
+} from "../services/customerEmailType.service";
 import { decryptSmtpPassword } from "./smtpSecret";
 import type { SmtpCredentials } from "./getCustomerPortalSmtpConfig";
 
@@ -13,23 +16,31 @@ export type ResolvedCustomerSender = SmtpCredentials & {
   replyTo?: string;
 };
 
-/** Only these mailbox prefixes are valid for customer sends (never support@). */
-export const ALLOWED_CUSTOMER_MAILBOX_PREFIXES = [
-  "care@",
-  "invoice@",
-  "promotions@",
-] as const;
+/** @deprecated use isMailboxAllowedForEmailType */
+export const ALLOWED_CUSTOMER_MAILBOX_PREFIXES = ["care@", "invoice@", "promotions@"] as const;
 
-export const isAllowedCustomerMailbox = (smtpUser: string): boolean => {
+export const isAllowedCustomerMailbox = (
+  smtpUser: string,
+  emailTypeSlug?: string
+): boolean => {
   const user = String(smtpUser || "").trim().toLowerCase();
   if (!user || user.startsWith("support@")) return false;
-  return ALLOWED_CUSTOMER_MAILBOX_PREFIXES.some((prefix) =>
-    user.startsWith(prefix)
-  );
+
+  if (emailTypeSlug) {
+    return isMailboxAllowedForEmailType(user, emailTypeSlug);
+  }
+
+  const prefixes = getActiveMailboxPrefixes();
+  if (!prefixes.length) {
+    return ALLOWED_CUSTOMER_MAILBOX_PREFIXES.some((prefix) =>
+      user.startsWith(prefix)
+    );
+  }
+  return prefixes.some((prefix) => user.startsWith(prefix));
 };
 
 const envKey = (emailType: CustomerEmailType, field: string): string =>
-  `CUSTOMER_EMAIL_${emailType.toUpperCase()}_${field}`;
+  `CUSTOMER_EMAIL_${emailType.toUpperCase().replace(/[^A-Z0-9]/g, "_")}_${field}`;
 
 const readEnvSender = (
   emailType: CustomerEmailType
@@ -38,12 +49,12 @@ const readEnvSender = (
   const user = process.env[envKey(emailType, "USER")]?.trim();
   const pass = process.env[envKey(emailType, "PASSWORD")]?.trim();
   if (!host || !user || !pass) return null;
-  if (!isAllowedCustomerMailbox(user)) return null;
+  if (!isAllowedCustomerMailbox(user, emailType)) return null;
 
   const port = Number(process.env[envKey(emailType, "PORT")] || "465");
   const fromName =
     process.env[envKey(emailType, "FROM_NAME")]?.trim() ||
-    CUSTOMER_EMAIL_TYPE_LABELS[emailType];
+    getCustomerEmailTypeLabel(emailType);
   const replyTo = process.env[envKey(emailType, "REPLY_TO")]?.trim() || user;
 
   return {
@@ -63,13 +74,14 @@ export const resolveCustomerSender = async (params: {
   emailType: CustomerEmailType;
   fromNameOverride?: string;
 }): Promise<ResolvedCustomerSender> => {
+  await ensureCustomerEmailTypesCache();
   const { brandId, emailType, fromNameOverride } = params;
 
   if (brandId != null) {
     const row = await BrandEmailSender.findOne({
       where: { brandId, emailType, isActive: true },
     });
-    if (row && isAllowedCustomerMailbox(row.smtpUser)) {
+    if (row && isAllowedCustomerMailbox(row.smtpUser, emailType)) {
       let pass = "";
       try {
         pass = decryptSmtpPassword(row.smtpPassword);
@@ -90,11 +102,11 @@ export const resolveCustomerSender = async (params: {
           fromName:
             row.fromName?.trim() ||
             fromNameOverride?.trim() ||
-            CUSTOMER_EMAIL_TYPE_LABELS[emailType],
+            getCustomerEmailTypeLabel(emailType),
           replyTo: row.replyTo?.trim() || row.smtpUser,
         };
       }
-    } else if (row && !isAllowedCustomerMailbox(row.smtpUser)) {
+    } else if (row && !isAllowedCustomerMailbox(row.smtpUser, emailType)) {
       console.warn(
         `[email] Brand ${brandId} ${emailType} uses disallowed mailbox ${row.smtpUser} — using env fallback`
       );
@@ -113,7 +125,7 @@ export const resolveCustomerSender = async (params: {
   throw new Error(
     `No SMTP configured for customer email type "${emailType}"` +
       (brandId != null ? ` (brand ${brandId})` : "") +
-      `. Configure brand sender (care@ / invoice@ / promotions@) in CRM or CUSTOMER_EMAIL_${emailType.toUpperCase()}_* in .env`
+      `. Configure brand sender in CRM or CUSTOMER_EMAIL_${emailType.toUpperCase()}_* in .env`
   );
 };
 

@@ -91,6 +91,7 @@ export const emailAssetsPublicDir = emailPublicDir;
 // so /api/brands is not caught by a router with /api/:id
 const ROUTE_PRIORITY: Record<string, { mount?: string; order?: number }> = {
   "brand.routes": { mount: "/api/brands", order: 0 },  // must be first - /api/brands before /api
+  "customerEmailType.routes": { mount: "/api/customer-email-types", order: 0 },
   "customerArea.routes": { mount: "/api/customer-area", order: 0 },
   "customerAccount.routes": { mount: "/api/customer-accounts", order: 0 },
   "portalContent.routes": { mount: "/api/portal-content", order: 0 },

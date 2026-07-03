@@ -12,9 +12,10 @@ export const listCustomerEmailTypesController = async (
   _req: CustomRequest,
   res: Response
 ): Promise<any> => {
+  const data = await BrandEmailSenderService.listCustomerEmailTypes();
   return res.status(200).json({
     success: true,
-    data: BrandEmailSenderService.listCustomerEmailTypes(),
+    data,
   });
 };
 

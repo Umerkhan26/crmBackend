@@ -1,5 +1,5 @@
 /**
- * Sync brand email senders + emailType columns on bulk/follow-up tables.
+ * Sync customer email types + brand email senders schema.
  * Run: npm run sync:brand-email-senders
  */
 
@@ -17,6 +17,18 @@ async function columnExists(table: string, column: string): Promise<boolean> {
   return Array.isArray(rows) && rows.length > 0;
 }
 
+async function getColumnType(table: string, column: string): Promise<string> {
+  const [rows] = await db.query(
+    `
+    SELECT COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?
+  `,
+    { replacements: [table, column] }
+  );
+  const row = Array.isArray(rows) ? (rows[0] as { COLUMN_TYPE?: string }) : null;
+  return String(row?.COLUMN_TYPE || "").toLowerCase();
+}
+
 async function addColumnIfMissing(
   table: string,
   column: string,
@@ -30,47 +42,77 @@ async function addColumnIfMissing(
   console.log(`   ✓ Added ${table}.${column}`);
 }
 
+async function migrateEmailTypeColumn(table: string) {
+  if (!(await columnExists(table, "emailType"))) {
+    await addColumnIfMissing(
+      table,
+      "emailType",
+      "VARCHAR(64) NOT NULL DEFAULT 'promotions'"
+    );
+    return;
+  }
+  const colType = await getColumnType(table, "emailType");
+  if (colType.startsWith("enum")) {
+    await db.query(
+      `ALTER TABLE ${table} MODIFY COLUMN emailType VARCHAR(64) NOT NULL DEFAULT 'promotions'`
+    );
+    console.log(`   ✓ ${table}.emailType migrated ENUM → VARCHAR(64)`);
+  } else {
+    console.log(`   ✓ ${table}.emailType already VARCHAR`);
+  }
+}
+
 const run = async () => {
   await db.authenticate();
-  console.log("🚀 Syncing brand email senders schema...\n");
+  console.log("🚀 Syncing customer email types + brand senders schema...\n");
+
+  const CustomerEmailType = (await import("../models/customerEmailType.model"))
+    .default;
+  await CustomerEmailType.sync({ alter: true });
+  console.log("   ✓ customer_email_types table synced");
+
+  const { seedDefaultCustomerEmailTypes, refreshCustomerEmailTypesCache, getActiveMailboxPrefixes } =
+    await import("../services/customerEmailType.service");
+  await seedDefaultCustomerEmailTypes();
+  await refreshCustomerEmailTypesCache();
+  console.log("   ✓ Default email types seeded (care, invoice, promotions)");
 
   const BrandEmailSender = (await import("../models/brandEmailSender.model"))
     .default;
   await BrandEmailSender.sync({ alter: true });
   console.log("   ✓ brand_email_senders table synced");
 
-  await addColumnIfMissing(
-    "bulk_email_campaigns",
-    "emailType",
-    "ENUM('care','invoice','promotions') NOT NULL DEFAULT 'promotions'"
-  );
+  await migrateEmailTypeColumn("bulk_email_campaigns");
+  await migrateEmailTypeColumn("follow_up_sequences");
 
-  await addColumnIfMissing(
-    "follow_up_sequences",
-    "emailType",
-    "ENUM('care','invoice','promotions') NOT NULL DEFAULT 'promotions'"
-  );
-
-  const [deactivated] = await db.query(`
-    UPDATE brand_email_senders
-    SET isActive = 0, updatedAt = NOW()
-    WHERE isActive = 1
-      AND (
-        LOWER(smtpUser) LIKE 'support@%'
-        OR LOWER(smtpUser) NOT LIKE 'care@%'
-           AND LOWER(smtpUser) NOT LIKE 'invoice@%'
-           AND LOWER(smtpUser) NOT LIKE 'promotions@%'
-      )
-  `);
-  const affected =
-    typeof deactivated === "object" && deactivated && "affectedRows" in deactivated
-      ? (deactivated as { affectedRows?: number }).affectedRows
-      : 0;
-  if (affected) {
-    console.log(`   ✓ Deactivated ${affected} invalid sender row(s) (support@ / non-standard)`);
+  const prefixes = getActiveMailboxPrefixes();
+  if (prefixes.length) {
+    const likeClauses = prefixes
+      .map((p) => `LOWER(smtpUser) LIKE '${p.replace(/'/g, "''")}%'`)
+      .join(" OR ");
+    const [deactivated] = await db.query(`
+      UPDATE brand_email_senders
+      SET isActive = 0, updatedAt = NOW()
+      WHERE isActive = 1
+        AND (
+          LOWER(smtpUser) LIKE 'support@%'
+          OR NOT (${likeClauses})
+        )
+    `);
+    const affected =
+      typeof deactivated === "object" &&
+      deactivated &&
+      "affectedRows" in deactivated
+        ? (deactivated as { affectedRows?: number }).affectedRows
+        : 0;
+    if (affected) {
+      console.log(
+        `   ✓ Deactivated ${affected} invalid sender row(s) (support@ / wrong prefix)`
+      );
+    }
   }
 
-  console.log("\n✅ Brand email senders schema sync complete.");
+  console.log("\n✅ Customer email types + brand senders sync complete.");
   process.exit(0);
 };
 

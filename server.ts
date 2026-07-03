@@ -6,6 +6,11 @@ import { Server as SocketIOServer } from "socket.io";
 import app, { emailAssetsPublicDir, loadRoutes } from "./app";
 import { resumeStaleBulkEmailCampaigns } from "./src/services/bulkCustomerEmail.service";
 import { startFollowUpEmailCron } from "./src/utils/followUpEmailJob";
+import {
+  ensureCustomerEmailTypesCache,
+  ensureCustomerEmailTypesSchema,
+  seedDefaultCustomerEmailTypes,
+} from "./src/services/customerEmailType.service";
 dotenv.config();
 
 const PORT = process.env.PORT || 3000;
@@ -42,6 +47,11 @@ const startServer = async () => {
     console.log(
       `   ↳ Email assets: ${emailAssetsPublicDir} → /api/email-assets/Favicons/...`
     );
+
+    await ensureCustomerEmailTypesSchema();
+    await seedDefaultCustomerEmailTypes();
+    await ensureCustomerEmailTypesCache();
+    console.log("✅ Customer email types cache loaded.");
 
     // Load routes
     loadRoutes(app);

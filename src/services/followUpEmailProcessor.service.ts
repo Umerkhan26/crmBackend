@@ -12,7 +12,7 @@ import CustomerEngagement from "../models/customerEngagement.model";
 import { customerEngagementEmailTemplate } from "../Templetes/customerEngagementEmailTemplate";
 import { sendCustomerPortalEmail } from "../utils/customerPortalEmail";
 import {
-  CUSTOMER_EMAIL_TYPE_DEFAULTS,
+  getDefaultEmailTypeForFlow,
   parseCustomerEmailType,
   type CustomerEmailType,
 } from "../constants/customerEmailTypes";
@@ -104,8 +104,8 @@ const processOneScheduledEmail = async (scheduled: FollowUpScheduledEmail) => {
   const step = (scheduled as any).step as FollowUpStep;
   const sequence = (enrollment as any).sequence as FollowUpSequence | undefined;
   const emailType: CustomerEmailType = sequence?.emailType
-    ? parseCustomerEmailType(sequence.emailType, CUSTOMER_EMAIL_TYPE_DEFAULTS.followUp)
-    : CUSTOMER_EMAIL_TYPE_DEFAULTS.followUp;
+    ? parseCustomerEmailType(sequence.emailType, getDefaultEmailTypeForFlow("followUp"))
+    : getDefaultEmailTypeForFlow("followUp");
 
   const timing = await FollowUpStepTiming.findOne({
     where: { stepId: step.id, isActive: true },

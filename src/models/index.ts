@@ -50,6 +50,7 @@ import "./followUpStepTiming.model";
 import "./followUpEnrollment.model";
 import "./followUpScheduledEmail.model";
 import "./brandEmailSender.model";
+import "./customerEmailType.model";
 import "./portalService.model";
 import "./portalServiceSubmission.model";
 import "./client.model";

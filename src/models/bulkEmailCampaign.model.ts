@@ -99,7 +99,7 @@ BulkEmailCampaign.init(
       defaultValue: "promotional",
     },
     emailType: {
-      type: DataTypes.ENUM("care", "invoice", "promotions"),
+      type: DataTypes.STRING(64),
       allowNull: false,
       defaultValue: "promotions",
     },

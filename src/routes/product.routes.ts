@@ -18,6 +18,7 @@ import {
   getInvoice,
   getSalesByAssigneeIdController,
   getSalesByLeadCreatorController,
+  getSalesSummaryByBrandController,
 } from "../controllers/product.controller";
 
 const router = Router();
@@ -34,6 +35,13 @@ router.get(
   verifyToken,
   checkPermission(PERMISSIONS.SALE_GET_ALL),
   getAllSales
+);
+
+router.get(
+  "/getSalesSummaryByBrand",
+  verifyToken,
+  checkPermission(PERMISSIONS.SALE_GET_ALL),
+  getSalesSummaryByBrandController
 );
 
 router.get(

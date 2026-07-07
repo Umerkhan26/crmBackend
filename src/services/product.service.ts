@@ -21,6 +21,144 @@ interface SaleQueryParams extends PaginationParams {
   filters?: Record<string, any>;
 }
 
+type SaleListFilters = {
+  conversionDateFrom?: string;
+  conversionDateTo?: string;
+  brandId?: number | string;
+  status?: string;
+  createdBy?: number | string;
+};
+
+const buildSaleWhereFromFilters = (
+  filters: SaleListFilters = {},
+): Record<string, unknown> => {
+  const {
+    conversionDateFrom,
+    conversionDateTo,
+    brandId,
+    status,
+    createdBy,
+  } = filters;
+
+  const where: Record<string, unknown> = {};
+
+  if (status) {
+    where.status = status;
+  } else {
+    where.status = { [Op.in]: ["converted", "cancelled"] };
+  }
+
+  if (brandId != null && brandId !== "") {
+    const bid = Number(brandId);
+    if (Number.isFinite(bid)) where.brandId = bid;
+  }
+
+  if (createdBy != null && createdBy !== "") {
+    const cid = Number(createdBy);
+    if (Number.isFinite(cid) && cid > 0) where.createdBy = cid;
+  }
+
+  if (conversionDateFrom || conversionDateTo) {
+    const conversionDate: Record<string | symbol, Date> = {};
+    if (conversionDateFrom) {
+      conversionDate[Op.gte] = new Date(String(conversionDateFrom));
+    }
+    if (conversionDateTo) {
+      const end = new Date(String(conversionDateTo));
+      end.setHours(23, 59, 59, 999);
+      conversionDate[Op.lte] = end;
+    }
+    where.conversionDate = conversionDate;
+  }
+
+  return where;
+};
+
+export const getSalesSummaryByBrand = async (
+  filters: SaleListFilters = {},
+): Promise<{
+  total: number;
+  totalRevenue: number;
+  brands: Array<{
+    brandId: number | null;
+    name: string;
+    count: number;
+    revenue: number;
+  }>;
+}> => {
+  const where = buildSaleWhereFromFilters(filters);
+
+  const rows = (await ProductSale.findAll({
+    attributes: [
+      "brandId",
+      [Sequelize.fn("COUNT", Sequelize.col("ProductSale.id")), "count"],
+      [
+        Sequelize.fn(
+          "COALESCE",
+          Sequelize.fn("SUM", Sequelize.col("ProductSale.price")),
+          0,
+        ),
+        "revenue",
+      ],
+    ],
+    where,
+    group: ["brandId"],
+    raw: true,
+  })) as unknown as Array<{
+    brandId: number | null;
+    count: string;
+    revenue: string;
+  }>;
+
+  const activeBrands = await Brand.findAll({
+    where: { status: "active" },
+    attributes: ["id", "name"],
+    order: [["name", "ASC"]],
+  });
+
+  const aggByBrandId = new Map<
+    number | null,
+    { count: number; revenue: number }
+  >();
+  for (const row of rows) {
+    const key = row.brandId != null ? Number(row.brandId) : null;
+    aggByBrandId.set(key, {
+      count: Number(row.count) || 0,
+      revenue: Number(row.revenue) || 0,
+    });
+  }
+
+  const brandCards: Array<{
+    brandId: number | null;
+    name: string;
+    count: number;
+    revenue: number;
+  }> = activeBrands.map((b) => {
+    const agg = aggByBrandId.get(b.id) || { count: 0, revenue: 0 };
+    return {
+      brandId: b.id,
+      name: b.name,
+      count: agg.count,
+      revenue: agg.revenue,
+    };
+  });
+
+  const unbranded = aggByBrandId.get(null);
+  if (unbranded && unbranded.count > 0) {
+    brandCards.push({
+      brandId: null,
+      name: "No brand",
+      count: unbranded.count,
+      revenue: unbranded.revenue,
+    });
+  }
+
+  const total = brandCards.reduce((sum, b) => sum + b.count, 0);
+  const totalRevenue = brandCards.reduce((sum, b) => sum + b.revenue, 0);
+
+  return { total, totalRevenue, brands: brandCards };
+};
+
 export const convertLeadToSale = async (
   data: ProductSaleCreationAttributes & {
     autoProvisionCustomer?: boolean;
@@ -106,33 +244,20 @@ export const getAllSales = async ({
       conversionDateTo,
       brandId,
       status,
+      createdBy,
       ...restFilters
     } = filters as Record<string, unknown>;
 
-    const where: any = { ...restFilters };
-
-    // Pending rows belong on Products — All Sales shows real sales only.
-    if (status) {
-      where.status = status;
-    } else {
-      where.status = { [Op.in]: ["converted", "cancelled"] };
-    }
-
-    if (brandId != null && brandId !== "") {
-      where.brandId = Number(brandId);
-    }
-
-    if (conversionDateFrom || conversionDateTo) {
-      where.conversionDate = {};
-      if (conversionDateFrom) {
-        where.conversionDate[Op.gte] = new Date(String(conversionDateFrom));
-      }
-      if (conversionDateTo) {
-        const end = new Date(String(conversionDateTo));
-        end.setHours(23, 59, 59, 999);
-        where.conversionDate[Op.lte] = end;
-      }
-    }
+    const where: any = {
+      ...buildSaleWhereFromFilters({
+        conversionDateFrom: conversionDateFrom as string | undefined,
+        conversionDateTo: conversionDateTo as string | undefined,
+        brandId: brandId as number | string | undefined,
+        status: status as string | undefined,
+        createdBy: createdBy as number | string | undefined,
+      }),
+      ...restFilters,
+    };
 
     const include: any = [
       {
@@ -141,7 +266,7 @@ export const getAllSales = async ({
       },
       {
         model: User,
-        attributes: ["id", "firstname", "email"],
+        attributes: ["id", "firstname", "lastname", "email"],
       },
       {
         model: Brand,

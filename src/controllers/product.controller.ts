@@ -79,6 +79,10 @@ export const getAllSales = async (
     if (req.query.conversionDateTo) {
       filters.conversionDateTo = String(req.query.conversionDateTo);
     }
+    if (req.query.createdBy) {
+      const createdBy = parseInt(String(req.query.createdBy), 10);
+      if (Number.isFinite(createdBy)) filters.createdBy = createdBy;
+    }
     const salesData = await ProductSaleService.getAllSales({
       page,
       limit,
@@ -89,6 +93,35 @@ export const getAllSales = async (
       success: true,
       message: "Sales fetched successfully",
       ...salesData,
+    });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const getSalesSummaryByBrandController = async (
+  req: Request,
+  res: Response,
+): Promise<any> => {
+  try {
+    const filters: Record<string, unknown> = {};
+    if (req.query.status) filters.status = String(req.query.status);
+    if (req.query.conversionDateFrom) {
+      filters.conversionDateFrom = String(req.query.conversionDateFrom);
+    }
+    if (req.query.conversionDateTo) {
+      filters.conversionDateTo = String(req.query.conversionDateTo);
+    }
+    if (req.query.createdBy) {
+      const createdBy = parseInt(String(req.query.createdBy), 10);
+      if (Number.isFinite(createdBy)) filters.createdBy = createdBy;
+    }
+
+    const data = await ProductSaleService.getSalesSummaryByBrand(filters);
+    return res.status(200).json({
+      success: true,
+      message: "Sales summary by brand",
+      data,
     });
   } catch (error: any) {
     return res.status(500).json({ success: false, message: error.message });

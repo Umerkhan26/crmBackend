@@ -23,10 +23,6 @@ export const resolveCustomerListScope = async (
   userId: number,
   permissions: string[] = [],
 ): Promise<CustomerListScopeResult> => {
-  if (permissions.includes("brand:get")) {
-    return { scope: "all", saleUserIds: [], brandIds: [] };
-  }
-
   const user = await User.findByPk(userId, {
     include: [{ model: Role, attributes: ["name"] }],
   });
@@ -35,6 +31,7 @@ export const resolveCustomerListScope = async (
     return { scope: "all", saleUserIds: [], brandIds: [] };
   }
 
+  // Managers: team agents only — brand:get must not bypass this.
   if (await isUserManager(userId)) {
     const teamIds = await getManagerBrandUserIds(userId);
     const brandIds = await getManagerBrands(userId);
@@ -42,6 +39,10 @@ export const resolveCustomerListScope = async (
       (id) => Number.isFinite(id) && id > 0,
     );
     return { scope: "team", saleUserIds, brandIds };
+  }
+
+  if (permissions.includes("brand:get")) {
+    return { scope: "all", saleUserIds: [], brandIds: [] };
   }
 
   return { scope: "own", saleUserIds: [userId], brandIds: [] };
@@ -58,23 +59,12 @@ export function buildCustomerAccountSaleScopeWhere(
     return { id: { [Op.in]: [] } };
   }
 
-  const saleUserFilter = {
+  return {
     [Op.or]: [
       { assigneeId: { [Op.in]: userIds } },
       { createdBy: { [Op.in]: userIds } },
     ],
   };
-
-  if (scopeResult.scope === "team" && scopeResult.brandIds.length > 0) {
-    return {
-      [Op.or]: [
-        saleUserFilter,
-        { brandId: { [Op.in]: scopeResult.brandIds } },
-      ],
-    };
-  }
-
-  return saleUserFilter;
 }
 
 /** Filter customer_engagements to actions by agents in the viewer's scope. */
@@ -115,12 +105,7 @@ export async function assertCustomerAccountAccess(
     (assigneeId != null && scopeResult.saleUserIds.includes(assigneeId)) ||
     (createdBy != null && scopeResult.saleUserIds.includes(createdBy));
 
-  const matchesManagerBrand =
-    scopeResult.scope === "team" &&
-    account.brandId != null &&
-    scopeResult.brandIds.includes(Number(account.brandId));
-
-  if (!matchesUser && !matchesManagerBrand) {
+  if (!matchesUser) {
     throw new Error("You do not have access to this customer account");
   }
 }

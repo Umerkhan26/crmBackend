@@ -17,13 +17,19 @@ export type ResolvedCustomerSender = SmtpCredentials & {
 };
 
 /** @deprecated use isMailboxAllowedForEmailType */
-export const ALLOWED_CUSTOMER_MAILBOX_PREFIXES = ["care@", "invoice@", "promotions@"] as const;
+export const ALLOWED_CUSTOMER_MAILBOX_PREFIXES = [
+  "care@",
+  "invoice@",
+  "promotions@",
+] as const;
 
 export const isAllowedCustomerMailbox = (
   smtpUser: string,
-  emailTypeSlug?: string
+  emailTypeSlug?: string,
 ): boolean => {
-  const user = String(smtpUser || "").trim().toLowerCase();
+  const user = String(smtpUser || "")
+    .trim()
+    .toLowerCase();
   if (!user || user.startsWith("support@")) return false;
 
   if (emailTypeSlug) {
@@ -33,7 +39,7 @@ export const isAllowedCustomerMailbox = (
   const prefixes = getActiveMailboxPrefixes();
   if (!prefixes.length) {
     return ALLOWED_CUSTOMER_MAILBOX_PREFIXES.some((prefix) =>
-      user.startsWith(prefix)
+      user.startsWith(prefix),
     );
   }
   return prefixes.some((prefix) => user.startsWith(prefix));
@@ -43,7 +49,7 @@ const envKey = (emailType: CustomerEmailType, field: string): string =>
   `CUSTOMER_EMAIL_${emailType.toUpperCase().replace(/[^A-Z0-9]/g, "_")}_${field}`;
 
 const readEnvSender = (
-  emailType: CustomerEmailType
+  emailType: CustomerEmailType,
 ): Omit<ResolvedCustomerSender, "brandId"> | null => {
   const host = process.env[envKey(emailType, "HOST")]?.trim();
   const user = process.env[envKey(emailType, "USER")]?.trim();
@@ -87,7 +93,7 @@ export const resolveCustomerSender = async (params: {
         pass = decryptSmtpPassword(row.smtpPassword);
       } catch (err) {
         console.warn(
-          `[email] Brand ${brandId} ${emailType} password decrypt failed — using env fallback`
+          `[email] Brand ${brandId} ${emailType} password decrypt failed — using env fallback`,
         );
       }
       if (pass) {
@@ -108,7 +114,7 @@ export const resolveCustomerSender = async (params: {
       }
     } else if (row && !isAllowedCustomerMailbox(row.smtpUser, emailType)) {
       console.warn(
-        `[email] Brand ${brandId} ${emailType} uses disallowed mailbox ${row.smtpUser} — using env fallback`
+        `[email] Brand ${brandId} ${emailType} uses disallowed mailbox ${row.smtpUser} — using env fallback`,
       );
     }
   }
@@ -125,14 +131,14 @@ export const resolveCustomerSender = async (params: {
   throw new Error(
     `No SMTP configured for customer email type "${emailType}"` +
       (brandId != null ? ` (brand ${brandId})` : "") +
-      `. Configure brand sender in CRM or CUSTOMER_EMAIL_${emailType.toUpperCase()}_* in .env`
+      `. Configure brand sender in CRM or CUSTOMER_EMAIL_${emailType.toUpperCase()}_* in .env`,
   );
 };
 
 /** .env CUSTOMER_EMAIL_{TYPE}_* fallback (GWB defaults). */
 export const resolveEnvCustomerSender = (
   emailType: CustomerEmailType,
-  brandId?: number | null
+  brandId?: number | null,
 ): ResolvedCustomerSender | null => {
   const fromEnv = readEnvSender(emailType);
   if (!fromEnv) return null;

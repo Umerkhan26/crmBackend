@@ -3,6 +3,7 @@ import ActivityLog from "../models/activityLog.model";
 import User from "../models/user.model";
 import Role from "../models/role.model";
 import { getPagination, getPagingData } from "../utils/paginate";
+import { enrichActivityLogRows } from "../services/activity.service";
 import { Op } from "sequelize";
 import { isUserManager, getManagerBrandUserIds } from "../utils/brandUtils";
 
@@ -83,7 +84,12 @@ export const getAllActivities = async (req: Request, res: Response): Promise<voi
       offset,
     });
 
-    const response = getPagingData(data, page, limit);
+    const enrichedRows = await enrichActivityLogRows(data.rows);
+    const response = getPagingData(
+      { count: data.count, rows: enrichedRows },
+      page,
+      limit,
+    );
 
     res.status(200).json(response);
   } catch (error: any) {
@@ -111,7 +117,12 @@ export const getActivitiesByUserId = async (req: Request, res: Response): Promis
       return res.status(404).json({ message: "No activity logs found for this user." });
     }
 
-    const response = getPagingData(data, page, limit);
+    const enrichedRows = await enrichActivityLogRows(data.rows);
+    const response = getPagingData(
+      { count: data.count, rows: enrichedRows },
+      page,
+      limit,
+    );
     res.status(200).json(response);
   } catch (error) {
     res.status(500).json({ error: "Failed to fetch activity logs for user." });

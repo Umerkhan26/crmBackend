@@ -19,6 +19,7 @@ import {
 } from "./portalActivity.service";
 import { sendNotification } from "./notification.service";
 import type { PortalActivityAction } from "../models/portalActivityEvent.model";
+import { getCustomerEmailBrandThemeFromBrand } from "../utils/customerEmailBrandTheme";
 
 const parseEngagementMetadata = (raw: unknown): Record<string, unknown> => {
   if (!raw) return {};
@@ -171,11 +172,18 @@ const activeWindowWhere = () => {
 };
 
 export const getBrandConfigForPortal = async (brand: Brand) => {
+  const emailTheme = getCustomerEmailBrandThemeFromBrand(brand);
   const salesFormConfig = (brand.salesFormConfig || {}) as Record<string, unknown>;
   const portalTheme =
     (salesFormConfig.portalTheme as Record<string, unknown>) ||
     (salesFormConfig.theme as Record<string, unknown>) ||
     {};
+
+  const billingEmail =
+    (portalTheme.billingEmail as string) ||
+    emailTheme.supportEmail ||
+    (portalTheme.supportEmail as string) ||
+    null;
 
   return {
     id: brand.id,
@@ -184,10 +192,20 @@ export const getBrandConfigForPortal = async (brand: Brand) => {
     subdomain: brand.subdomain,
     customerPortalUrl: normalizePortalBaseUrl(brand.customerPortalUrl),
     portalTheme: {
-      logoUrl: portalTheme.logoUrl ?? null,
-      primaryColor: portalTheme.primaryColor ?? "#2563eb",
-      supportEmail: portalTheme.supportEmail ?? null,
-      supportPhone: portalTheme.supportPhone ?? null,
+      logoUrl: emailTheme.logoUrl,
+      faviconUrl: emailTheme.iconUrl,
+      brandLabel: emailTheme.brandLabel,
+      brandName: emailTheme.brandName,
+      primaryColor: emailTheme.primaryColor || (portalTheme.primaryColor as string) || "#2563eb",
+      accentColor: emailTheme.accentColor || (portalTheme.accentColor as string) || "#2563eb",
+      supportEmail: emailTheme.supportEmail || (portalTheme.supportEmail as string) || null,
+      supportPhone: (portalTheme.supportPhone as string) || null,
+      billingEmail,
+      invoiceCompanyName: emailTheme.brandLabel,
+      invoiceWebsite:
+        (portalTheme.invoiceWebsite as string) ||
+        (portalTheme.website as string) ||
+        (brand.subdomain ? `www.${brand.subdomain}.com` : null),
       services: Array.isArray(portalTheme.services)
         ? portalTheme.services
         : Array.isArray(salesFormConfig.services)

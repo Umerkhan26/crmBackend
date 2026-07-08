@@ -19,7 +19,16 @@ interface PaginationParams {
 interface SaleQueryParams extends PaginationParams {
   search?: string;
   filters?: Record<string, any>;
+  scopeWhere?: Record<string, unknown> | null;
 }
+
+const applySaleListScope = (
+  baseWhere: Record<string, unknown>,
+  scopeWhere?: Record<string, unknown> | null,
+): Record<string, unknown> => {
+  if (!scopeWhere) return baseWhere;
+  return { [Op.and]: [baseWhere, scopeWhere] };
+};
 
 type SaleListFilters = {
   conversionDateFrom?: string;
@@ -76,6 +85,7 @@ const buildSaleWhereFromFilters = (
 
 export const getSalesSummaryByBrand = async (
   filters: SaleListFilters = {},
+  scopeWhere: Record<string, unknown> | null = null,
 ): Promise<{
   total: number;
   totalRevenue: number;
@@ -86,7 +96,10 @@ export const getSalesSummaryByBrand = async (
     revenue: number;
   }>;
 }> => {
-  const where = buildSaleWhereFromFilters(filters);
+  const where = applySaleListScope(
+    buildSaleWhereFromFilters(filters),
+    scopeWhere,
+  );
 
   const rows = (await ProductSale.findAll({
     attributes: [
@@ -236,6 +249,7 @@ export const getAllSales = async ({
   limit = 10,
   filters = {},
   search = "",
+  scopeWhere = null,
 }: SaleQueryParams) => {
   try {
     const { offset, limit: pageLimit } = getPagination({ page, limit });
@@ -248,16 +262,19 @@ export const getAllSales = async ({
       ...restFilters
     } = filters as Record<string, unknown>;
 
-    const where: any = {
-      ...buildSaleWhereFromFilters({
-        conversionDateFrom: conversionDateFrom as string | undefined,
-        conversionDateTo: conversionDateTo as string | undefined,
-        brandId: brandId as number | string | undefined,
-        status: status as string | undefined,
-        createdBy: createdBy as number | string | undefined,
-      }),
-      ...restFilters,
-    };
+    const where: any = applySaleListScope(
+      {
+        ...buildSaleWhereFromFilters({
+          conversionDateFrom: conversionDateFrom as string | undefined,
+          conversionDateTo: conversionDateTo as string | undefined,
+          brandId: brandId as number | string | undefined,
+          status: status as string | undefined,
+          createdBy: createdBy as number | string | undefined,
+        }),
+        ...restFilters,
+      },
+      scopeWhere,
+    );
 
     const include: any = [
       {
@@ -560,6 +577,11 @@ export const getInvoiceByLeadId = async (leadId: number) => {
           attributes: ["id", "firstname", "email"],
         },
         { model: Campaign, as: "campaign", attributes: ["id", "campaignName"] },
+        {
+          model: Brand,
+          as: "brand",
+          attributes: ["id", "name", "slug", "subdomain", "salesFormConfig"],
+        },
       ],
     });
 
@@ -615,6 +637,7 @@ export const getInvoiceByLeadId = async (leadId: number) => {
     return {
       invoiceNumber: `INV-${sale.id}`,
       date: sale.conversionDate,
+      brand: sale.brand,
       sale: {
         ...sale.get({ plain: true }),
         parsedProducts,
@@ -635,7 +658,8 @@ export const getSalesByLeadCreator = async (
   creatorId: number | string,
   page: number = 1,
   limit: number = 10,
-  search: string = ""
+  search: string = "",
+  brandId?: number,
 ) => {
   try {
     const numericId = Number(creatorId);
@@ -662,6 +686,9 @@ export const getSalesByLeadCreator = async (
       leadId: { [Op.in]: createdLeadIds },
       status: "converted",
     };
+    if (brandId != null && Number.isFinite(brandId)) {
+      where.brandId = brandId;
+    }
     
     const include: any = [
       {
@@ -728,7 +755,8 @@ export const getSalesByAssigneeId = async (
   assigneeId: number | string,
   page: number = 1,
   limit: number = 10,
-  search: string = ""
+  search: string = "",
+  brandId?: number,
 ) => {
 
 
@@ -737,6 +765,9 @@ export const getSalesByAssigneeId = async (
     if (isNaN(numericId)) throw new Error("Invalid assignee ID");
     const { offset, limit: pageLimit } = getPagination({ page, limit });
     const where: any = { assigneeId: numericId };
+    if (brandId != null && Number.isFinite(brandId)) {
+      where.brandId = brandId;
+    }
     const include: any = [
       {
         model: Lead,

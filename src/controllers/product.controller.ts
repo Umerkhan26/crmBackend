@@ -1,5 +1,18 @@
 import { Request, Response } from "express";
 import * as ProductSaleService from "../services/product.service";
+import {
+  buildCustomerAccountSaleScopeWhere,
+  resolveCustomerListScope,
+} from "../utils/customerAccountScope";
+
+const resolveSaleListScopeWhere = async (
+  userId?: number,
+  permissions: string[] = [],
+): Promise<Record<string, unknown> | null> => {
+  if (!userId) return null;
+  const scopeResult = await resolveCustomerListScope(userId, permissions);
+  return buildCustomerAccountSaleScopeWhere(scopeResult);
+};
 
 export const convertLeadToSale = async (
   req: Request,
@@ -83,11 +96,16 @@ export const getAllSales = async (
       const createdBy = parseInt(String(req.query.createdBy), 10);
       if (Number.isFinite(createdBy)) filters.createdBy = createdBy;
     }
+    const scopeWhere = await resolveSaleListScopeWhere(
+      req.user?.id,
+      req.user?.permissions || [],
+    );
     const salesData = await ProductSaleService.getAllSales({
       page,
       limit,
       search,
       filters,
+      scopeWhere,
     });
     return res.status(200).json({
       success: true,
@@ -117,7 +135,14 @@ export const getSalesSummaryByBrandController = async (
       if (Number.isFinite(createdBy)) filters.createdBy = createdBy;
     }
 
-    const data = await ProductSaleService.getSalesSummaryByBrand(filters);
+    const scopeWhere = await resolveSaleListScopeWhere(
+      req.user?.id,
+      req.user?.permissions || [],
+    );
+    const data = await ProductSaleService.getSalesSummaryByBrand(
+      filters,
+      scopeWhere,
+    );
     return res.status(200).json({
       success: true,
       message: "Sales summary by brand",
@@ -440,12 +465,16 @@ export const getSalesByLeadCreatorController = async (
       ? parseInt(req.query.limit as string, 10)
       : 10;
     const search = (req.query.search as string) || "";
+    const brandId = req.query.brandId
+      ? parseInt(String(req.query.brandId), 10)
+      : undefined;
 
     const salesData = await ProductSaleService.getSalesByLeadCreator(
       creatorId,
       page,
       limit,
-      search
+      search,
+      Number.isFinite(brandId) ? brandId : undefined,
     );
 
     return res.status(200).json({
@@ -478,14 +507,16 @@ export const getSalesByAssigneeIdController = async (
       ? parseInt(req.query.limit as string, 10)
       : 10;
     const search = (req.query.search as string) || "";
-
-
+    const brandId = req.query.brandId
+      ? parseInt(String(req.query.brandId), 10)
+      : undefined;
 
     const salesData = await ProductSaleService.getSalesByAssigneeId(
       assigneeId,
       page,
       limit,
-      search
+      search,
+      Number.isFinite(brandId) ? brandId : undefined,
     );
 
     if (!salesData || !salesData.data || salesData.data.length === 0)

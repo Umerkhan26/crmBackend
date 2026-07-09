@@ -35,7 +35,7 @@ router.get(
 router.get(
   "/admin/new-master-leads",
   verifyToken,
-  checkPermission(PERMISSIONS.LEAD_GET_ALL),
+  checkPermission(PERMISSIONS.LEAD_VIEW_ALL),
   LeadController.getAdminMasterLeads,
 );
 router.get(
@@ -45,7 +45,7 @@ router.get(
 router.get(
   "/admin/new-master-leads/:id",
   verifyToken,
-  checkPermission(PERMISSIONS.LEAD_GET_ALL),
+  checkPermission(PERMISSIONS.LEAD_VIEW_ALL),
   LeadController.getUnifiedAdminLeadById,
 );
 router.get(

@@ -1,4 +1,4 @@
-import { Op, literal } from "sequelize";
+import { Op, literal, Transaction } from "sequelize";
 import db from "../../db";
 import CustomerAccount from "../models/customerAccount.model";
 import PortalCustomer from "../models/portalCustomer.model";
@@ -19,6 +19,23 @@ import {
   resolveCustomerListScope,
 } from "../utils/customerAccountScope";
 import { attachPortalCustomerAsUser, mapPortalCustomerAsUser } from "../utils/portalCustomerResponse";
+
+const SALE_SUMMARY_ATTRIBUTES = [
+  "id",
+  "status",
+  "conversionDate",
+  "assigneeId",
+  "createdBy",
+  "brandId",
+] as const;
+
+const SALE_DETAIL_ATTRIBUTES = [
+  ...SALE_SUMMARY_ATTRIBUTES,
+  "productType",
+  "price",
+  "notes",
+  "products",
+] as const;
 
 const LEAD_STATUSES = [
   "pending",
@@ -51,7 +68,8 @@ const parseJsonField = <T>(raw: unknown, fallback: T): T => {
 const patchLinkedLead = async (
   lead: InstanceType<typeof Lead>,
   sale: InstanceType<typeof ProductSale> | null,
-  opts: { leadStatus?: string; businessName?: string }
+  opts: { leadStatus?: string; businessName?: string },
+  transaction?: Transaction
 ) => {
   const leadUpdates: { assignees?: AssigneeWithStatus[]; leadData?: Record<string, unknown> } =
     {};
@@ -108,7 +126,7 @@ const patchLinkedLead = async (
       {};
     if (leadUpdates.assignees) patch.assignees = leadUpdates.assignees;
     if (leadUpdates.leadData) patch.leadData = leadUpdates.leadData;
-    await lead.update(patch);
+    await lead.update(patch, transaction ? { transaction } : undefined);
   }
 };
 
@@ -271,7 +289,7 @@ export const listCustomerAccounts = async ({
   const saleInclude: any = {
     model: ProductSale,
     as: "sale",
-    attributes: ["id", "status", "conversionDate", "assigneeId", "createdBy", "brandId"],
+    attributes: [...SALE_SUMMARY_ATTRIBUTES],
     required: false,
   };
 
@@ -350,7 +368,7 @@ export const getCustomerAccountById = async (
         model: ProductSale,
         as: "sale",
         required: false,
-        attributes: ["id", "status", "conversionDate", "assigneeId", "createdBy", "brandId"],
+        attributes: [...SALE_DETAIL_ATTRIBUTES],
       },
     ],
   });
@@ -396,113 +414,139 @@ export const updateCustomerAccount = async (
   });
   if (!account) throw new Error("Customer account not found");
 
-  if (payload.status === "active" || payload.status === "suspended") {
-    await account.update({ status: payload.status });
-  }
-
-  if (payload.brandId !== undefined) {
-    const brandId = payload.brandId === null ? null : Number(payload.brandId);
-    if (brandId != null) {
-      const brand = await Brand.findByPk(brandId);
-      if (!brand) throw new Error("Brand not found");
-    }
-    await account.update({ brandId });
-    const sale = (account as { sale?: InstanceType<typeof ProductSale> }).sale ?? null;
-    if (sale) {
-      await sale.update({ brandId });
-    }
-    const portalCustomer = (account as any).portalCustomer as InstanceType<
-      typeof PortalCustomer
-    > | undefined;
-    if (portalCustomer) {
-      await portalCustomer.update({ brandId });
-    }
-  }
-
   const portalCustomer = (account as any).portalCustomer as InstanceType<
     typeof PortalCustomer
   >;
-  if (portalCustomer) {
-    const customerUpdates: Record<string, string> = {};
-    if (payload.firstname !== undefined) {
-      customerUpdates.firstname = String(payload.firstname).trim();
-    }
-    if (payload.lastname !== undefined) {
-      customerUpdates.lastname = String(payload.lastname).trim();
-    }
-    if (payload.phone !== undefined) {
-      customerUpdates.phone = String(payload.phone).trim();
-    }
-
-    if (payload.email !== undefined) {
-      const email = String(payload.email).trim().toLowerCase();
-      if (!email) throw new Error("Email is required");
-      const existing = await PortalCustomer.findOne({ where: { email } });
-      if (existing && existing.id !== portalCustomer.id) {
-        throw new Error("Email already in use by another customer");
-      }
-      customerUpdates.email = email;
-    }
-
-    if (Object.keys(customerUpdates).length > 0) {
-      await portalCustomer.update(customerUpdates);
-    }
-  }
-
   const lead = (account as { lead?: InstanceType<typeof Lead> }).lead ?? null;
   const sale = (account as { sale?: InstanceType<typeof ProductSale> }).sale ?? null;
 
-  if (lead && (payload.leadStatus !== undefined || payload.businessName !== undefined)) {
-    await patchLinkedLead(lead, sale, {
-      leadStatus: payload.leadStatus,
-      businessName: payload.businessName,
-    });
+  if (payload.brandId !== undefined && payload.brandId !== null) {
+    const brand = await Brand.findByPk(Number(payload.brandId));
+    if (!brand) throw new Error("Brand not found");
   }
 
-  if (sale && account.saleId) {
-    const saleUpdates: Record<string, unknown> = {};
-    if (payload.saleStatus !== undefined) {
-      const st = String(payload.saleStatus).toLowerCase().trim();
-      if (!SALE_STATUSES.includes(st as (typeof SALE_STATUSES)[number])) {
-        throw new Error(`Invalid sale status. Allowed: ${SALE_STATUSES.join(", ")}`);
-      }
-      saleUpdates.status = st;
-    }
-    if (payload.saleNotes !== undefined) {
-      saleUpdates.notes = String(payload.saleNotes).trim();
-    }
-
-    if (payload.products !== undefined) {
-      const lines = (payload.products || [])
-        .map((p) => ({
-          productType: String(p.productType || p.productName || "").trim(),
-          price: Number(p.price) || 0,
-          notes: String(p.notes || "").trim(),
-        }))
-        .filter((p) => p.productType);
-      if (lines.length === 0) {
-        throw new Error("Add at least one product with a name");
-      }
-      saleUpdates.products = lines;
-      saleUpdates.productType = lines[0].productType;
-      saleUpdates.price = lines.reduce((sum, line) => sum + (Number(line.price) || 0), 0);
-    } else {
-      if (payload.productType !== undefined) {
-        saleUpdates.productType = String(payload.productType).trim();
-      }
-      if (payload.salePrice !== undefined && payload.salePrice !== "") {
-        const price = Number(payload.salePrice);
-        if (Number.isNaN(price)) throw new Error("Invalid sale price");
-        saleUpdates.price = price;
-      } else if (payload.salePrice === "" || payload.salePrice === null) {
-        saleUpdates.price = null;
-      }
-    }
-
-    if (Object.keys(saleUpdates).length > 0) {
-      await sale.update(saleUpdates);
+  if (payload.email !== undefined) {
+    const email = String(payload.email).trim().toLowerCase();
+    if (!email) throw new Error("Email is required");
+    const existing = await PortalCustomer.findOne({ where: { email } });
+    if (existing && existing.id !== portalCustomer.id) {
+      throw new Error("Email already in use by another customer");
     }
   }
+
+  let normalizedProductLines:
+    | Array<{ productType: string; price: number; notes: string }>
+    | undefined;
+
+  if (payload.products !== undefined) {
+    const lines = (payload.products || [])
+      .map((p) => ({
+        productType: String(p.productType || p.productName || "").trim(),
+        price: Number(p.price) || 0,
+        notes: String(p.notes || "").trim(),
+      }))
+      .filter((p) => p.productType);
+
+    if (lines.length > 0) {
+      const productKeys = lines.map((p) => p.productType.toLowerCase());
+      if (new Set(productKeys).size !== productKeys.length) {
+        throw new Error(
+          "Duplicate products are not allowed on the same sale. Update the existing line instead."
+        );
+      }
+      normalizedProductLines = lines;
+    }
+  }
+
+  if (payload.saleStatus !== undefined) {
+    const st = String(payload.saleStatus).toLowerCase().trim();
+    if (!SALE_STATUSES.includes(st as (typeof SALE_STATUSES)[number])) {
+      throw new Error(`Invalid sale status. Allowed: ${SALE_STATUSES.join(", ")}`);
+    }
+  }
+
+  await db.transaction(async (transaction) => {
+    if (payload.status === "active" || payload.status === "suspended") {
+      await account.update({ status: payload.status }, { transaction });
+    }
+
+    if (payload.brandId !== undefined) {
+      const brandId = payload.brandId === null ? null : Number(payload.brandId);
+      await account.update({ brandId }, { transaction });
+      if (sale) {
+        await sale.update({ brandId }, { transaction });
+      }
+      if (portalCustomer) {
+        await portalCustomer.update({ brandId }, { transaction });
+      }
+    }
+
+    if (portalCustomer) {
+      const customerUpdates: Record<string, string> = {};
+      if (payload.firstname !== undefined) {
+        customerUpdates.firstname = String(payload.firstname).trim();
+      }
+      if (payload.lastname !== undefined) {
+        customerUpdates.lastname = String(payload.lastname).trim();
+      }
+      if (payload.phone !== undefined) {
+        customerUpdates.phone = String(payload.phone).trim();
+      }
+      if (payload.email !== undefined) {
+        customerUpdates.email = String(payload.email).trim().toLowerCase();
+      }
+
+      if (Object.keys(customerUpdates).length > 0) {
+        await portalCustomer.update(customerUpdates, { transaction });
+      }
+    }
+
+    if (lead && (payload.leadStatus !== undefined || payload.businessName !== undefined)) {
+      await patchLinkedLead(
+        lead,
+        sale,
+        {
+          leadStatus: payload.leadStatus,
+          businessName: payload.businessName,
+        },
+        transaction
+      );
+    }
+
+    if (sale && account.saleId) {
+      const saleUpdates: Record<string, unknown> = {};
+      if (payload.saleStatus !== undefined) {
+        saleUpdates.status = String(payload.saleStatus).toLowerCase().trim();
+      }
+      if (payload.saleNotes !== undefined) {
+        saleUpdates.notes = String(payload.saleNotes).trim();
+      }
+
+      if (normalizedProductLines) {
+        saleUpdates.products = normalizedProductLines;
+        saleUpdates.productType = normalizedProductLines[0].productType;
+        saleUpdates.price = normalizedProductLines.reduce(
+          (sum, line) => sum + (Number(line.price) || 0),
+          0
+        );
+      } else if (payload.products === undefined) {
+        if (payload.productType !== undefined) {
+          saleUpdates.productType = String(payload.productType).trim();
+        }
+        if (payload.salePrice !== undefined && payload.salePrice !== "") {
+          const price = Number(payload.salePrice);
+          if (Number.isNaN(price)) throw new Error("Invalid sale price");
+          saleUpdates.price = price;
+        } else if (payload.salePrice === "" || payload.salePrice === null) {
+          saleUpdates.price = null;
+        }
+      }
+
+      if (Object.keys(saleUpdates).length > 0) {
+        await sale.update(saleUpdates, { transaction });
+      }
+    }
+  });
 
   const refreshed = await getCustomerAccountById(id);
   return attachPortalCustomerAsUser(

@@ -150,11 +150,12 @@ const runSync = async () => {
         "brand:removeManagers",
       ];
 
-      // Lead permissions (including LEAD_VIEW_ALL which is important for viewing all leads)
+      // Lead permissions
       const leadPermissions = [
         "lead:create",
-        "lead:getAll",
-        "lead:viewAll", // Important: allows viewing all leads (not just own)
+        "lead:getAll", // Master Leads page
+        "lead:viewAll", // Unified Master page
+        "lead:scopeAll", // Global unscoped data
         "lead:getByCampaign",
         "lead:update",
         "lead:delete",

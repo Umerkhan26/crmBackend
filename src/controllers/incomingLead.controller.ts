@@ -16,7 +16,14 @@ import {
 export const createIncomingLeadController = async (req: Request, res: Response): Promise<any> => {
   try {
     const { runId, payload, campaignName, externalId, dedupeKey } = req.body;
-    const created = await createIncomingLead({ runId, payload, campaignName, externalId, dedupeKey });
+    const created = await createIncomingLead({
+      runId,
+      payload,
+      campaignName,
+      externalId,
+      dedupeKey,
+      createdBy: (req as any).user?.id,
+    });
     return res.status(201).json({ success: true, message: "Incoming lead created", data: created });
   } catch (error: any) {
     return res.status(400).json({ success: false, message: error.message || "Error creating incoming lead" });
@@ -64,6 +71,7 @@ export const bulkCreateIncomingLeadsController = async (req: Request, res: Respo
       runId,
       defaultCampaignName: campaignName,
       rows,
+      createdBy: (req as any).user?.id,
     });
     return res.status(201).json({
       success: true,

@@ -11,12 +11,14 @@ export const createIncomingLead = async ({
   campaignName,
   externalId,
   dedupeKey,
+  createdBy,
 }: {
   runId: string;
   payload: any;
   campaignName?: string;
   externalId?: string;
   dedupeKey?: string;
+  createdBy?: number;
 }) => {
   if (!runId?.trim()) throw new Error("runId is required");
   if (!payload) throw new Error("payload is required");
@@ -27,6 +29,7 @@ export const createIncomingLead = async ({
     externalId: externalId || null,
     dedupeKey: dedupeKey || null,
     status: "pending",
+    createdBy: createdBy ?? null,
   } as any);
   return rec.toJSON();
 };
@@ -47,6 +50,7 @@ type PreparedIncomingRow = {
     externalId: string | null;
     dedupeKey: string | null;
     status: "pending";
+    createdBy: number | null;
   };
 };
 
@@ -57,16 +61,22 @@ export const bulkCreateIncomingLeads = async ({
   runId,
   defaultCampaignName,
   rows,
+  createdBy,
 }: {
   runId: string;
   defaultCampaignName?: string;
   rows: BulkIncomingRowInput[];
+  createdBy?: number;
 }) => {
   if (!runId?.trim()) throw new Error("runId is required");
   if (!rows?.length) return { imported: 0, skipped: [] as { row: number; reason: string }[] };
 
   const trimmedRun = runId.trim();
   const defaultCamp = defaultCampaignName?.trim() || null;
+  const creatorId =
+    createdBy != null && Number.isFinite(Number(createdBy))
+      ? Number(createdBy)
+      : null;
 
   const prepared: PreparedIncomingRow[] = [];
   const skipped: { row: number; reason: string }[] = [];
@@ -89,6 +99,7 @@ export const bulkCreateIncomingLeads = async ({
           externalId: row.externalId?.trim() || null,
           dedupeKey: row.dedupeKey?.trim() || null,
           status: "pending",
+          createdBy: creatorId,
         },
       });
     } catch (e: any) {
@@ -130,6 +141,8 @@ export const getIncomingLeads = async ({
   status = "all",
   runId,
   campaignName,
+  createdBy,
+  createdByIn,
 }: {
   page?: number;
   limit?: number;
@@ -146,6 +159,8 @@ export const getIncomingLeads = async ({
   runId?: string;
   /** Exact match on stored campaign name (same string as import) */
   campaignName?: string;
+  createdBy?: number;
+  createdByIn?: number[];
 }) => {
   const { offset, limit: pageLimit } = getPagination({ page, limit });
 
@@ -157,6 +172,11 @@ export const getIncomingLeads = async ({
   }
   if (runId?.trim()) andParts.push({ runId: runId.trim() });
   if (campaignName?.trim()) andParts.push({ campaignName: campaignName.trim() });
+  if (createdBy != null && Number.isFinite(Number(createdBy))) {
+    andParts.push({ createdBy: Number(createdBy) });
+  } else if (Array.isArray(createdByIn) && createdByIn.length > 0) {
+    andParts.push({ createdBy: { [Op.in]: createdByIn } });
+  }
 
   if (search?.trim()) {
     const normalized = normalizeLeadCodeSearchInput(search);

@@ -21,9 +21,12 @@ export const PERMISSIONS = {
   // ORDER_BY_VENDOR_ID: "order.getOrderByVendorId",
   // Lead permissions
   LEAD_CREATE: "lead:create",
+  /** Master Leads (Leads Center) page access */
   LEAD_GET_ALL: "lead:getAll",
-  // If granted, user can view *all* leads (otherwise endpoints may scope to `createdBy = userId`)
+  /** Unified Master Leads page access */
   LEAD_VIEW_ALL: "lead:viewAll",
+  /** Full unscoped lead data on pages the user can open (configure via Role UI — not role-name) */
+  LEAD_SCOPE_ALL: "lead:scopeAll",
   LEAD_GET_BY_CAMPAIGN: "lead:getByCampaign",
   LEAD_UPDATE: "lead:update",
   LEAD_DELETE: "lead:delete",

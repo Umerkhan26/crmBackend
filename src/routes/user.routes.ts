@@ -3,6 +3,7 @@ import {
   deleteUserController,
   getUser,
   getUsers,
+  getMeController,
   login,
   registerUser,
   updateUserController,
@@ -26,6 +27,9 @@ router.post(
 );
 
 router.post("/login", login);
+
+/** Own profile + role permissions — any authenticated CRM user. */
+router.get("/users/me", verifyToken, getMeController);
 
 router.get(
   "/getAllUsers",

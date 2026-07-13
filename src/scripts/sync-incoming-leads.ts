@@ -11,8 +11,8 @@ const run = async () => {
     await db.authenticate();
     console.log("Database connection established.");
 
-    await IncomingLead.sync();
-    console.log("✅ Table `incoming_leads` ready.");
+    await IncomingLead.sync({ alter: true });
+    console.log("✅ Table `incoming_leads` ready (createdBy column included).");
   } catch (error: any) {
     console.error("❌ Sync incoming leads error:", error.message);
     throw error;

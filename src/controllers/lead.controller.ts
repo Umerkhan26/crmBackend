@@ -6,6 +6,7 @@ import { FilterType } from "../utils/dateFilters";
 import { getPagingData } from "../utils/paginate";
 import { PERMISSIONS } from "../constants/permissions";
 import { leadRowHasContactPhone, normalizeLeadDataInput } from "../utils/normalizeLeadData";
+import { resolveLeadListScope } from "../utils/leadListScope";
 
 const canViewAllLeads = (req: Request): boolean => {
   return req.user?.permissions?.includes(PERMISSIONS.LEAD_VIEW_ALL) ?? false;
@@ -44,13 +45,15 @@ export const getAllLeads = async (
       });
     }
 
-    // Scope is permission-based (no role-name hardcoding)
-    const isAdmin = canViewAllLeads(req);
-
-    // Check if user is a manager
-    const { isUserManager, getManagerBrandUserIds } = await import("../utils/brandUtils");
-    const isManager = await isUserManager(userId);
-    const managerBrandUserIds = isManager ? await getManagerBrandUserIds(userId) : [];
+    // Scope: lead:scopeAll → all; brand manager → team; else → own
+    const scope = await resolveLeadListScope(req);
+    if (!scope) {
+      return res.status(401).json({
+        success: false,
+        message: "User not authenticated",
+      });
+    }
+    const { isAdmin, isManager, managerBrandUserIds } = scope;
 
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
@@ -120,13 +123,14 @@ export const getAdminMasterLeads = async (
       });
     }
 
-    const isAdmin = canViewAllLeads(req);
-    if (!isAdmin) {
-      return res.status(403).json({
+    const scope = await resolveLeadListScope(req);
+    if (!scope) {
+      return res.status(401).json({
         success: false,
-        message: "Access denied. Admin only endpoint.",
+        message: "User not authenticated",
       });
     }
+    const { isAdmin, isManager, managerBrandUserIds } = scope;
 
     const page = parseInt(req.query.page as string, 10) || 1;
     const limit = parseInt(req.query.limit as string, 10) || 10;
@@ -171,10 +175,13 @@ export const getAdminMasterLeads = async (
       conditions,
       assignmentState,
       contactState,
-      isAdmin: true,
+      isAdmin,
+      isManager,
+      managerBrandUserIds,
       userId,
-      // Only leads that came from incoming_leads → `leads` (empty assignees until cron, then assigned).
-      onlyPromotedFromIncoming: true,
+      // Global scope: pipeline-only (promoted from incoming).
+      // Users/managers: their scoped leads (including manually created).
+      onlyPromotedFromIncoming: isAdmin,
     });
 
     const includeStaging =
@@ -186,13 +193,26 @@ export const getAdminMasterLeads = async (
 
     let incomingAwaitingPromotion: Awaited<ReturnType<typeof getIncomingLeads>> | null =
       null;
+    // Merge staging rows for everyone; scope by createdBy for non-global users.
     if (mergeIncoming) {
+      const stagingScope: {
+        createdBy?: number;
+        createdByIn?: number[];
+      } = {};
+      if (!isAdmin) {
+        if (isManager && managerBrandUserIds.length > 0) {
+          stagingScope.createdByIn = managerBrandUserIds;
+        } else {
+          stagingScope.createdBy = userId;
+        }
+      }
       incomingAwaitingPromotion = await getIncomingLeads({
         page,
         limit,
         search,
         status: "awaiting_promotion",
         campaignName: campaign?.trim() || undefined,
+        ...stagingScope,
       });
     }
 
@@ -310,13 +330,22 @@ export const getUnifiedAdminLeadById = async (
       });
     }
 
-    const isAdmin = canViewAllLeads(req);
-    if (!isAdmin) {
-      return res.status(403).json({
+    const scope = await resolveLeadListScope(req);
+    if (!scope) {
+      return res.status(401).json({
         success: false,
-        message: "Access denied. Admin only endpoint.",
+        message: "User not authenticated",
       });
     }
+    const { isAdmin, isManager, managerBrandUserIds } = scope;
+
+    const canAccessCreatedBy = (createdBy: number | null | undefined) => {
+      if (isAdmin) return true;
+      const creator = Number(createdBy);
+      if (!Number.isFinite(creator) || creator <= 0) return false;
+      if (isManager) return managerBrandUserIds.includes(creator);
+      return creator === userId;
+    };
 
     const rawId = String(req.params.id || "").trim();
     if (!rawId) {
@@ -336,6 +365,12 @@ export const getUnifiedAdminLeadById = async (
       }
 
       const incoming = await getIncomingLeadById(incomingId);
+      if (!canAccessCreatedBy((incoming as any)?.createdBy)) {
+        return res.status(403).json({
+          success: false,
+          message: "Access denied for this lead.",
+        });
+      }
       const payload = normalizeLeadDataInput(incoming?.payload);
       const campaignName =
         (incoming?.campaignName && String(incoming.campaignName).trim()) ||
@@ -369,6 +404,12 @@ export const getUnifiedAdminLeadById = async (
     }
 
     const lead = await LeadService.getLeadById(leadId);
+    if (!canAccessCreatedBy((lead as any)?.createdBy)) {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied for this lead.",
+      });
+    }
     return res.status(200).json({
       success: true,
       message: "Unified lead details fetched successfully",
@@ -396,23 +437,21 @@ export const getLeadsByCampaign = async (
       });
     }
 
-    // Scope is permission-based (no role-name hardcoding)
-    const isAdmin = canViewAllLeads(req);
+    // Scope: lead:scopeAll → all; else own (campaign list)
+    const scope = await resolveLeadListScope(req);
+    if (!scope) {
+      return res.status(401).json({
+        success: false,
+        message: "User not authenticated",
+      });
+    }
+    const isAdmin = scope.isAdmin;
 
     const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
     const limit = req.query.limit
       ? parseInt(req.query.limit as string, 10)
       : 10;
-
     const search = req.query.search ? String(req.query.search).trim() : "";
-
-    console.log("🔍 Controller - Received search parameter:", {
-      searchTerm: search,
-      rawQuery: req.query.search,
-      campaignName,
-      page,
-      limit,
-    });
 
     const startDate = req.query.startDate
       ? (req.query.startDate as string)
@@ -677,8 +716,14 @@ export const getAllLeadsWithAssignee = async (
       });
     }
 
-    // Scope is permission-based (no role-name hardcoding)
-    const isAdmin = canViewAllLeads(req);
+    const scope = await resolveLeadListScope(req);
+    if (!scope) {
+      return res.status(401).json({
+        success: false,
+        message: "User not authenticated",
+      });
+    }
+    const isAdmin = scope.isAdmin;
 
     const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
     const limit = req.query.limit
@@ -817,13 +862,14 @@ export const getUnassignedLeads = async (
       });
     }
 
-    // Scope is permission-based (no role-name hardcoding)
-    const isAdmin = canViewAllLeads(req);
-
-    // Check if user is a manager
-    const { isUserManager, getManagerBrandUserIds } = await import("../utils/brandUtils");
-    const isManager = await isUserManager(userId);
-    const managerBrandUserIds = isManager ? await getManagerBrandUserIds(userId) : [];
+    const scope = await resolveLeadListScope(req);
+    if (!scope) {
+      return res.status(401).json({
+        success: false,
+        message: "User not authenticated",
+      });
+    }
+    const { isAdmin, isManager, managerBrandUserIds } = scope;
 
     const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
     const limit = req.query.limit
@@ -1550,12 +1596,16 @@ export const getLeadsWithWork = async (
       });
     }
 
-    const { isUserManager, getManagerBrandUserIds } = await import("../utils/brandUtils");
-    const isManager = await isUserManager(userId);
-    const managerBrandUserIds = isManager ? await getManagerBrandUserIds(userId) : [];
-    const isAdmin = canViewAllLeads(req);
+    const scope = await resolveLeadListScope(req);
+    if (!scope) {
+      return res.status(401).json({
+        success: false,
+        message: "User not authenticated",
+      });
+    }
+    const { isAdmin, isManager, managerBrandUserIds } = scope;
     // Manager dropdown must stay scoped to manager's own users.
-    // Only non-manager admins should receive global users.
+    // Only global-scope users should receive unscoped users list.
     const useAdminScope = isAdmin && !isManager;
 
     if (!isAdmin && !isManager) {
@@ -1636,10 +1686,14 @@ export const getLeadsWithWorkFilterUsers = async (
       });
     }
 
-    const { isUserManager, getManagerBrandUserIds } = await import("../utils/brandUtils");
-    const isManager = await isUserManager(userId);
-    const managerBrandUserIds = isManager ? await getManagerBrandUserIds(userId) : [];
-    const isAdmin = canViewAllLeads(req);
+    const scope = await resolveLeadListScope(req);
+    if (!scope) {
+      return res.status(401).json({
+        success: false,
+        message: "User not authenticated",
+      });
+    }
+    const { isAdmin, isManager, managerBrandUserIds } = scope;
     const useAdminScope = isAdmin && !isManager;
 
     if (!isAdmin && !isManager) {

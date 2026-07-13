@@ -18,18 +18,25 @@ export const syncPermissionsToDB = async () => {
       returning: true,
     });
     
-    // Verify call permissions were added
+    // Verify call permissions were added (unique names — DB may have duplicate rows)
     const callPermsInDB = await Permission.findAll({
       where: {
         name: ["call:create", "call:get", "call:delete"],
       },
+      attributes: ["name"],
     });
-    
-    if (callPermsInDB.length === 3) {
-      console.log("✅ Call permissions verified in database:", callPermsInDB.map(p => p.name));
+    const uniqueCallNames = [...new Set(callPermsInDB.map((p) => p.name))];
+
+    if (uniqueCallNames.length === 3) {
+      console.log("✅ Call permissions verified in database:", uniqueCallNames);
+      if (callPermsInDB.length > 3) {
+        console.warn(
+          `⚠️  Duplicate call permission rows in DB (${callPermsInDB.length} rows for 3 names). Sync is OK; clean duplicates later if needed.`,
+        );
+      }
     } else {
       console.warn("⚠️  Some call permissions missing:", {
-        found: callPermsInDB.map(p => p.name),
+        found: uniqueCallNames,
         expected: ["call:create", "call:get", "call:delete"],
       });
     }

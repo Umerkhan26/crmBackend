@@ -205,31 +205,12 @@ export const getAllLeads = async ({
       );
     }
 
-    // Manager logic: Managers see all master leads + leads from their brand users
-    if (isManager && managerBrandUserIds.length > 0) {
-      // Managers see:
-      // 1. All master leads (no restriction - handled by not filtering)
-      // 2. Leads created by their brand users
-      // 3. Leads assigned to their brand users
-      
-      // Build OR condition for manager
-      const managerConditions: any[] = [];
-      
-      // Leads created by brand users
-      managerConditions.push({
-        createdBy: {
-          [Op.in]: managerBrandUserIds,
-        },
-      });
-      
-      // Leads assigned to brand users (check if assignees JSON contains brand user IDs)
-      // This is complex - we'll filter after fetching
-      
-      // For now, we'll include all leads and filter assignees later
-      // The whereCondition will not restrict by createdBy for managers
+    // Scope: lead:scopeAll → all; brand manager → team; else → own
+    if (isManager && managerBrandUserIds.length > 0 && !isAdmin) {
+      whereCondition.createdBy = {
+        [Op.in]: managerBrandUserIds,
+      };
     } else if (!isAdmin && userId) {
-      // Filter by creator if user is not admin and not a manager
-      // Non-admin users should only see leads they created themselves
       whereCondition.createdBy = userId;
     }
 

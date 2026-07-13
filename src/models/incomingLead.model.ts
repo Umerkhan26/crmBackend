@@ -22,6 +22,8 @@ export interface IncomingLeadAttributes {
   promotedAt?: Date | null;
   // Optional references for audit (not enforcing FK now to keep staging isolated)
   targetLeadId?: number | null; // id in leads after promotion
+  /** CRM user who imported / created this staging row */
+  createdBy?: number | null;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -39,6 +41,7 @@ export interface IncomingLeadCreationAttributes
     | "assignedAt"
     | "promotedAt"
     | "targetLeadId"
+    | "createdBy"
     | "createdAt"
     | "updatedAt"
   > {}
@@ -59,6 +62,7 @@ export class IncomingLead
   public assignedAt?: Date | null;
   public promotedAt?: Date | null;
   public targetLeadId?: number | null;
+  public createdBy?: number | null;
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
@@ -116,6 +120,10 @@ IncomingLead.init(
       type: DataTypes.INTEGER,
       allowNull: true,
     },
+    createdBy: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
   },
   {
     sequelize: db,
@@ -128,6 +136,7 @@ IncomingLead.init(
       { fields: ["dedupeKey"] },
       { fields: ["status"] },
       { fields: ["promotedAt"] },
+      { fields: ["createdBy"] },
     ],
   },
 );

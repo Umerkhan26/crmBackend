@@ -7,6 +7,12 @@ import CustomerAccount from "../models/customerAccount.model";
 import PortalCustomer from "../models/portalCustomer.model";
 import PortalPopupDismissal from "../models/portalPopupDismissal.model";
 import PortalPopup from "../models/portalPopup.model";
+import Brand from "../models/brand.model";
+import ProductSale from "../models/product.model";
+import {
+  resolveCustomerListScope,
+  buildCustomerAccountSaleScopeWhere,
+} from "../utils/customerAccountScope";
 
 const ACTION_LABELS: Record<PortalActivityAction, string> = {
   login: "Portal login",
@@ -371,4 +377,119 @@ export const getLegacyPortalActivityPreview = async (
     metadata: { popupId: d.popupId, legacy: true },
     source: "legacy" as const,
   }));
+};
+
+/** CRM feed: recent portal activity across customers (scoped like customer list). */
+export const listRecentPortalActivity = async ({
+  page = 1,
+  limit = 20,
+  brandId,
+  search,
+  viewerUserId,
+  viewerPermissions = [],
+}: {
+  page?: number;
+  limit?: number;
+  brandId?: number;
+  search?: string;
+  viewerUserId: number;
+  viewerPermissions?: string[];
+}) => {
+  const safePage = Math.max(1, page);
+  const safeLimit = Math.min(50, Math.max(5, limit));
+  const offset = (safePage - 1) * safeLimit;
+
+  const scopeResult = await resolveCustomerListScope(
+    viewerUserId,
+    viewerPermissions,
+  );
+  const saleScope = buildCustomerAccountSaleScopeWhere(scopeResult);
+
+  const accountWhere: Record<string, unknown> = {};
+  if (brandId != null && Number.isFinite(brandId)) {
+    accountWhere.brandId = brandId;
+  }
+
+  const portalCustomerWhere: Record<string, unknown> | undefined = search?.trim()
+    ? {
+        [Op.or]: [
+          { email: { [Op.like]: `%${search.trim()}%` } },
+          { firstname: { [Op.like]: `%${search.trim()}%` } },
+          { lastname: { [Op.like]: `%${search.trim()}%` } },
+        ],
+      }
+    : undefined;
+
+  const result = await PortalActivityEvent.findAndCountAll({
+    order: [["createdAt", "DESC"]],
+    offset,
+    limit: safeLimit,
+    distinct: true,
+    subQuery: false,
+    include: [
+      {
+        model: CustomerAccount,
+        as: "customerAccount",
+        required: true,
+        where: Object.keys(accountWhere).length ? accountWhere : undefined,
+        attributes: ["id", "brandId", "leadId", "saleId"],
+        include: [
+          {
+            model: PortalCustomer,
+            as: "portalCustomer",
+            attributes: ["id", "firstname", "lastname", "email"],
+            required: !!portalCustomerWhere,
+            where: portalCustomerWhere,
+          },
+          {
+            model: Brand,
+            as: "brand",
+            required: false,
+            attributes: ["id", "name"],
+          },
+          {
+            model: ProductSale,
+            as: "sale",
+            required: scopeResult.scope !== "all",
+            where: saleScope || undefined,
+            attributes: ["id", "assigneeId", "createdBy"],
+          },
+        ],
+      },
+    ],
+  });
+
+  const data = result.rows.map((row) => {
+    const plain = row.get({ plain: true }) as any;
+    const account = plain.customerAccount || {};
+    const pc = account.portalCustomer || {};
+    const brand = account.brand || null;
+    return {
+      id: plain.id,
+      action: plain.action,
+      title: plain.title,
+      at: plain.createdAt
+        ? new Date(plain.createdAt).toISOString()
+        : null,
+      metadata: plain.metadata ?? null,
+      customerAccountId: account.id,
+      leadId: account.leadId ?? null,
+      brand: brand ? { id: brand.id, name: brand.name } : null,
+      customer: {
+        email: pc.email || null,
+        firstname: pc.firstname || null,
+        lastname: pc.lastname || null,
+        name: [pc.firstname, pc.lastname].filter(Boolean).join(" ") || null,
+      },
+    };
+  });
+
+  return {
+    data,
+    scope: scopeResult.scope,
+    totalItems: result.count,
+    currentPage: safePage,
+    pageSize: safeLimit,
+    totalPages: Math.max(1, Math.ceil(result.count / safeLimit) || 1),
+  };
 };

@@ -8,7 +8,7 @@ import {
   listScopedCustomerEngagements,
 } from "../services/customerAccountInsights.service";
 import * as CustomerEngagementService from "../services/customerEngagement.service";
-import { getCustomerPortalActivity } from "../services/portalActivity.service";
+import { getCustomerPortalActivity, listRecentPortalActivity } from "../services/portalActivity.service";
 import { serializeCustomerAccount } from "../utils/portalCustomerResponse";
 
 export const listCustomerAccountsController = async (
@@ -266,6 +266,42 @@ export const listScopedCustomerEngagementsController = async (
     return res.status(200).json({
       success: true,
       message: "Customer engagements fetched",
+      ...data,
+    });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const listRecentPortalActivityController = async (
+  req: CustomRequest,
+  res: Response
+): Promise<any> => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+    const page = parseInt(String(req.query.page || "1"), 10) || 1;
+    const limit = parseInt(String(req.query.limit || "20"), 10) || 20;
+    const search =
+      typeof req.query.search === "string" ? req.query.search : undefined;
+    const brandId = req.query.brandId
+      ? parseInt(String(req.query.brandId), 10)
+      : undefined;
+
+    const data = await listRecentPortalActivity({
+      page,
+      limit,
+      search,
+      brandId: Number.isFinite(brandId) ? brandId : undefined,
+      viewerUserId: userId,
+      viewerPermissions: req.user?.permissions || [],
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Portal activity fetched",
       ...data,
     });
   } catch (error: any) {

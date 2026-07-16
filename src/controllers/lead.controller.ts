@@ -179,9 +179,9 @@ export const getAdminMasterLeads = async (
       isManager,
       managerBrandUserIds,
       userId,
-      // Global scope: pipeline-only (promoted from incoming).
-      // Users/managers: their scoped leads (including manually created).
-      onlyPromotedFromIncoming: isAdmin,
+      // Unified Master = staging pipeline only (import → promote).
+      // Manual /add-lead creates Master leads and must NOT appear here.
+      onlyPromotedFromIncoming: true,
     });
 
     const includeStaging =

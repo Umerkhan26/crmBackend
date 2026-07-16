@@ -111,7 +111,15 @@ export const getCustomerEmailAssetBaseUrl = (): string => {
   if (frontEnd) return normalizePortalBaseUrl(frontEnd);
 
   const port = process.env.PORT || "3000";
-  return `http://localhost:${port}`;
+  const fallback = `http://localhost:${port}`;
+  const isProd =
+    String(process.env.NODE_ENV || "").toLowerCase() === "production";
+  if (isProd) {
+    console.error(
+      "[email] BACKEND_PUBLIC_URL / FRONT_END_URL not set — open-tracking pixels will use localhost and will NOT work from Gmail. Set BACKEND_PUBLIC_URL=https://xcrm.live"
+    );
+  }
+  return fallback;
 };
 
 const assetBaseUrl = (): string => getCustomerEmailAssetBaseUrl();

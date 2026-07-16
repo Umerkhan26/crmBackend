@@ -61,10 +61,16 @@ export const prepareOpenTrackingForSend = (
   html: string
 ): { trackedHtml: string; openToken: string } => {
   const openToken = generateEmailOpenToken();
-  return {
-    openToken,
-    trackedHtml: injectOpenTrackingPixel(html, openToken),
-  };
+  const trackedHtml = injectOpenTrackingPixel(html, openToken);
+  const pixelUrl = buildEmailOpenTrackingUrl(openToken);
+  if (/localhost|127\.0\.0\.1/i.test(pixelUrl)) {
+    console.warn(
+      `[email-track] Pixel URL is not publicly reachable: ${pixelUrl}. Set BACKEND_PUBLIC_URL (e.g. https://xcrm.live) so Gmail can record opens.`
+    );
+  } else {
+    console.log(`[email-track] Open pixel ready: ${pixelUrl.slice(0, 80)}…`);
+  }
+  return { openToken, trackedHtml };
 };
 
 /** Persist EmailLog after a successful send (with open token already in HTML). */
@@ -267,6 +273,15 @@ export const listRecentEmailOpens = async ({
     const account = plain.customerAccount || {};
     const pc = account.portalCustomer || {};
     const brand = account.brand || null;
+    const openToken = plain.openToken ? String(plain.openToken) : null;
+    const trackingPixelUrl = openToken
+      ? buildEmailOpenTrackingUrl(openToken)
+      : null;
+    // What was actually baked into the email at send time (may differ from current env)
+    const bodyStr = String(plain.body || "");
+    const bakedMatch = bodyStr.match(
+      /https?:\/\/[^"'>\s]+\/api\/email-track\/open\/[^"'>\s]+/i
+    );
     return {
       id: plain.id,
       subject: plain.subject,
@@ -282,6 +297,8 @@ export const listRecentEmailOpens = async ({
       opened: !!plain.openedAt,
       openCount: Number(plain.openCount) || 0,
       customerAccountId: account.id || plain.customerAccountId || null,
+      trackingPixelUrl,
+      pixelUrlInEmail: bakedMatch?.[0] || null,
       brand: brand ? { id: brand.id, name: brand.name } : null,
       customer: {
         email: pc.email || plain.to || null,

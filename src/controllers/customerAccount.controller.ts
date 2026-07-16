@@ -9,6 +9,7 @@ import {
 } from "../services/customerAccountInsights.service";
 import * as CustomerEngagementService from "../services/customerEngagement.service";
 import { getCustomerPortalActivity, listRecentPortalActivity } from "../services/portalActivity.service";
+import { listRecentEmailOpens } from "../services/emailOpenTracking.service";
 import { serializeCustomerAccount } from "../utils/portalCustomerResponse";
 
 export const listCustomerAccountsController = async (
@@ -289,12 +290,18 @@ export const listRecentPortalActivityController = async (
     const brandId = req.query.brandId
       ? parseInt(String(req.query.brandId), 10)
       : undefined;
+    const dateFrom =
+      typeof req.query.dateFrom === "string" ? req.query.dateFrom : undefined;
+    const dateTo =
+      typeof req.query.dateTo === "string" ? req.query.dateTo : undefined;
 
     const data = await listRecentPortalActivity({
       page,
       limit,
       search,
       brandId: Number.isFinite(brandId) ? brandId : undefined,
+      dateFrom,
+      dateTo,
       viewerUserId: userId,
       viewerPermissions: req.user?.permissions || [],
     });
@@ -302,6 +309,51 @@ export const listRecentPortalActivityController = async (
     return res.status(200).json({
       success: true,
       message: "Portal activity fetched",
+      ...data,
+    });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const listRecentEmailOpensController = async (
+  req: CustomRequest,
+  res: Response
+): Promise<any> => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+    const page = parseInt(String(req.query.page || "1"), 10) || 1;
+    const limit = parseInt(String(req.query.limit || "20"), 10) || 20;
+    const search =
+      typeof req.query.search === "string" ? req.query.search : undefined;
+    const brandId = req.query.brandId
+      ? parseInt(String(req.query.brandId), 10)
+      : undefined;
+    const dateFrom =
+      typeof req.query.dateFrom === "string" ? req.query.dateFrom : undefined;
+    const dateTo =
+      typeof req.query.dateTo === "string" ? req.query.dateTo : undefined;
+    const openedOnly =
+      String(req.query.openedOnly || "").toLowerCase() === "true";
+
+    const data = await listRecentEmailOpens({
+      page,
+      limit,
+      search,
+      brandId: Number.isFinite(brandId) ? brandId : undefined,
+      dateFrom,
+      dateTo,
+      openedOnly,
+      viewerUserId: userId,
+      viewerPermissions: req.user?.permissions || [],
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Email opens fetched",
       ...data,
     });
   } catch (error: any) {

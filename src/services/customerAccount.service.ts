@@ -275,10 +275,15 @@ export const listCustomerAccounts = async ({
       literal(`EXISTS (
         SELECT 1 FROM portal_customers pc
         INNER JOIN email_logs el ON (
-          el.\`to\` = pc.email OR el.\`to\` LIKE CONCAT('%', pc.email, '%')
+          el.customerAccountId = \`CustomerAccount\`.\`id\`
+          OR el.\`to\` = pc.email
+          OR el.\`to\` LIKE CONCAT('%', pc.email, '%')
         )
         WHERE pc.id = \`CustomerAccount\`.\`portalCustomerId\`
-          AND LOWER(COALESCE(el.status, '')) REGEXP 'open|read|viewed'
+          AND (
+            el.openedAt IS NOT NULL
+            OR LOWER(COALESCE(el.status, '')) REGEXP 'open|read|viewed'
+          )
       )`)
     );
   }

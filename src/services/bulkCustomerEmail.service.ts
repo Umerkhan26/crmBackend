@@ -224,15 +224,10 @@ const processOneJob = async (
     theme,
     brandId: account?.brandId,
     emailType: (campaign.emailType as CustomerEmailType) || categoryToCustomerEmailType(campaign.category),
-  });
-
-  await EmailLog.create({
-    to: job.toEmail,
-    subject: mailSubject,
-    body: html,
-    status: "sent",
-    serviceName: `customer_bulk_${campaign.category}`,
-    sentAt: new Date(),
+    trackOpen: {
+      serviceName: `customer_bulk_${campaign.category}`,
+      customerAccountId: job.customerAccountId,
+    },
   });
 
   await CustomerEngagement.create({

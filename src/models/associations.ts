@@ -36,6 +36,7 @@ import FollowUpScheduledEmail from "./followUpScheduledEmail.model";
 import PortalService from "./portalService.model";
 import PortalServiceSubmission from "./portalServiceSubmission.model";
 import BrandEmailSender from "./brandEmailSender.model";
+import EmailLog from "./emailLog.model";
 
 Role.belongsToMany(Permission, {
   through: RolePermission,
@@ -144,6 +145,17 @@ PortalActivityEvent.belongsTo(PortalCustomer, {
   foreignKey: "portalCustomerId",
   as: "portalCustomer",
   onDelete: "CASCADE",
+});
+
+CustomerAccount.hasMany(EmailLog, {
+  foreignKey: "customerAccountId",
+  as: "emailLogs",
+  onDelete: "SET NULL",
+});
+EmailLog.belongsTo(CustomerAccount, {
+  foreignKey: "customerAccountId",
+  as: "customerAccount",
+  onDelete: "SET NULL",
 });
 
 BulkEmailCampaign.hasMany(BulkEmailJob, {

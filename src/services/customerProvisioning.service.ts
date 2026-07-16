@@ -67,6 +67,7 @@ async function sendInvoiceEmail(params: {
   saleId: number;
   brand?: Brand | null;
   portalUrl?: string;
+  customerAccountId?: number | null;
 }): Promise<boolean> {
   try {
     const { getInvoiceByLeadId } = await import("./product.service");
@@ -92,6 +93,10 @@ async function sendInvoiceEmail(params: {
       theme,
       brandId: params.brand?.id ?? null,
       emailType: CUSTOMER_EMAIL_TYPE_DEFAULTS.invoice,
+      trackOpen: {
+        serviceName: "customer_invoice",
+        customerAccountId: params.customerAccountId ?? null,
+      },
     });
     return true;
   } catch {
@@ -113,6 +118,7 @@ function scheduleInvoiceEmail(
     saleId: number;
     brand?: Brand | null;
     portalUrl?: string;
+    customerAccountId?: number | null;
   },
   delayMs = INVOICE_EMAIL_DELAY_MS
 ): void {
@@ -141,6 +147,7 @@ async function sendWelcomeEmails(params: {
   saleId: number;
   brand?: Brand | null;
   portalUrl?: string;
+  customerAccountId?: number | null;
 }): Promise<{ credentialsSent: boolean; invoiceSent: boolean }> {
   const credentialsSent = await sendCredentialsEmail({
     to: params.to,
@@ -149,6 +156,7 @@ async function sendWelcomeEmails(params: {
     plainPassword: params.plainPassword,
     brand: params.brand,
     portalUrl: params.portalUrl,
+    customerAccountId: params.customerAccountId,
   });
 
   // Stagger invoice so Gmail does not flag back-to-back login + billing mail.
@@ -160,6 +168,7 @@ async function sendWelcomeEmails(params: {
     saleId: params.saleId,
     brand: params.brand,
     portalUrl: params.portalUrl,
+    customerAccountId: params.customerAccountId,
   });
 
   return { credentialsSent, invoiceSent: true };
@@ -172,6 +181,7 @@ async function sendCredentialsEmail(params: {
   plainPassword: string;
   brand?: Brand | null;
   portalUrl?: string;
+  customerAccountId?: number | null;
 }): Promise<boolean> {
   try {
     const theme = getCustomerEmailBrandThemeFromBrand(params.brand);
@@ -191,6 +201,10 @@ async function sendCredentialsEmail(params: {
       theme,
       brandId: params.brand?.id ?? null,
       emailType: CUSTOMER_EMAIL_TYPE_DEFAULTS.credentials,
+      trackOpen: {
+        serviceName: "customer_credentials",
+        customerAccountId: params.customerAccountId ?? null,
+      },
     });
     return true;
   } catch {
@@ -293,6 +307,7 @@ export const resendCustomerCredentials = async (params: {
     saleId,
     brand,
     portalUrl: resolveBrandPortalUrl(brand),
+    customerAccountId: account.id,
   });
 
   return {
@@ -409,6 +424,7 @@ export const provisionCustomerFromSale = async (params: {
         saleId,
         brand,
         portalUrl: resolveBrandPortalUrl(brand),
+        customerAccountId: account.id,
       })
     : { credentialsSent: false, invoiceSent: false };
 

@@ -9,6 +9,7 @@ import {
   getCustomerAccountInsightsController,
   getCustomerPortalActivityController,
   listRecentPortalActivityController,
+  listRecentEmailOpensController,
   getCustomerEngagementsFeedController,
   getCustomerTimelineFeedController,
   updateCustomerAccountController,
@@ -45,6 +46,12 @@ router.get(
   "/portal-activity",
   checkCustomerAccountReadAccess,
   listRecentPortalActivityController,
+);
+
+router.get(
+  "/email-opens",
+  checkCustomerAccountReadAccess,
+  listRecentEmailOpensController,
 );
 
 router.post(

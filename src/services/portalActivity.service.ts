@@ -385,6 +385,8 @@ export const listRecentPortalActivity = async ({
   limit = 20,
   brandId,
   search,
+  dateFrom,
+  dateTo,
   viewerUserId,
   viewerPermissions = [],
 }: {
@@ -392,6 +394,8 @@ export const listRecentPortalActivity = async ({
   limit?: number;
   brandId?: number;
   search?: string;
+  dateFrom?: string;
+  dateTo?: string;
   viewerUserId: number;
   viewerPermissions?: string[];
 }) => {
@@ -404,6 +408,22 @@ export const listRecentPortalActivity = async ({
     viewerPermissions,
   );
   const saleScope = buildCustomerAccountSaleScopeWhere(scopeResult);
+
+  const eventWhere: Record<string, unknown> = {};
+  if (dateFrom?.trim() || dateTo?.trim()) {
+    const range: { [Op.gte]?: Date; [Op.lte]?: Date } = {};
+    if (dateFrom?.trim()) {
+      const from = new Date(`${dateFrom.trim()}T00:00:00.000`);
+      if (!Number.isNaN(from.getTime())) range[Op.gte] = from;
+    }
+    if (dateTo?.trim()) {
+      const to = new Date(`${dateTo.trim()}T23:59:59.999`);
+      if (!Number.isNaN(to.getTime())) range[Op.lte] = to;
+    }
+    if (range[Op.gte] || range[Op.lte]) {
+      eventWhere.createdAt = range;
+    }
+  }
 
   const accountWhere: Record<string, unknown> = {};
   if (brandId != null && Number.isFinite(brandId)) {
@@ -421,6 +441,7 @@ export const listRecentPortalActivity = async ({
     : undefined;
 
   const result = await PortalActivityEvent.findAndCountAll({
+    where: Object.keys(eventWhere).length ? eventWhere : undefined,
     order: [["createdAt", "DESC"]],
     offset,
     limit: safeLimit,

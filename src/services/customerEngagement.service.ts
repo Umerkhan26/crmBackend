@@ -6,7 +6,6 @@ import CustomerEngagement, {
 } from "../models/customerEngagement.model";
 import User from "../models/user.model";
 import PortalCustomer from "../models/portalCustomer.model";
-import EmailLog from "../models/emailLog.model";
 import {
   CUSTOMER_EMAIL_TYPE_DEFAULTS,
   categoryToCustomerEmailType,
@@ -142,15 +141,10 @@ export const sendEmailToCustomerAccount = async ({
     theme,
     brandId: account.brandId,
     emailType,
-  });
-
-  await EmailLog.create({
-    to: email,
-    subject: mailSubject,
-    body: html,
-    status: "sent",
-    serviceName: `customer_${category}`,
-    sentAt: new Date(),
+    trackOpen: {
+      serviceName: `customer_${category}`,
+      customerAccountId: accountId,
+    },
   });
 
   const engagement = await CustomerEngagement.create({
@@ -358,14 +352,10 @@ export const sendCustomerNotification = async ({
       theme,
       brandId: account.brandId,
       emailType,
-    });
-    await EmailLog.create({
-      to: email,
-      subject: mailSubject,
-      body: html,
-      status: "sent",
-      serviceName: "customer_notification",
-      sentAt: new Date(),
+      trackOpen: {
+        serviceName: "customer_notification",
+        customerAccountId: accountId,
+      },
     });
   }
 

@@ -19,6 +19,7 @@
     "sync:follow-up-email": "npx ts-node src/scripts/sync-follow-up-email.ts",
     "sync:portal-services": "npx ts-node src/scripts/sync-portal-services.ts",
     "sync:portal-activity": "npx ts-node src/scripts/sync-portal-activity.ts",
+    "sync:email-tracking": "npx ts-node src/scripts/sync-email-tracking.ts",
     "sync:portal-domain": "npx ts-node src/scripts/sync-portal-domain.ts",
     "seed:customer-role": "npx ts-node src/scripts/seed-customer-role.ts",
     "migrate:portal-customers": "npx ts-node src/scripts/migrate-portal-customers.ts",

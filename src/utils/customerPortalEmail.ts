@@ -42,6 +42,11 @@ export const getCustomerPortalSmtpForSend = (fromName?: string): SmtpCredentials
   };
 };
 
+export type CustomerEmailTrackOpen = {
+  serviceName: string;
+  customerAccountId?: number | null;
+};
+
 /** Customer-facing mail — brand + type resolves SMTP (care / invoice / promotions). */
 export const sendCustomerPortalEmail = async (params: {
   to: string;
@@ -51,7 +56,9 @@ export const sendCustomerPortalEmail = async (params: {
   theme?: CustomerEmailBrandTheme;
   brandId?: number | null;
   emailType?: CustomerEmailType;
-}): Promise<void> => {
+  /** When set: inject open-tracking pixel + create EmailLog before send. */
+  trackOpen?: CustomerEmailTrackOpen | false;
+}): Promise<{ emailLogId?: number } | void> => {
   const { sendEmail } = await import("./email");
   const emailType = params.emailType || CUSTOMER_EMAIL_TYPE_DEFAULTS.promotional;
 
@@ -70,6 +77,19 @@ export const sendCustomerPortalEmail = async (params: {
   let attachments:
     | Array<{ filename: string; path: string; cid: string }>
     | undefined;
+  let emailLogId: number | undefined;
+  let openToken: string | undefined;
+  let trackMeta: CustomerEmailTrackOpen | undefined;
+
+  if (params.trackOpen && typeof params.trackOpen === "object") {
+    trackMeta = params.trackOpen;
+    const { prepareOpenTrackingForSend } = await import(
+      "../services/emailOpenTracking.service"
+    );
+    const prepared = prepareOpenTrackingForSend(body);
+    body = prepared.trackedHtml;
+    openToken = prepared.openToken;
+  }
 
   if (params.theme) {
     const delivery = getCustomerEmailHeaderDelivery(params.theme);
@@ -118,11 +138,30 @@ export const sendCustomerPortalEmail = async (params: {
           `[email] Brand SMTP auth failed (${resolved.user}) — retrying with env ${envSender.user}`
         );
         await dispatch(envSender);
-        return;
+      } else {
+        throw err;
       }
+    } else {
+      throw err;
     }
-    throw err;
   }
+
+  if (trackMeta && openToken) {
+    const { createTrackedEmailLogAfterSend } = await import(
+      "../services/emailOpenTracking.service"
+    );
+    const logged = await createTrackedEmailLogAfterSend({
+      to: params.to,
+      subject: params.subject,
+      body,
+      serviceName: trackMeta.serviceName,
+      customerAccountId: trackMeta.customerAccountId,
+      openToken,
+    });
+    emailLogId = logged.emailLogId;
+  }
+
+  return emailLogId != null ? { emailLogId } : undefined;
 };
 
 /** Audit snapshot for DB — never store SMTP password. */

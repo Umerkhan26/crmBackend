@@ -7,7 +7,6 @@ import FollowUpStepTiming from "../models/followUpStepTiming.model";
 import FollowUpSequence from "../models/followUpSequence.model";
 import CustomerAccount from "../models/customerAccount.model";
 import PortalCustomer from "../models/portalCustomer.model";
-import EmailLog from "../models/emailLog.model";
 import CustomerEngagement from "../models/customerEngagement.model";
 import { customerEngagementEmailTemplate } from "../Templetes/customerEngagementEmailTemplate";
 import { sendCustomerPortalEmail } from "../utils/customerPortalEmail";
@@ -161,15 +160,10 @@ const processOneScheduledEmail = async (scheduled: FollowUpScheduledEmail) => {
     theme,
     brandId: account.brandId,
     emailType,
-  });
-
-  await EmailLog.create({
-    to: email,
-    subject: mailSubject,
-    body: html,
-    status: "sent",
-    serviceName: `follow_up_step_${step.id}`,
-    sentAt: new Date(),
+    trackOpen: {
+      serviceName: `follow_up_step_${step.id}`,
+      customerAccountId: account.id,
+    },
   });
 
   const createdBy = enrollment.enrolledBy || 1;

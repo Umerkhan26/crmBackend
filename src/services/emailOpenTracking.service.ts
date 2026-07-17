@@ -137,9 +137,10 @@ const OPEN_COUNT_DEBOUNCE_MS = 60_000;
 
 /**
  * Pixel hits within this window after send are treated as scanner/Gmail prefetch —
- * do NOT mark opened and do NOT increment openCount.
+ * do NOT mark opened. Route returns 404 so Gmail proxy does not cache a "success"
+ * image (otherwise later real opens never re-hit our server).
  */
-const PREFETCH_GRACE_MS = 60_000;
+const PREFETCH_GRACE_MS = 20_000;
 
 /** In-memory last-hit times for debounce (per process). */
 const recentPixelHits = new Map<string, number>();
@@ -196,29 +197,35 @@ export type RecordEmailOpenMeta = {
   userAgent?: string;
 };
 
+export type RecordEmailOpenResult = {
+  recorded: boolean;
+  /** prefetch → route should 404 so mail proxies retry on real open */
+  skipReason?: "invalid" | "not_found" | "crm" | "prefetch" | "debounce";
+};
+
 /** Public open-pixel hit — ignores CRM preview + send-time prefetch; counts real opens. */
 export const recordEmailOpenByToken = async (
   token: string,
   meta?: RecordEmailOpenMeta
-): Promise<{ recorded: boolean }> => {
+): Promise<RecordEmailOpenResult> => {
   const clean = String(token || "")
     .replace(/\.gif$/i, "")
     .trim();
   if (!clean || clean.length < 16 || clean.length > 64) {
-    return { recorded: false };
+    return { recorded: false, skipReason: "invalid" };
   }
 
   // Agent opened email HTML inside CRM → must never count as customer open
   if (isCrmOriginPixelHit(meta)) {
-    return { recorded: false };
+    return { recorded: false, skipReason: "crm" };
   }
 
   const row = await EmailLog.findOne({ where: { openToken: clean } });
-  if (!row) return { recorded: false };
+  if (!row) return { recorded: false, skipReason: "not_found" };
 
   const now = Date.now();
 
-  // Ignore Gmail / scanner prefetch right after send
+  // Ignore Gmail / scanner prefetch right after send (return 404 upstream)
   const sentAtRaw = row.get("sentAt");
   if (sentAtRaw) {
     const sentMs = new Date(String(sentAtRaw)).getTime();
@@ -227,7 +234,7 @@ export const recordEmailOpenByToken = async (
       now - sentMs >= 0 &&
       now - sentMs < PREFETCH_GRACE_MS
     ) {
-      return { recorded: false };
+      return { recorded: false, skipReason: "prefetch" };
     }
   }
 
@@ -235,7 +242,7 @@ export const recordEmailOpenByToken = async (
   pruneRecentHits(now);
   const lastHit = recentPixelHits.get(clean) || 0;
   if (lastHit && now - lastHit < OPEN_COUNT_DEBOUNCE_MS) {
-    return { recorded: true };
+    return { recorded: true, skipReason: "debounce" };
   }
   recentPixelHits.set(clean, now);
 

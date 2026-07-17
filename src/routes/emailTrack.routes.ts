@@ -21,15 +21,29 @@ const sendPixel = (res: Response) => {
 /**
  * Public open-tracking pixel (no auth).
  * GET /api/email-track/open/:token.gif
+ *
+ * Prefetch window: return 404 so Gmail's image proxy does not cache a successful
+ * pixel. When the customer later opens the email, Gmail re-fetches → we record.
  */
 router.get("/open/:token", async (req: Request, res: Response) => {
   try {
     const token = String(req.params.token || "");
-    await recordEmailOpenByToken(token, {
+    const result = await recordEmailOpenByToken(token, {
       referer: String(req.get("referer") || req.get("referrer") || ""),
       origin: String(req.get("origin") || ""),
       userAgent: String(req.get("user-agent") || ""),
     });
+
+    if (result.skipReason === "prefetch") {
+      res.setHeader(
+        "Cache-Control",
+        "no-store, no-cache, must-revalidate, proxy-revalidate"
+      );
+      res.setHeader("Pragma", "no-cache");
+      res.setHeader("Expires", "0");
+      res.status(404).end();
+      return;
+    }
   } catch (err) {
     console.warn(
       "[email-track] open record failed:",

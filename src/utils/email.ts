@@ -1,10 +1,8 @@
 
 import crypto from "crypto";
 import nodemailer from "nodemailer";
-import dotenv from "dotenv";
+import "./loadEnv";
 import { htmlToPlainText } from "./emailPlainText";
-
-dotenv.config();
 
 interface SendEmailOptions {
   smtp?: {

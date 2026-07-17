@@ -1,4 +1,4 @@
-import dotenv from "dotenv";
+import "./src/utils/loadEnv";
 import db from "./db";
 import "./src/models/index";
 import http from "http";
@@ -11,7 +11,6 @@ import {
   ensureCustomerEmailTypesSchema,
   seedDefaultCustomerEmailTypes,
 } from "./src/services/customerEmailType.service";
-dotenv.config();
 
 const PORT = process.env.PORT || 3000;
 
@@ -66,6 +65,11 @@ const startServer = async () => {
     // Start HTTP server
     server.listen(PORT, () => {
       console.log(`✅ Server running on http://localhost:${PORT}`);
+      const publicUrl =
+        process.env.BACKEND_PUBLIC_URL?.trim() ||
+        process.env.FRONT_END_URL?.trim() ||
+        "(not set — email open tracking will use localhost)";
+      console.log(`   ↳ BACKEND_PUBLIC_URL: ${publicUrl}`);
     });
   } catch (error) {
     console.error("❌ Server startup error:", (error as Error).message);

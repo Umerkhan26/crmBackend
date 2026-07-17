@@ -1,12 +1,11 @@
 import express, { Application, ErrorRequestHandler, NextFunction, Request, Response } from "express";
 import cors from "cors";
-import dotenv from "dotenv";
 import path from "path";
 import fs from "fs";
+import "./src/utils/loadEnv";
 import "./src/models/associations";
 import "./src/models/index";
 import "./src/utils/reminderJob";
-dotenv.config();
 
 const app: Application = express();
 

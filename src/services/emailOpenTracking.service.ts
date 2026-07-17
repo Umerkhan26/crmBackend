@@ -29,6 +29,21 @@ export const buildEmailOpenTrackingUrl = (token: string): string =>
 
 const PIXEL_MARKER = "data-xcrm-open-track";
 
+/** Remove open-tracking pixel from HTML (CRM preview must never fire opens). */
+export const stripOpenTrackingPixelFromHtml = (html: string): string => {
+  const raw = String(html || "");
+  if (!raw) return raw;
+  return raw
+    .replace(
+      /<img\b[^>]*data-xcrm-open-track[^>]*>/gi,
+      ""
+    )
+    .replace(
+      /<img\b[^>]*\/api\/email-track\/open\/[^>]*>/gi,
+      ""
+    );
+};
+
 /** Inject invisible open-tracking pixel into HTML (idempotent). */
 export const injectOpenTrackingPixel = (
   html: string,
@@ -117,9 +132,74 @@ export const prepareTrackedCustomerEmail = async (params: {
   return { trackedHtml, emailLogId, openToken };
 };
 
-/** Public open-pixel hit — marks email opened (idempotent first open). */
+/** Ignore rapid repeat pixel hits (Gmail proxy often hits 2× within seconds). */
+const OPEN_COUNT_DEBOUNCE_MS = 60_000;
+
+/**
+ * Pixel hits within this window after send are treated as scanner/Gmail prefetch —
+ * do NOT mark opened and do NOT increment openCount.
+ */
+const PREFETCH_GRACE_MS = 60_000;
+
+/** In-memory last-hit times for debounce (per process). */
+const recentPixelHits = new Map<string, number>();
+
+const pruneRecentHits = (now: number) => {
+  if (recentPixelHits.size < 500) return;
+  for (const [key, ts] of recentPixelHits) {
+    if (now - ts > OPEN_COUNT_DEBOUNCE_MS * 2) recentPixelHits.delete(key);
+  }
+};
+
+const crmHostMatchers = (): string[] => {
+  const hosts = new Set<string>([
+    "xcrm.live",
+    "localhost:3001",
+    "127.0.0.1:3001",
+    "localhost:3000",
+    "127.0.0.1:3000",
+  ]);
+  for (const key of [
+    "FRONT_END_URL",
+    "BACKEND_PUBLIC_URL",
+    "API_PUBLIC_URL",
+    "CUSTOMER_EMAIL_ASSET_BASE_URL",
+  ] as const) {
+    const raw = process.env[key]?.trim();
+    if (!raw) continue;
+    try {
+      const u = new URL(raw.includes("://") ? raw : `https://${raw}`);
+      if (u.host) hosts.add(u.host.toLowerCase());
+    } catch {
+      /* ignore */
+    }
+  }
+  return [...hosts];
+};
+
+/**
+ * True when the pixel was loaded from the CRM UI (agent preview), not from
+ * the customer's mail client / Google image proxy.
+ */
+export const isCrmOriginPixelHit = (meta?: {
+  referer?: string;
+  origin?: string;
+}): boolean => {
+  const hay = `${meta?.referer || ""} ${meta?.origin || ""}`.toLowerCase();
+  if (!hay.trim()) return false;
+  return crmHostMatchers().some((host) => hay.includes(host.toLowerCase()));
+};
+
+export type RecordEmailOpenMeta = {
+  referer?: string;
+  origin?: string;
+  userAgent?: string;
+};
+
+/** Public open-pixel hit — ignores CRM preview + send-time prefetch; counts real opens. */
 export const recordEmailOpenByToken = async (
-  token: string
+  token: string,
+  meta?: RecordEmailOpenMeta
 ): Promise<{ recorded: boolean }> => {
   const clean = String(token || "")
     .replace(/\.gif$/i, "")
@@ -128,19 +208,48 @@ export const recordEmailOpenByToken = async (
     return { recorded: false };
   }
 
+  // Agent opened email HTML inside CRM → must never count as customer open
+  if (isCrmOriginPixelHit(meta)) {
+    return { recorded: false };
+  }
+
   const row = await EmailLog.findOne({ where: { openToken: clean } });
   if (!row) return { recorded: false };
 
-  const now = new Date();
+  const now = Date.now();
+
+  // Ignore Gmail / scanner prefetch right after send
+  const sentAtRaw = row.get("sentAt");
+  if (sentAtRaw) {
+    const sentMs = new Date(String(sentAtRaw)).getTime();
+    if (
+      Number.isFinite(sentMs) &&
+      now - sentMs >= 0 &&
+      now - sentMs < PREFETCH_GRACE_MS
+    ) {
+      return { recorded: false };
+    }
+  }
+
+  // Debounce rapid double-hits (same open session)
+  pruneRecentHits(now);
+  const lastHit = recentPixelHits.get(clean) || 0;
+  if (lastHit && now - lastHit < OPEN_COUNT_DEBOUNCE_MS) {
+    return { recorded: true };
+  }
+  recentPixelHits.set(clean, now);
+
+  const openedAtRaw = row.get("openedAt");
+  const status = String(row.get("status") || "").toLowerCase();
+  const alreadyOpened = status === "opened" || Boolean(openedAtRaw);
+
   const updates: Record<string, unknown> = {
     openCount: (Number(row.get("openCount")) || 0) + 1,
   };
 
-  const status = String(row.get("status") || "").toLowerCase();
-  const alreadyOpened = status === "opened" || Boolean(row.get("openedAt"));
   if (!alreadyOpened) {
     updates.status = "opened";
-    updates.openedAt = now;
+    updates.openedAt = new Date(now);
   }
 
   await row.update(updates);
@@ -273,14 +382,10 @@ export const listRecentEmailOpens = async ({
     const account = plain.customerAccount || {};
     const pc = account.portalCustomer || {};
     const brand = account.brand || null;
-    const openToken = plain.openToken ? String(plain.openToken) : null;
-    const trackingPixelUrl = openToken
-      ? buildEmailOpenTrackingUrl(openToken)
-      : null;
-    // What was actually baked into the email at send time (may differ from current env)
+    // Do not expose live tracking URLs in CRM API (avoids accidental opens).
     const bodyStr = String(plain.body || "");
     const bakedMatch = bodyStr.match(
-      /https?:\/\/[^"'>\s]+\/api\/email-track\/open\/[^"'>\s]+/i
+      /https?:\/\/([^"'/\s]+)\/api\/email-track\/open\//i
     );
     return {
       id: plain.id,
@@ -295,10 +400,21 @@ export const listRecentEmailOpens = async ({
         ? new Date(plain.openedAt).toISOString()
         : null,
       opened: !!plain.openedAt,
+      /** True when first open was within grace window of send (legacy / prefetch). */
+      likelyAutoOpen: (() => {
+        if (!plain.openedAt || !plain.sentAt) return false;
+        const openedMs = new Date(plain.openedAt).getTime();
+        const sentMs = new Date(plain.sentAt).getTime();
+        return (
+          Number.isFinite(openedMs) &&
+          Number.isFinite(sentMs) &&
+          openedMs - sentMs >= 0 &&
+          openedMs - sentMs < PREFETCH_GRACE_MS
+        );
+      })(),
       openCount: Number(plain.openCount) || 0,
       customerAccountId: account.id || plain.customerAccountId || null,
-      trackingPixelUrl,
-      pixelUrlInEmail: bakedMatch?.[0] || null,
+      pixelHostInEmail: bakedMatch?.[1] || null,
       brand: brand ? { id: brand.id, name: brand.name } : null,
       customer: {
         email: pc.email || plain.to || null,

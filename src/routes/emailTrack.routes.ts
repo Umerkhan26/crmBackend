@@ -25,7 +25,11 @@ const sendPixel = (res: Response) => {
 router.get("/open/:token", async (req: Request, res: Response) => {
   try {
     const token = String(req.params.token || "");
-    await recordEmailOpenByToken(token);
+    await recordEmailOpenByToken(token, {
+      referer: String(req.get("referer") || req.get("referrer") || ""),
+      origin: String(req.get("origin") || ""),
+      userAgent: String(req.get("user-agent") || ""),
+    });
   } catch (err) {
     console.warn(
       "[email-track] open record failed:",

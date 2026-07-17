@@ -22,6 +22,7 @@ import {
   resolveCustomerListScope,
   type CustomerListScope,
 } from "../utils/customerAccountScope";
+import { stripOpenTrackingPixelFromHtml } from "./emailOpenTracking.service";
 
 const accountIncludes = [
   {
@@ -113,6 +114,7 @@ function mergeEngagementWhere(
 
 const enrichEmail = (row: any) => ({
   ...row,
+  body: stripOpenTrackingPixelFromHtml(String(row?.body || "")),
   category: classifyEmail(row),
   deliveryStatus: emailDeliveryLabel(row.status),
 });

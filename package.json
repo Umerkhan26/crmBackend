@@ -4,6 +4,7 @@
   "main": "index.js",
   "scripts": {
     "start": "nodemon",
+    "sync:permissions": "npx ts-node src/scripts/sync-permissions.ts",
     "sync:auto-assignment": "npx ts-node src/scripts/sync-auto-assignment.ts",
     "cron:rebalance-rotate": "npx ts-node src/scripts/cron-rebalance-rotate.ts",
     "cron:assign-last-24h": "npx ts-node src/scripts/cron-assign-last-24h.ts",

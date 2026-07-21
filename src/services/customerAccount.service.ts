@@ -261,25 +261,33 @@ export const listCustomerAccounts = async ({
   }
 
   if (emailFilter === "never") {
+    // Keep outer-table refs in WHERE only — MySQL rejects them in subquery JOIN ON
+    // ("Unknown column 'CustomerAccount.id' in 'on clause'").
     filterAnd.push(
       literal(`NOT EXISTS (
-        SELECT 1 FROM portal_customers pc
-        INNER JOIN email_logs el ON (
-          el.\`to\` = pc.email OR el.\`to\` LIKE CONCAT('%', pc.email, '%')
-        )
+        SELECT 1
+        FROM portal_customers pc
+        CROSS JOIN email_logs el
         WHERE pc.id = \`CustomerAccount\`.\`portalCustomerId\`
+          AND (
+            el.customerAccountId = \`CustomerAccount\`.\`id\`
+            OR el.\`to\` = pc.email
+            OR el.\`to\` LIKE CONCAT('%', pc.email, '%')
+          )
       )`)
     );
   } else if (emailFilter === "opened") {
     filterAnd.push(
       literal(`EXISTS (
-        SELECT 1 FROM portal_customers pc
-        INNER JOIN email_logs el ON (
-          el.customerAccountId = \`CustomerAccount\`.\`id\`
-          OR el.\`to\` = pc.email
-          OR el.\`to\` LIKE CONCAT('%', pc.email, '%')
-        )
+        SELECT 1
+        FROM portal_customers pc
+        CROSS JOIN email_logs el
         WHERE pc.id = \`CustomerAccount\`.\`portalCustomerId\`
+          AND (
+            el.customerAccountId = \`CustomerAccount\`.\`id\`
+            OR el.\`to\` = pc.email
+            OR el.\`to\` LIKE CONCAT('%', pc.email, '%')
+          )
           AND (
             el.openedAt IS NOT NULL
             OR LOWER(COALESCE(el.status, '')) REGEXP 'open|read|viewed'
@@ -317,6 +325,7 @@ export const listCustomerAccounts = async ({
     limit: pageLimit,
     order: [["createdAt", "DESC"]],
     distinct: true,
+    subQuery: false,
     include: [
       {
         model: PortalCustomer,

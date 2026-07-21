@@ -26,10 +26,19 @@ export const connectDB = async () => {
       await db.sync({ alter: true });
       console.log("✅ All models synchronized");
     } catch (syncError: any) {
-      // Handle constraint errors gracefully - if constraint doesn't exist, it's okay
-      if (syncError.name === "SequelizeUnknownConstraintError" || 
-          syncError.original?.code === "ER_CANT_DROP_FIELD_OR_KEY") {
-        console.warn("⚠️  Database sync warning (constraint issue, continuing):", syncError.message);
+      // Handle constraint / index-limit errors gracefully
+      const code = syncError?.original?.code || syncError?.parent?.code;
+      const msg = String(syncError?.message || "");
+      if (
+        syncError.name === "SequelizeUnknownConstraintError" ||
+        code === "ER_CANT_DROP_FIELD_OR_KEY" ||
+        code === "ER_TOO_MANY_KEYS" ||
+        /Too many keys/i.test(msg)
+      ) {
+        console.warn(
+          "⚠️  Database sync warning (constraint/index issue, continuing):",
+          syncError.message
+        );
         // Try to sync without alter if alter fails
         try {
           await db.sync();

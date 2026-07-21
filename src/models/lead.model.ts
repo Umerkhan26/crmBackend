@@ -94,7 +94,13 @@ Lead.init(
     sequelize: db,
     tableName: "leads",
     timestamps: true,
-    indexes: [{ fields: ["campaignName"] }],
+    indexes: [
+      { fields: ["campaignName"] },
+      { fields: ["createdBy"] },
+      { fields: ["createdAt"] },
+      { fields: ["brandId"] },
+      { fields: ["campaignName", "createdAt"], name: "leads_campaign_created_at" },
+    ],
     getterMethods: {
       leadCode() {
         const lead = this as Lead;

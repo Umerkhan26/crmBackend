@@ -387,6 +387,7 @@ export const listRecentPortalActivity = async ({
   search,
   dateFrom,
   dateTo,
+  customerAccountId,
   viewerUserId,
   viewerPermissions = [],
 }: {
@@ -396,6 +397,7 @@ export const listRecentPortalActivity = async ({
   search?: string;
   dateFrom?: string;
   dateTo?: string;
+  customerAccountId?: number;
   viewerUserId: number;
   viewerPermissions?: string[];
 }) => {
@@ -410,6 +412,13 @@ export const listRecentPortalActivity = async ({
   const saleScope = buildCustomerAccountSaleScopeWhere(scopeResult);
 
   const eventWhere: Record<string, unknown> = {};
+  if (
+    customerAccountId != null &&
+    Number.isFinite(customerAccountId) &&
+    customerAccountId > 0
+  ) {
+    eventWhere.customerAccountId = customerAccountId;
+  }
   if (dateFrom?.trim() || dateTo?.trim()) {
     const range: { [Op.gte]?: Date; [Op.lte]?: Date } = {};
     if (dateFrom?.trim()) {

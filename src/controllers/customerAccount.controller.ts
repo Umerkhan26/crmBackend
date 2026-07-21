@@ -294,6 +294,9 @@ export const listRecentPortalActivityController = async (
       typeof req.query.dateFrom === "string" ? req.query.dateFrom : undefined;
     const dateTo =
       typeof req.query.dateTo === "string" ? req.query.dateTo : undefined;
+    const customerAccountIdRaw = req.query.customerAccountId
+      ? parseInt(String(req.query.customerAccountId), 10)
+      : undefined;
 
     const data = await listRecentPortalActivity({
       page,
@@ -302,6 +305,9 @@ export const listRecentPortalActivityController = async (
       brandId: Number.isFinite(brandId) ? brandId : undefined,
       dateFrom,
       dateTo,
+      customerAccountId: Number.isFinite(customerAccountIdRaw)
+        ? customerAccountIdRaw
+        : undefined,
       viewerUserId: userId,
       viewerPermissions: req.user?.permissions || [],
     });

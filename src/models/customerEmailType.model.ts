@@ -86,11 +86,9 @@ CustomerEmailType.init(
     sequelize: db,
     tableName: "customer_email_types",
     timestamps: true,
-    indexes: [
-      { unique: true, fields: ["slug"] },
-      { fields: ["isActive"] },
-      { fields: ["sortOrder"] },
-    ],
+    // Do not re-declare unique(slug) here — field already has unique: true.
+    // Repeated alter:true syncs were creating duplicate indexes until MySQL's 64-key limit.
+    indexes: [{ fields: ["isActive"] }, { fields: ["sortOrder"] }],
   }
 );
 

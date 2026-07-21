@@ -89,9 +89,21 @@ export const getCustomerEmailTypeLabel = (slug: string): string => {
   return row?.label || slug;
 };
 
-/** Create / update customer_email_types table (safe on every server start). */
+/** Create customer_email_types table if missing (no alter — avoids MySQL 64-index limit). */
 export const ensureCustomerEmailTypesSchema = async (): Promise<void> => {
-  await CustomerEmailType.sync({ alter: true });
+  try {
+    await CustomerEmailType.sync();
+  } catch (e: any) {
+    const code = e?.original?.code || e?.parent?.code;
+    const msg = String(e?.message || e || "");
+    if (code === "ER_TOO_MANY_KEYS" || /Too many keys/i.test(msg)) {
+      console.warn(
+        "⚠️  customer_email_types sync skipped (MySQL max 64 indexes). Drop duplicate indexes, then restart."
+      );
+      return;
+    }
+    throw e;
+  }
 };
 
 export const seedDefaultCustomerEmailTypes = async (): Promise<void> => {

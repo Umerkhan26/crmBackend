@@ -286,6 +286,12 @@ export const getAllSales = async ({
         attributes: ["id", "firstname", "lastname", "email"],
       },
       {
+        model: User,
+        as: "assignee",
+        attributes: ["id", "firstname", "lastname", "email"],
+        required: false,
+      },
+      {
         model: Brand,
         as: "brand",
         attributes: ["id", "name"],
@@ -356,6 +362,12 @@ export const getSaleById = async (id: number | string) => {
       include: [
         { model: Lead, attributes: ["id", "campaignName", "leadData", "brandId"] },
         { model: User, attributes: ["id", "firstname", "lastname", "email"] },
+        {
+          model: User,
+          as: "assignee",
+          attributes: ["id", "firstname", "lastname", "email"],
+          required: false,
+        },
         { model: Brand, as: "brand", attributes: ["id", "name"] },
       ],
     });
@@ -699,7 +711,13 @@ export const getSalesByLeadCreator = async (
       },
       {
         model: User,
-        attributes: ["id", "firstname", "email"],
+        attributes: ["id", "firstname", "lastname", "email"],
+      },
+      {
+        model: User,
+        as: "assignee",
+        attributes: ["id", "firstname", "lastname", "email"],
+        required: false,
       },
     ];
     
@@ -775,7 +793,13 @@ export const getSalesByAssigneeId = async (
       },
       {
         model: User,
-        attributes: ["id", "firstname", "email"],
+        attributes: ["id", "firstname", "lastname", "email"],
+      },
+      {
+        model: User,
+        as: "assignee",
+        attributes: ["id", "firstname", "lastname", "email"],
+        required: false,
       },
     ];
     if (search.trim()) {
@@ -787,6 +811,8 @@ export const getSalesByAssigneeId = async (
         { "$Lead.campaignName$": { [Op.like]: `%${search}%` } },
         { "$User.firstname$": { [Op.like]: `%${search}%` } },
         { "$User.email$": { [Op.like]: `%${search}%` } },
+        { "$assignee.firstname$": { [Op.like]: `%${search}%` } },
+        { "$assignee.email$": { [Op.like]: `%${search}%` } },
         Sequelize.literal(
           `JSON_UNQUOTE(JSON_EXTRACT(Lead.leadData, '$.first_name')) LIKE '%${search}%'`
         ),

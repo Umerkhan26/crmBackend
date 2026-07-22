@@ -182,15 +182,9 @@ export const getAllLeads = async ({
       });
     }
 
-    // Optional campaign filter (exact, case-insensitive)
+    // Optional campaign filter (exact match — uses campaignName index)
     if (campaign && campaign.trim() !== "") {
-      whereCondition[Op.and] = whereCondition[Op.and] || [];
-      whereCondition[Op.and].push(
-        Sequelize.where(
-          Sequelize.fn("LOWER", Sequelize.col("campaignName")),
-          campaign.trim().toLowerCase(),
-        ),
-      );
+      whereCondition.campaignName = campaign.trim();
     }
 
     if (assignmentState === "assigned") {
@@ -426,24 +420,67 @@ export const getLeadsByCampaign = async ({
       whereCondition.createdBy = createdBy;
     }
 
-    // Pipeline rule (onlyExited): new auto-assignment leads have a `lead_rotation_state` row —
-    // hide them until full pipeline exit (Team E) or Team A lock-expiry exceptional release.
-    // Leads with no rotation row are legacy and keep the old behavior (always visible here).
+    // Pipeline rule (onlyExited): hide in-pipeline rotation leads until exit/release.
+    // Scope the preload to this campaign (avoids loading every pipeline id globally).
     if (onlyExited) {
-      const inPipelineRows = await LeadRotationState.findAll({
-        attributes: ["leadId"],
-        where: {
-          [Op.and]: [
-            { [Op.or]: [{ isPipelineCompleted: false }, { isPipelineCompleted: null }] },
-            { [Op.or]: [{ isExceptionalRelease: false }, { isExceptionalRelease: null }] },
-          ],
-        } as any,
-      });
-      const inPipelineLeadIds = Array.from(
-        new Set(inPipelineRows.map((r: any) => Number(r.leadId)).filter((x) => Number.isFinite(x))),
-      );
-      if (inPipelineLeadIds.length > 0) {
-        whereCondition.id = { [Op.notIn]: inPipelineLeadIds };
+      const rotationWhere: any = {
+        [Op.and]: [
+          {
+            [Op.or]: [
+              { isPipelineCompleted: false },
+              { isPipelineCompleted: null },
+            ],
+          },
+          {
+            [Op.or]: [
+              { isExceptionalRelease: false },
+              { isExceptionalRelease: null },
+            ],
+          },
+        ],
+      };
+
+      if (campaignName && String(campaignName).trim()) {
+        const campaignLeadIds = await Lead.findAll({
+          attributes: ["id"],
+          where: { campaignName: String(campaignName).trim() },
+          raw: true,
+        });
+        const ids = campaignLeadIds
+          .map((r: any) => Number(r.id))
+          .filter((x) => Number.isFinite(x));
+        if (ids.length > 0) {
+          rotationWhere.leadId = { [Op.in]: ids };
+          const inPipelineRows = await LeadRotationState.findAll({
+            attributes: ["leadId"],
+            where: rotationWhere,
+          });
+          const inPipelineLeadIds = Array.from(
+            new Set(
+              inPipelineRows
+                .map((r: any) => Number(r.leadId))
+                .filter((x) => Number.isFinite(x)),
+            ),
+          );
+          if (inPipelineLeadIds.length > 0) {
+            whereCondition.id = { [Op.notIn]: inPipelineLeadIds };
+          }
+        }
+      } else {
+        const inPipelineRows = await LeadRotationState.findAll({
+          attributes: ["leadId"],
+          where: rotationWhere,
+        });
+        const inPipelineLeadIds = Array.from(
+          new Set(
+            inPipelineRows
+              .map((r: any) => Number(r.leadId))
+              .filter((x) => Number.isFinite(x)),
+          ),
+        );
+        if (inPipelineLeadIds.length > 0) {
+          whereCondition.id = { [Op.notIn]: inPipelineLeadIds };
+        }
       }
     }
 
@@ -927,129 +964,48 @@ export const getAllLeadsWithAssignee = async ({
   isAdmin?: boolean;
 }) => {
   try {
-    const baseCondition = Sequelize.literal("JSON_LENGTH(assignees) > 0");
     const whereConditions: any = {
-      [Op.and]: [baseCondition],
+      [Op.and]: [Sequelize.literal("JSON_LENGTH(assignees) > 0")],
     };
-    // ─────────────────────────────────────────
-    // Campaign filter
-    // ─────────────────────────────────────────
+
+    // Exact campaign match so the campaignName index can be used
     if (campaign && campaign.trim() !== "") {
-      whereConditions[Op.and].push(
-        Sequelize.where(
-          Sequelize.fn("LOWER", Sequelize.col("campaignName")),
-          campaign.trim().toLowerCase(),
-        ),
-      );
+      whereConditions[Op.and].push({ campaignName: campaign.trim() });
     }
-    // ─────────────────────────────────────────
-    // Date filter
-    // ─────────────────────────────────────────
+
     if (filterType) {
       const dateFilter = buildDateFilter(filterType, startDate, endDate);
-      // Only add date filter if it has actual conditions (check for createdAt property)
       if (dateFilter && "createdAt" in dateFilter) {
-        console.log("📅 Applying date filter:", {
-          filterType,
-          startDate,
-          endDate,
-          dateFilter,
-        });
         whereConditions[Op.and].push(dateFilter);
-      } else {
-        console.log("⚠️ Date filter returned empty object:", {
-          filterType,
-          startDate,
-          endDate,
-        });
       }
     }
-    // ─────────────────────────────────────────
-    // ⭐ Dynamic JSON field filtering (main part)
-    // ─────────────────────────────────────────
+
     if (conditions.length > 0) {
-      const dynamicFilter = buildDynamicFilters(conditions);
-      whereConditions[Op.and].push(dynamicFilter);
+      whereConditions[Op.and].push(buildDynamicFilters(conditions));
     }
-    // ─────────────────────────────────────────
-    // Filter by creator if user is not admin (datascrapper and other non-admin roles)
-    // Non-admin users should only see leads they created themselves
-    // ─────────────────────────────────────────
+
     if (!isAdmin && userId) {
       whereConditions[Op.and].push({ createdBy: userId });
     }
-    // ─────────────────────────────────────────
-    // Fetch ALL leads (NO pagination, search applied later)
-    // ─────────────────────────────────────────
-    const leads = await Lead.findAll({
+
+    if (search?.trim()) {
+      appendLeadSearchToWhere(whereConditions, search);
+    }
+
+    const { pageNum, pageSize, offset } = clampLeadListPagination(page, limit);
+    const { count, rows } = await Lead.findAndCountAll({
       where: whereConditions,
       order: [["createdAt", "DESC"]],
+      limit: pageSize,
+      offset,
     });
-    // ─────────────────────────────────────────
-    // Enrich assignees
-    // ─────────────────────────────────────────
-    const enrichedLeads = await Promise.all(
-      leads.map(async (lead: any) => {
-        let assigneesRaw: any[] = [];
-        if (lead.assignees) {
-          try {
-            const parsed =
-              typeof lead.assignees === "string"
-                ? JSON.parse(lead.assignees)
-                : lead.assignees;
-            assigneesRaw = Array.isArray(parsed) ? parsed : [parsed];
-          } catch {
-            assigneesRaw = [];
-          }
-        }
-        const userIds = assigneesRaw
-          .map((a) => a.userId ?? a)
-          .filter((id: any) => typeof id === "number");
-        let assigneesData: any[] = [];
-        if (userIds.length > 0) {
-          const users = await User.findAll({
-            where: { id: userIds },
-            attributes: ["id", "firstname", "lastname", "email"],
-          });
-          assigneesData = users.map((user) => {
-            const assignment = assigneesRaw.find(
-              (a) => a.userId === user.id || a === user.id,
-            );
-            return {
-              ...user.toJSON(),
-              status: assignment?.status || "pending",
-            };
-          });
-        }
-        const leadCode = buildLeadCodeFromCampaignAndId(
-          lead.campaignName || "",
-          Number(lead.id),
-        );
 
-        return {
-          ...(lead.toJSON() as any),
-          assignees: assigneesData,
-          leadCode: leadCode, // Add leadCode to the enriched lead object
-        };
-      }),
+    const enrichedLeads = await enrichLeadsBatch(rows);
+    return getPagingData(
+      { count, rows: enrichedLeads },
+      pageNum,
+      pageSize,
     );
-    // ─────────────────────────────────────────
-    // GLOBAL SEARCH across all fields (including leadCode)
-    // ─────────────────────────────────────────
-    const filteredLeads =
-      search && search.trim() !== ""
-        ? enrichedLeads.filter((lead) =>
-            leadEnrichedRowMatchesSearch(lead as Record<string, unknown>, search),
-          )
-        : enrichedLeads;
-    // ─────────────────────────────────────────
-    // Pagination AFTER filtering
-    // ─────────────────────────────────────────
-    const total = filteredLeads.length;
-    const start = (page - 1) * limit;
-    const end = start + limit;
-    const paginatedRows = filteredLeads.slice(start, end);
-    return getPagingData({ count: total, rows: paginatedRows }, page, limit);
   } catch (error: any) {
     throw new Error(`Error fetching leads with assignees: ${error.message}`);
   }
@@ -1068,6 +1024,106 @@ export const getAssignmentCounts = async () => {
     assignedCount,
     unassignedCount,
   };
+};
+
+/**
+ * COUNT-only totals per campaign (no row payload).
+ * Used by Master Lead / Unified campaign cards + tab badges.
+ */
+export const getLeadCampaignCounts = async ({
+  campaigns,
+  onlyPromotedFromIncoming = false,
+  userId,
+  isAdmin = false,
+}: {
+  campaigns: string[];
+  onlyPromotedFromIncoming?: boolean;
+  userId?: number;
+  isAdmin?: boolean;
+}): Promise<{
+  byCampaign: Record<
+    string,
+    { total: number; assigned: number; unassigned: number }
+  >;
+}> => {
+  const names = Array.from(
+    new Set(
+      (campaigns || [])
+        .map((c) => String(c || "").trim())
+        .filter(Boolean),
+    ),
+  );
+
+  const byCampaign: Record<
+    string,
+    { total: number; assigned: number; unassigned: number }
+  > = {};
+  for (const name of names) {
+    byCampaign[name] = { total: 0, assigned: 0, unassigned: 0 };
+  }
+  if (names.length === 0) {
+    return { byCampaign };
+  }
+
+  const replacements: Record<string, unknown> = { names };
+  const scopeParts: string[] = ["campaignName IN (:names)"];
+
+  if (onlyPromotedFromIncoming) {
+    scopeParts.push(
+      `id IN (
+        SELECT targetLeadId
+        FROM incoming_leads
+        WHERE status = 'promoted' AND targetLeadId IS NOT NULL
+      )`,
+    );
+  }
+
+  if (!isAdmin && userId) {
+    scopeParts.push("createdBy = :userId");
+    replacements.userId = userId;
+  }
+
+  const rows = (await db.query(
+    `
+      SELECT
+        campaignName AS campaignName,
+        COUNT(*) AS total,
+        SUM(
+          CASE
+            WHEN JSON_LENGTH(COALESCE(assignees, '[]')) > 0 THEN 1
+            ELSE 0
+          END
+        ) AS assigned,
+        SUM(
+          CASE
+            WHEN assignees IS NULL OR JSON_LENGTH(COALESCE(assignees, '[]')) = 0
+            THEN 1
+            ELSE 0
+          END
+        ) AS unassigned
+      FROM leads
+      WHERE ${scopeParts.join(" AND ")}
+      GROUP BY campaignName
+    `,
+    { type: QueryTypes.SELECT, replacements },
+  )) as Array<{
+    campaignName?: string;
+    total?: number | string;
+    assigned?: number | string;
+    unassigned?: number | string;
+  }>;
+
+  for (const row of rows) {
+    const name = String(row.campaignName || "").trim();
+    if (!name) continue;
+    byCampaign[name] = {
+      total: Number(row.total || 0),
+      assigned: Number(row.assigned || 0),
+      unassigned: Number(row.unassigned || 0),
+    };
+  }
+
+  return { byCampaign };
 };
 
 export interface GetUnassignedLeadsParams {
@@ -1101,125 +1157,52 @@ export const getUnassignedLeads = async ({
   managerBrandUserIds?: number[];
 }) => {
   try {
-    // STEP 1: Build base where condition for unassigned leads
     const whereCondition: any = {
       [Op.and]: [
         Sequelize.literal("(assignees IS NULL OR JSON_LENGTH(assignees) = 0)"),
       ],
     };
-    // STEP 2: Campaign filter
+
+    // Exact campaign match so the campaignName index can be used
     if (campaign && campaign.trim() !== "") {
-      whereCondition[Op.and].push(
-        Sequelize.where(
-          Sequelize.fn("LOWER", Sequelize.col("campaignName")),
-          campaign.trim().toLowerCase(),
-        ),
-      );
+      whereCondition[Op.and].push({ campaignName: campaign.trim() });
     }
-    // STEP 3: Date filter
+
     if (filterType) {
       const dateFilter = buildDateFilter(filterType, startDate, endDate);
-      // Only add date filter if it has actual conditions (check for createdAt property)
       if (dateFilter && "createdAt" in dateFilter) {
-        console.log("📅 Applying date filter (unassigned):", {
-          filterType,
-          startDate,
-          endDate,
-          dateFilter,
-        });
         whereCondition[Op.and].push(dateFilter);
-      } else {
-        console.log("⚠️ Date filter returned empty object (unassigned):", {
-          filterType,
-          startDate,
-          endDate,
-        });
       }
     }
-    // STEP 4: Dynamic JSON field filtering
+
     if (conditions.length > 0) {
-      const dynamicFilter = buildDynamicFilters(conditions);
-      whereCondition[Op.and].push(dynamicFilter);
+      whereCondition[Op.and].push(buildDynamicFilters(conditions));
     }
-    // STEP 4.5: Filter by creator if user is not admin and not a manager
-    // Managers see all unassigned leads (master leads)
-    // Non-admin users should only see leads they created themselves
-    if (isManager) {
-      // Managers see all unassigned leads - no restriction
-    } else if (!isAdmin && userId) {
+
+    // Managers see all unassigned leads; non-admin users only see their own.
+    if (!isManager && !isAdmin && userId) {
       whereCondition[Op.and].push({ createdBy: userId });
     }
-    // STEP 5: Fetch ALL leads with Sequelize (NO search or pagination here)
-    const leads = await Lead.findAll({
+
+    if (searchTerm?.trim()) {
+      appendLeadSearchToWhere(whereCondition, searchTerm);
+    }
+
+    const { pageNum, pageSize, offset } = clampLeadListPagination(page, limit);
+    const { count, rows } = await Lead.findAndCountAll({
       where: whereCondition,
       order: [["createdAt", "DESC"]],
+      limit: pageSize,
+      offset,
     });
-    // STEP 6: Enrich assignees
-    const enrichedLeads = await Promise.all(
-      leads.map(async (lead) => {
-        let assigneesRaw: any[] = [];
-        if (lead.assignees) {
-          try {
-            const parsed =
-              typeof lead.assignees === "string"
-                ? JSON.parse(lead.assignees)
-                : lead.assignees;
-            assigneesRaw = Array.isArray(parsed) ? parsed : [parsed];
-          } catch {
-            assigneesRaw = [];
-          }
-        }
-        const userIds = assigneesRaw
-          .map((a) => a.userId)
-          .filter((id): id is number => typeof id === "number");
-        let assigneesData: any[] = [];
-        if (userIds.length > 0) {
-          const users = await User.findAll({
-            where: { id: userIds },
-            attributes: ["id", "firstname", "lastname", "email"],
-          });
-          assigneesData = users.map((user) => {
-            const assignment = assigneesRaw.find((a) => a.userId === user.id);
-            return {
-              ...user.toJSON(),
-              status: assignment?.status || "pending",
-            };
-          });
-        }
-        const plainLead = lead.toJSON();
 
-        const leadCode = buildLeadCodeFromCampaignAndId(
-          lead.campaignName || "",
-          Number(lead.id),
-        );
-
-        return {
-          ...plainLead,
-          assignees: assigneesData,
-          leadCode: leadCode, // Add leadCode to the enriched lead object
-        };
-      }),
-    );
-    // STEP 7: GLOBAL SEARCH across all fields (including leadCode)
-    const filteredLeads =
-      searchTerm && searchTerm.trim() !== ""
-        ? enrichedLeads.filter((lead) =>
-            leadEnrichedRowMatchesSearch(
-              lead as Record<string, unknown>,
-              searchTerm,
-            ),
-          )
-        : enrichedLeads;
-    // STEP 8: Pagination AFTER filtering
-    const total = filteredLeads.length;
-    const start = (page - 1) * limit;
-    const end = start + limit;
+    const enrichedLeads = await enrichLeadsBatch(rows);
     return {
-      totalItems: total,
-      rows: filteredLeads.slice(start, end),
-      currentPage: page,
-      totalPages: Math.ceil(total / limit),
-      pageSize: limit,
+      totalItems: count,
+      rows: enrichedLeads,
+      currentPage: pageNum,
+      totalPages: count <= 0 ? 0 : Math.ceil(count / pageSize),
+      pageSize,
     };
   } catch (error: any) {
     throw new Error(`Error fetching unassigned leads: ${error.message}`);
@@ -2260,7 +2243,7 @@ const filterHotLeadRowsBySearch = <
 export const getManagerHotLeadRequests = async ({
   managerId,
   page = 1,
-  limit = 10,
+  limit = 100,
   campaignName,
   campaignId,
   leadId: leadIdFilter,
@@ -2291,6 +2274,9 @@ export const getManagerHotLeadRequests = async ({
   if (!scopeAll && managedUserIds.length === 0) {
     return { rows: [], totalItems: 0, totalPages: 0, currentPage: page, pageSize: limit };
   }
+
+  const pageNum = Math.max(1, Number(page) || 1);
+  const pageSize = Math.min(100, Math.max(1, Number(limit) || 100));
 
   const effectiveCampaignName = await resolveEffectiveCampaignNameFromQuery(
     campaignName,
@@ -2412,8 +2398,8 @@ export const getManagerHotLeadRequests = async ({
   const searchFiltered = filterHotLeadRowsBySearch(dateFiltered, search);
 
   const totalItems = searchFiltered.length;
-  const totalPages = totalItems === 0 ? 0 : Math.ceil(totalItems / limit);
-  const start = (page - 1) * limit;
+  const totalPages = totalItems === 0 ? 0 : Math.ceil(totalItems / pageSize);
+  const start = (pageNum - 1) * pageSize;
   const statusCounts = searchFiltered.reduce(
     (acc, item) => {
       const status = String(item?.hotLeadRequestStatus || "").toLowerCase().trim();
@@ -2426,11 +2412,11 @@ export const getManagerHotLeadRequests = async ({
   );
   return {
     reviewState,
-    rows: searchFiltered.slice(start, start + limit),
+    rows: searchFiltered.slice(start, start + pageSize),
     totalItems,
     totalPages,
-    currentPage: page,
-    pageSize: limit,
+    currentPage: pageNum,
+    pageSize,
     statusCounts,
   };
 };

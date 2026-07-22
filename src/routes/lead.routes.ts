@@ -103,6 +103,17 @@ router.get(
 );
 
 router.get(
+  "/admin/lead-campaign-counts",
+  verifyToken,
+  LeadController.getLeadCampaignCounts,
+);
+router.post(
+  "/admin/lead-campaign-counts",
+  verifyToken,
+  LeadController.getLeadCampaignCounts,
+);
+
+router.get(
   "/getLeadsWithUnassigned",
   verifyToken,
   LeadController.getUnassignedLeads

@@ -848,6 +848,86 @@ export const getAssignmentStats = async (req: Request, res: Response) => {
   }
 };
 
+/**
+ * Batch COUNT-only totals for many campaigns in one round-trip.
+ * Query: campaigns=Name1,Name2  OR POST body { campaigns: string[] }
+ * Optional: onlyPromotedFromIncoming=true (Unified Master scope)
+ */
+export const getLeadCampaignCounts = async (
+  req: Request,
+  res: Response,
+): Promise<any> => {
+  try {
+    const userId = (req as any).user?.id;
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "User not authenticated",
+      });
+    }
+
+    const scope = await resolveLeadListScope(req);
+    if (!scope) {
+      return res.status(401).json({
+        success: false,
+        message: "User not authenticated",
+      });
+    }
+
+    let campaigns: string[] = [];
+    const bodyCampaigns = (req.body as any)?.campaigns;
+    if (Array.isArray(bodyCampaigns)) {
+      campaigns = bodyCampaigns.map((c) => String(c || "").trim()).filter(Boolean);
+    } else if (typeof req.query.campaigns === "string") {
+      campaigns = String(req.query.campaigns)
+        .split(",")
+        .map((c) => c.trim())
+        .filter(Boolean);
+    } else if (Array.isArray(req.query.campaigns)) {
+      campaigns = (req.query.campaigns as string[])
+        .map((c) => String(c || "").trim())
+        .filter(Boolean);
+    }
+
+    if (campaigns.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "campaigns is required (comma-separated or JSON array)",
+      });
+    }
+
+    // Cap fan-in so a malicious client cannot request thousands of names
+    if (campaigns.length > 200) {
+      campaigns = campaigns.slice(0, 200);
+    }
+
+    const onlyPromotedRaw =
+      (req.body as any)?.onlyPromotedFromIncoming ??
+      req.query.onlyPromotedFromIncoming;
+    const onlyPromotedFromIncoming =
+      onlyPromotedRaw === true ||
+      onlyPromotedRaw === "true" ||
+      onlyPromotedRaw === "1";
+
+    const result = await LeadService.getLeadCampaignCounts({
+      campaigns,
+      onlyPromotedFromIncoming,
+      userId,
+      isAdmin: scope.isAdmin,
+    });
+
+    return res.status(200).json({
+      success: true,
+      byCampaign: result.byCampaign,
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to get campaign lead counts",
+    });
+  }
+};
+
 export const getUnassignedLeads = async (
   req: Request,
   res: Response,
@@ -1124,7 +1204,8 @@ export const getManagerHotLeadRequests = async (
       });
     }
     const page = parseInt(req.query.page as string, 10) || 1;
-    const limit = parseInt(req.query.limit as string, 10) || 10;
+    // Default 100 so Assigned Leads manager queue is not silently capped at 10.
+    const limit = parseInt(req.query.limit as string, 10) || 100;
     const campaignName = req.query.campaignName as string | undefined;
     const campaignId = req.query.campaignId
       ? parseInt(req.query.campaignId as string, 10)

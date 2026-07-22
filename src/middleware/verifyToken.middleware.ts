@@ -56,16 +56,29 @@ export const verifyToken = async (req: CustomRequest, res: Response, next: NextF
     const isAdmin = roleName === "admin" || roleName === "adminn";
 
     let permissions: string[] = [];
+    let permissionDetails: Array<{
+      name?: string;
+      resourceId?: number | string | null;
+      resourceType?: string | null;
+    }> = [];
+
     if (isAdmin) {
       permissions = Object.values(PERMISSIONS);
+      permissionDetails = [];
     } else if (role) {
       const perms = role.Permissions || role.permissions || [];
       permissions = perms.map((p: any) => p.name).filter(Boolean);
+      permissionDetails = perms.map((p: any) => ({
+        name: p?.name,
+        resourceId: p?.resourceId ?? null,
+        resourceType: p?.resourceType ?? null,
+      }));
     }
 
     req.user = {
       id: user.id!,
       permissions,
+      permissionDetails,
     };
 
     next();

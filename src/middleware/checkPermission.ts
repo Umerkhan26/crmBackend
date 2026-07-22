@@ -7,7 +7,11 @@ declare global {
       user?: {
         id: number;
         permissions: string[];
-
+        permissionDetails?: Array<{
+          name?: string;
+          resourceId?: number | string | null;
+          resourceType?: string | null;
+        }>;
       };
     }
   }

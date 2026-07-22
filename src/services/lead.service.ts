@@ -1029,17 +1029,25 @@ export const getAssignmentCounts = async () => {
 /**
  * COUNT-only totals per campaign (no row payload).
  * Used by Master Lead / Unified campaign cards + tab badges.
+ *
+ * Response keys always use the client-requested campaign casing so FE lookups
+ * do not stick on pre-init zeros when MySQL returns a different spelling
+ * (ci collation matches IN / WHERE but GROUP BY returns DB casing).
  */
 export const getLeadCampaignCounts = async ({
   campaigns,
   onlyPromotedFromIncoming = false,
   userId,
   isAdmin = false,
+  isManager = false,
+  managerBrandUserIds = [],
 }: {
   campaigns: string[];
   onlyPromotedFromIncoming?: boolean;
   userId?: number;
   isAdmin?: boolean;
+  isManager?: boolean;
+  managerBrandUserIds?: number[];
 }): Promise<{
   byCampaign: Record<
     string,
@@ -1065,6 +1073,11 @@ export const getLeadCampaignCounts = async ({
     return { byCampaign };
   }
 
+  const nameByLower = new Map<string, string>();
+  for (const name of names) {
+    nameByLower.set(name.toLowerCase(), name);
+  }
+
   const replacements: Record<string, unknown> = { names };
   const scopeParts: string[] = ["campaignName IN (:names)"];
 
@@ -1078,11 +1091,19 @@ export const getLeadCampaignCounts = async ({
     );
   }
 
-  if (!isAdmin && userId) {
-    scopeParts.push("createdBy = :userId");
-    replacements.userId = userId;
+  // Same scope rules as Master / Unified list endpoints
+  if (!isAdmin) {
+    if (isManager && managerBrandUserIds.length > 0) {
+      scopeParts.push("createdBy IN (:managerBrandUserIds)");
+      replacements.managerBrandUserIds = managerBrandUserIds;
+    } else if (userId) {
+      scopeParts.push("createdBy = :userId");
+      replacements.userId = userId;
+    }
   }
 
+  // Match list filters: JSON_LENGTH(assignees) > 0 (no COALESCE — it can
+  // coerce JSON → string and make JSON_LENGTH NULL → assigned always 0).
   const rows = (await db.query(
     `
       SELECT
@@ -1090,13 +1111,15 @@ export const getLeadCampaignCounts = async ({
         COUNT(*) AS total,
         SUM(
           CASE
-            WHEN JSON_LENGTH(COALESCE(assignees, '[]')) > 0 THEN 1
+            WHEN assignees IS NOT NULL AND JSON_LENGTH(assignees) > 0 THEN 1
             ELSE 0
           END
         ) AS assigned,
         SUM(
           CASE
-            WHEN assignees IS NULL OR JSON_LENGTH(COALESCE(assignees, '[]')) = 0
+            WHEN assignees IS NULL
+              OR JSON_LENGTH(assignees) = 0
+              OR JSON_LENGTH(assignees) IS NULL
             THEN 1
             ELSE 0
           END
@@ -1114,9 +1137,10 @@ export const getLeadCampaignCounts = async ({
   }>;
 
   for (const row of rows) {
-    const name = String(row.campaignName || "").trim();
-    if (!name) continue;
-    byCampaign[name] = {
+    const dbName = String(row.campaignName || "").trim();
+    if (!dbName) continue;
+    const requestedName = nameByLower.get(dbName.toLowerCase()) || dbName;
+    byCampaign[requestedName] = {
       total: Number(row.total || 0),
       assigned: Number(row.assigned || 0),
       unassigned: Number(row.unassigned || 0),

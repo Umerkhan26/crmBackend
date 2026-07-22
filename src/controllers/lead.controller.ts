@@ -914,6 +914,8 @@ export const getLeadCampaignCounts = async (
       onlyPromotedFromIncoming,
       userId,
       isAdmin: scope.isAdmin,
+      isManager: scope.isManager,
+      managerBrandUserIds: scope.managerBrandUserIds,
     });
 
     return res.status(200).json({

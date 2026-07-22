@@ -1177,10 +1177,8 @@ const canAccessManagerHotLeads = async (req: Request): Promise<boolean> => {
   const uid = req.user?.id;
   if (!uid) return false;
   const perms = req.user?.permissions || [];
-  if (
-    perms.includes(PERMISSIONS.LEAD_GET_ALL) ||
-    perms.includes(PERMISSIONS.LEAD_VIEW_ALL)
-  ) {
+  // All-company hot-lead queue only with lead:scopeAll (not getAll/viewAll page access).
+  if (perms.includes(PERMISSIONS.LEAD_SCOPE_ALL)) {
     return true;
   }
   const { isUserManager } = await import("../utils/brandUtils");
@@ -1200,7 +1198,7 @@ export const getManagerHotLeadRequests = async (
       return res.status(403).json({
         success: false,
         message:
-          "Forbidden: managers (brand scope) or users with lead:getAll / lead:viewAll may view hot lead requests.",
+          "Forbidden: brand managers or users with lead:scopeAll may view hot lead requests.",
       });
     }
     const page = parseInt(req.query.page as string, 10) || 1;
@@ -1235,9 +1233,7 @@ export const getManagerHotLeadRequests = async (
         ? String(req.query.search).trim()
         : undefined;
     const perms = req.user?.permissions || [];
-    const scopeAll =
-      perms.includes(PERMISSIONS.LEAD_GET_ALL) ||
-      perms.includes(PERMISSIONS.LEAD_VIEW_ALL);
+    const scopeAll = perms.includes(PERMISSIONS.LEAD_SCOPE_ALL);
     const result = await LeadService.getManagerHotLeadRequests({
       managerId,
       page,
@@ -1277,7 +1273,7 @@ export const reviewHotLeadRequest = async (
       return res.status(403).json({
         success: false,
         message:
-          "Forbidden: managers (brand scope) or users with lead:getAll / lead:viewAll may review hot lead requests.",
+          "Forbidden: brand managers or users with lead:scopeAll may review hot lead requests.",
       });
     }
     const leadId = Number(req.params.leadId);
@@ -1308,9 +1304,7 @@ export const reviewHotLeadRequest = async (
       }
     }
     const perms = req.user?.permissions || [];
-    const scopeAll =
-      perms.includes(PERMISSIONS.LEAD_GET_ALL) ||
-      perms.includes(PERMISSIONS.LEAD_VIEW_ALL);
+    const scopeAll = perms.includes(PERMISSIONS.LEAD_SCOPE_ALL);
     const data = await LeadService.reviewHotLeadRequest({
       managerId,
       leadId,

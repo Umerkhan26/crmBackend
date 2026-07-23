@@ -513,6 +513,108 @@ export const getLeadsByCampaign = async ({
   }
 };
 
+const parseLeadDataObject = (raw: unknown): Record<string, any> => {
+  if (!raw) return {};
+  if (typeof raw === "object" && !Array.isArray(raw)) {
+    return raw as Record<string, any>;
+  }
+  if (typeof raw === "string") {
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed as Record<string, any>;
+      }
+    } catch {
+      return {};
+    }
+  }
+  return {};
+};
+
+const normalizeFieldValue = (value: unknown): string => {
+  if (value == null) return "";
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+};
+
+const classifyLeadDataField = (
+  key: string,
+): "email" | "number" | null => {
+  const lower = String(key || "").toLowerCase().trim();
+  if (!lower) return null;
+  if (lower.includes("email") || lower === "mail") return "email";
+  if (
+    lower.includes("phone") ||
+    lower.includes("number") ||
+    lower === "mobile" ||
+    lower === "cell"
+  ) {
+    return "number";
+  }
+  return null;
+};
+
+const formatFieldLabel = (key: string, kind: "email" | "number"): string => {
+  const cleaned = String(key || "")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (cleaned) {
+    return cleaned.replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+  return kind === "email" ? "Email" : "Number";
+};
+
+/**
+ * Log email / phone-number edits into lead_activities for the Activities tab.
+ */
+const logLeadContactFieldChanges = async ({
+  leadId,
+  performedBy,
+  previousLeadData,
+  nextLeadData,
+}: {
+  leadId: number;
+  performedBy?: number;
+  previousLeadData: unknown;
+  nextLeadData: unknown;
+}) => {
+  if (!performedBy) return;
+
+  const before = parseLeadDataObject(previousLeadData);
+  const after = parseLeadDataObject(nextLeadData);
+  const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
+
+  for (const key of keys) {
+    const kind = classifyLeadDataField(key);
+    if (!kind) continue;
+
+    const fromValue = normalizeFieldValue(before[key]);
+    const toValue = normalizeFieldValue(after[key]);
+    if (fromValue === toValue) continue;
+
+    const label = formatFieldLabel(key, kind);
+    const action = kind === "email" ? "email_updated" : "number_updated";
+    const fromDisplay = fromValue || "(empty)";
+    const toDisplay = toValue || "(empty)";
+
+    await logLeadActivity({
+      entityId: leadId,
+      entityType: "lead",
+      action,
+      performedBy,
+      details: `Changed ${label} from "${fromDisplay}" to "${toDisplay}"`,
+    });
+  }
+};
+
 export const updateLead = async (
   id: number,
   updatedData: Partial<LeadCreationAttributes>,
@@ -524,7 +626,26 @@ export const updateLead = async (
       throw new Error("Lead not found");
     }
 
+    const previousLeadData = (lead as any).leadData;
+    const nextLeadData =
+      updatedData &&
+      Object.prototype.hasOwnProperty.call(updatedData, "leadData")
+        ? (updatedData as any).leadData
+        : previousLeadData;
+
     await lead.update(updatedData);
+
+    if (
+      updatedData &&
+      Object.prototype.hasOwnProperty.call(updatedData, "leadData")
+    ) {
+      await logLeadContactFieldChanges({
+        leadId: id,
+        performedBy: userId,
+        previousLeadData,
+        nextLeadData,
+      });
+    }
 
     if (userId) {
       // Fetch user to get full name for activity log
@@ -1144,6 +1265,82 @@ export const getLeadCampaignCounts = async ({
       total: Number(row.total || 0),
       assigned: Number(row.assigned || 0),
       unassigned: Number(row.unassigned || 0),
+    };
+  }
+
+  return { byCampaign };
+};
+
+/**
+ * COUNT leads assigned to a specific user, grouped by campaign.
+ * Used by User Details → Campaign Access table.
+ */
+export const getAssigneeCampaignCounts = async ({
+  assigneeId,
+  campaigns,
+}: {
+  assigneeId: number;
+  campaigns?: string[];
+}): Promise<{ byCampaign: Record<string, { assigned: number }> }> => {
+  const id = Number(assigneeId);
+  if (!Number.isFinite(id) || id <= 0) {
+    return { byCampaign: {} };
+  }
+
+  const names = Array.from(
+    new Set(
+      (campaigns || [])
+        .map((c) => String(c || "").trim())
+        .filter(Boolean),
+    ),
+  );
+
+  const byCampaign: Record<string, { assigned: number }> = {};
+  for (const name of names) {
+    byCampaign[name] = { assigned: 0 };
+  }
+
+  const nameByLower = new Map<string, string>();
+  for (const name of names) {
+    nameByLower.set(name.toLowerCase(), name);
+  }
+
+  const replacements: Record<string, unknown> = {};
+  // Inline validated int — same pattern as getLeadsByAssigneeId (named binds inside JSON_OBJECT are flaky)
+  const scopeParts: string[] = [
+    `JSON_CONTAINS(assignees, '{"userId": ${id}}', '$')`,
+  ];
+
+  if (names.length > 0) {
+    scopeParts.push("campaignName IN (:names)");
+    replacements.names = names;
+  }
+
+  const rows = (await db.query(
+    `
+      SELECT
+        campaignName AS campaignName,
+        COUNT(*) AS assigned
+      FROM leads
+      WHERE ${scopeParts.join(" AND ")}
+      GROUP BY campaignName
+    `,
+    {
+      type: QueryTypes.SELECT,
+      ...(Object.keys(replacements).length > 0 ? { replacements } : {}),
+    },
+  )) as Array<{ campaignName?: string; assigned?: number | string }>;
+
+  for (const row of rows) {
+    const dbName = String(row.campaignName || "").trim();
+    if (!dbName) continue;
+    const requestedName = nameByLower.get(dbName.toLowerCase()) || dbName;
+    // Only keep requested campaigns when a filter list was provided
+    if (names.length > 0 && !nameByLower.has(dbName.toLowerCase())) {
+      continue;
+    }
+    byCampaign[requestedName] = {
+      assigned: Number(row.assigned || 0),
     };
   }
 

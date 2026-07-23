@@ -45,12 +45,33 @@ export const getLeadActivitiesByLeadId = async (
       {
         model: Lead,
         as: "LeadById",
-        attributes: { exclude: [] },
+        attributes: ["id", "campaignName"],
+        required: false,
       },
     ],
   });
 
-  return getPagingData(data, page, limit);
+  // Normalize campaign onto each row for FE (Lead / LeadById / campaignName)
+  const rows = data.rows.map((row) => {
+    const plain: any =
+      typeof (row as any).get === "function"
+        ? (row as any).get({ plain: true })
+        : row;
+    const campaignName =
+      plain?.LeadById?.campaignName || plain?.Lead?.campaignName || null;
+    return {
+      ...plain,
+      campaignName,
+      Lead: plain.LeadById
+        ? {
+            id: plain.LeadById.id,
+            campaignName: plain.LeadById.campaignName,
+          }
+        : plain.Lead || null,
+    };
+  });
+
+  return getPagingData({ count: data.count, rows }, page, limit);
 };
 
 

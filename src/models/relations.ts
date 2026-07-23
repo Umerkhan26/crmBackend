@@ -92,15 +92,20 @@ export const associateModels = () => {
 };
 
 Lead.hasMany(LeadActivity, {
-  foreignKey: "leadId",
+  foreignKey: "entityId",
+  sourceKey: "id",
   as: "activities",
-  onDelete: "CASCADE",
+  constraints: false,
+  scope: {
+    entityType: "lead",
+  },
 });
 
 LeadActivity.belongsTo(Lead, {
-  foreignKey: "leadId",
+  foreignKey: "entityId",
+  targetKey: "id",
   as: "LeadById",
-  onDelete: "CASCADE",
+  constraints: false,
 });
 
 Lead.hasMany(Note, { foreignKey: "leadId", as: "notess", onDelete: "CASCADE" });

@@ -114,6 +114,17 @@ router.post(
 );
 
 router.get(
+  "/admin/assignee-campaign-counts",
+  verifyToken,
+  LeadController.getAssigneeCampaignCounts,
+);
+router.post(
+  "/admin/assignee-campaign-counts",
+  verifyToken,
+  LeadController.getAssigneeCampaignCounts,
+);
+
+router.get(
   "/getLeadsWithUnassigned",
   verifyToken,
   LeadController.getUnassignedLeads

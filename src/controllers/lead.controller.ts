@@ -534,7 +534,11 @@ export const updateLead = async (req: Request, res: Response): Promise<any> => {
       return res.status(400).json({ message: "Invalid lead ID" });
     }
 
-    const updatedLead = await LeadService.updateLead(leadId, updatedData);
+    const updatedLead = await LeadService.updateLead(
+      leadId,
+      updatedData,
+      req.user?.id,
+    );
     return res
       .status(200)
       .json({ message: "Lead updated successfully", lead: updatedLead });
@@ -926,6 +930,65 @@ export const getLeadCampaignCounts = async (
     return res.status(500).json({
       success: false,
       message: error.message || "Failed to get campaign lead counts",
+    });
+  }
+};
+
+/**
+ * Batch COUNT of leads assigned to one user, per campaign.
+ * POST/GET body/query: assigneeId, campaigns[] (optional filter)
+ */
+export const getAssigneeCampaignCounts = async (
+  req: Request,
+  res: Response,
+): Promise<any> => {
+  try {
+    const requesterId = (req as any).user?.id;
+    if (!requesterId) {
+      return res.status(401).json({
+        success: false,
+        message: "User not authenticated",
+      });
+    }
+
+    const assigneeRaw =
+      (req.body as any)?.assigneeId ?? req.query.assigneeId ?? req.params.assigneeId;
+    const assigneeId = parseInt(String(assigneeRaw), 10);
+    if (!Number.isFinite(assigneeId) || assigneeId <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid assigneeId is required",
+      });
+    }
+
+    let campaigns: string[] = [];
+    const bodyCampaigns = (req.body as any)?.campaigns;
+    if (Array.isArray(bodyCampaigns)) {
+      campaigns = bodyCampaigns.map((c) => String(c || "").trim()).filter(Boolean);
+    } else if (typeof req.query.campaigns === "string") {
+      campaigns = String(req.query.campaigns)
+        .split(",")
+        .map((c) => c.trim())
+        .filter(Boolean);
+    }
+
+    if (campaigns.length > 200) {
+      campaigns = campaigns.slice(0, 200);
+    }
+
+    const result = await LeadService.getAssigneeCampaignCounts({
+      assigneeId,
+      campaigns: campaigns.length > 0 ? campaigns : undefined,
+    });
+
+    return res.status(200).json({
+      success: true,
+      byCampaign: result.byCampaign,
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to get assignee campaign counts",
     });
   }
 };

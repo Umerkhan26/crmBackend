@@ -834,6 +834,7 @@ export const getLeadsByAssigneeId = async (
       success: true,
       message: `Leads assigned to user ID ${assigneeId} fetched successfully.`,
       ...responseData,
+      statusCounts: (leadsResult as any)?.statusCounts || {},
     });
   } catch (error: any) {
     return res.status(500).json({

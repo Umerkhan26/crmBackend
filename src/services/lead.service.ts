@@ -1769,11 +1769,57 @@ export const getLeadsByAssigneeId = async (
       });
     }
 
-    // STEP 3: Apply pagination
+    // STEP 3: Status totals across the full filtered set (not just current page)
+    const statusCounts: Record<string, number> = {
+      pending: 0,
+      to_call: 0,
+      interested: 0,
+      most_interested: 0,
+      sold: 0,
+      not_answered: 0,
+      not_interested: 0,
+      hot_lead: 0,
+      lead_rejected: 0,
+      do_not_call: 0,
+    };
+    for (const lead of searchedLeads) {
+      let assignees: AssigneeWithStatus[] = [];
+      try {
+        if (Array.isArray(lead.assignees)) {
+          assignees = lead.assignees.map((a: any) => ({
+            userId: Number(a.userId ?? a.userid),
+            status: a.status,
+            assignedAt: a.assignedAt,
+          }));
+        } else if (typeof lead.assignees === "string") {
+          const parsed = JSON.parse(lead.assignees);
+          assignees = parsed.map((a: any) => ({
+            userId: Number(a.userId ?? a.userid),
+            status: a.status,
+            assignedAt: a.assignedAt,
+          }));
+        }
+      } catch {
+        assignees = [];
+      }
+      const userAssignment = assignees.find(
+        (a) => Number(a.userId) === assigneeId,
+      );
+      const status = String(userAssignment?.status || "pending")
+        .toLowerCase()
+        .trim();
+      if (Object.prototype.hasOwnProperty.call(statusCounts, status)) {
+        statusCounts[status] += 1;
+      } else {
+        statusCounts[status] = (statusCounts[status] || 0) + 1;
+      }
+    }
+
+    // STEP 4: Apply pagination
     const totalCount = searchedLeads.length;
     const paginatedLeads = searchedLeads.slice(offset, offset + limit);
 
-    // STEP 4: Map paginated results
+    // STEP 5: Map paginated results
     const mappedLeads = paginatedLeads.map((lead) => {
       let assignees: AssigneeWithStatus[] = [];
       try {
@@ -1815,6 +1861,7 @@ export const getLeadsByAssigneeId = async (
     return {
       count: totalCount,
       rows: mappedLeads,
+      statusCounts,
     };
   } catch (error: any) {
     throw new Error(

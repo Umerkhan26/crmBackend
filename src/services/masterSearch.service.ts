@@ -215,7 +215,7 @@ export const masterSearch = async (
       where: leadWhere,
       limit: (leadCodeMatch || isLettersOnly) ? limit * 5 : limit * 2, // Fetch more for leadCode searches
       order: [["id", "DESC"]],
-      attributes: ["id", "campaignName", "leadData"],
+      attributes: ["id", "campaignName", "leadData", "assignees"],
     }),
 
     // Search Users (only for admin)
@@ -401,6 +401,18 @@ export const masterSearch = async (
         email: leadData?.email || "",
         phone: leadData?.phone || leadData?.phone_number || "",
         createdAt: lead.createdAt,
+        assignees: Array.isArray(lead.assignees)
+          ? lead.assignees
+          : typeof lead.assignees === "string"
+            ? (() => {
+                try {
+                  const parsed = JSON.parse(lead.assignees);
+                  return Array.isArray(parsed) ? parsed : [];
+                } catch {
+                  return [];
+                }
+              })()
+            : [],
         _matchesLeadData: matchesLeadData,
       };
     })

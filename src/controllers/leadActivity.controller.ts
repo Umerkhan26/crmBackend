@@ -25,7 +25,20 @@ export const getLeadActivities = async (
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
 
-    const activities = await getLeadActivitiesByLeadId(leadId, page, limit);
+    // Optional: filter to one actor (agents pass their own id from FE)
+    const performedByRaw = req.query.performedBy ?? req.query.userId;
+    const performedBy = performedByRaw
+      ? parseInt(String(performedByRaw), 10)
+      : undefined;
+
+    const activities = await getLeadActivitiesByLeadId(
+      leadId,
+      page,
+      limit,
+      Number.isFinite(performedBy as number) && (performedBy as number) > 0
+        ? (performedBy as number)
+        : undefined,
+    );
 
     return res.status(200).json({
       success: true,

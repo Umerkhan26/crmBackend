@@ -27,12 +27,22 @@ interface ReportUser {
 export const getLeadActivitiesByLeadId = async (
   leadId: number,
   page: number = 1,
-  limit: number = 10
+  limit: number = 10,
+  performedBy?: number,
 ) => {
   const { offset } = getPagination({ page, limit });
 
+  const where: any = { entityId: leadId, entityType: "lead" };
+  if (
+    performedBy != null &&
+    Number.isFinite(Number(performedBy)) &&
+    Number(performedBy) > 0
+  ) {
+    where.performedBy = Number(performedBy);
+  }
+
   const data = await LeadActivity.findAndCountAll({
-    where: { entityId: leadId, entityType: "lead" },
+    where,
     order: [["createdAt", "DESC"]],
     limit,
     offset,

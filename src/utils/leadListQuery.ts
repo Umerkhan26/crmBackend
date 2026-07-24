@@ -8,7 +8,8 @@ import {
 } from "./leadCode";
 import { LEAD_DATA_PHONE_KEYS } from "./normalizeLeadData";
 
-export const LEAD_LIST_MAX_PAGE_SIZE = 100;
+/** Align with Unified/Master UI page sizes (incl. 5000). */
+export const LEAD_LIST_MAX_PAGE_SIZE = 5000;
 
 export function clampLeadListPagination(page = 1, limit = 10) {
   const pageNum = Math.max(1, Number(page) || 1);

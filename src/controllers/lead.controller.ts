@@ -305,27 +305,32 @@ export const getAdminMasterLeads = async (
         })),
       ]);
 
+      // Annotate for badges only. Do not re-filter here — each service already
+      // applied duplicateState before LIMIT, and filtering again would shrink the
+      // page while totals stay large (broken pagination).
       mergedRows = annotateLeadsWithDuplicates(mergedRows as any[], indexes);
-
-      if (duplicateState === "duplicate") {
-        mergedRows = mergedRows.filter((r: any) => r.isDuplicate);
-      }
     }
 
     const dbTotal = Number(leadsData.totalItems || 0);
     const incTotalAll = Number(incomingAwaitingPromotion?.totalItems || 0);
-    let mergedTotalItems = mergeIncoming
+    // Prefer DB counts from services (already scoped by duplicate/contact filters).
+    // Never use mergedRows.length — that is only the current page.
+    const mergedTotalItems = mergeIncoming
       ? dbTotal +
-        (contactState === "all" && duplicateState === "all"
+        (contactState === "all"
           ? incTotalAll
-          : incomingRowsForMerge.length)
+          : // contactState for staging is applied in-memory above; fall back to
+            // page-scoped length only when we cannot trust a SQL total.
+            contactState !== "all" && duplicateState === "all"
+            ? incomingRowsForMerge.length
+            : incTotalAll)
       : dbTotal;
 
-    if (duplicateState === "duplicate") {
-      mergedTotalItems = mergedRows.length;
-    }
-
-    const pageSize = Math.max(1, Number(leadsData.pageSize || limit || 10));
+    const requestedLimit = Math.max(1, Number(limit) || 10);
+    const pageSize = Math.max(
+      1,
+      Number(leadsData.pageSize || requestedLimit),
+    );
     const mergedTotalPages =
       mergedTotalItems <= 0
         ? 0
@@ -339,6 +344,7 @@ export const getAdminMasterLeads = async (
       ...leadsData,
       duplicateState,
       rows: mergedRows,
+      pageSize,
       totalItems: mergedTotalItems,
       totalPages: mergedTotalPages,
       incomingAwaitingPromotion,

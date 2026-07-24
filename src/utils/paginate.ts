@@ -1,4 +1,5 @@
 import { FindAndCountOptions } from "sequelize";
+import { LEAD_LIST_MAX_PAGE_SIZE } from "./leadListQuery";
 
 interface PaginationParams {
   page?: number;
@@ -9,8 +10,13 @@ export const getPagination = ({
   page = 1,
   limit = 10,
 }: PaginationParams): { offset: number; limit: number } => {
-  const offset = (page - 1) * limit;
-  return { offset, limit };
+  const safePage = Math.max(1, Number(page) || 1);
+  const safeLimit = Math.min(
+    LEAD_LIST_MAX_PAGE_SIZE,
+    Math.max(1, Number(limit) || 10),
+  );
+  const offset = (safePage - 1) * safeLimit;
+  return { offset, limit: safeLimit };
 };
 
 export const getPagingData = (data: { count: number; rows: any[] }, page: number, limit: number) => {

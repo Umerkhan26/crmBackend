@@ -51,6 +51,12 @@ import {
   clampLeadListPagination,
   enrichLeadsBatch,
 } from "../utils/leadListQuery";
+import {
+  buildDuplicateIdWhereFilter,
+  enrichLeadRowsWithDuplicates,
+  parseDuplicateState,
+  type DuplicateState,
+} from "../utils/leadDuplicate";
 
 interface PaginationParams {
   page?: number;
@@ -156,6 +162,7 @@ export const getAllLeads = async ({
   endDate,
   assignmentState = "all",
   contactState = "all",
+  duplicateState = "all",
   onlyPromotedFromIncoming = false,
   userId, // Add userId parameter to filter by creator
   isAdmin = false, // Add isAdmin flag
@@ -170,6 +177,7 @@ export const getAllLeads = async ({
   try {
     // Base where condition
     const whereCondition: any = { ...filters };
+    const resolvedDuplicateState = parseDuplicateState(duplicateState);
 
     if (onlyPromotedFromIncoming) {
       whereCondition[Op.and] = whereCondition[Op.and] || [];
@@ -243,6 +251,38 @@ export const getAllLeads = async ({
       appendContactStateToWhere(whereCondition, contactState);
     }
 
+    const identityScopeWhere: Record<string, unknown> = {};
+    if (campaign && campaign.trim() !== "") {
+      identityScopeWhere.campaignName = campaign.trim();
+    }
+    if (onlyPromotedFromIncoming) {
+      identityScopeWhere.id = {
+        [Op.in]: literal(
+          "(SELECT targetLeadId FROM incoming_leads WHERE status = 'promoted' AND targetLeadId IS NOT NULL)",
+        ),
+      };
+    }
+    if (isManager && managerBrandUserIds.length > 0 && !isAdmin) {
+      identityScopeWhere.createdBy = { [Op.in]: managerBrandUserIds };
+    } else if (!isAdmin && userId) {
+      identityScopeWhere.createdBy = userId;
+    }
+
+    const duplicateIdFilter = await buildDuplicateIdWhereFilter({
+      duplicateState: resolvedDuplicateState,
+      campaign,
+      baseWhere: identityScopeWhere,
+    });
+    if (duplicateIdFilter) {
+      const existingAnd = whereCondition[Op.and];
+      const andArray = Array.isArray(existingAnd)
+        ? existingAnd
+        : existingAnd != null
+          ? [existingAnd]
+          : [];
+      whereCondition[Op.and] = [...andArray, duplicateIdFilter];
+    }
+
     const { pageNum, pageSize, offset } = clampLeadListPagination(page, limit);
 
     const { count, rows } = await Lead.findAndCountAll({
@@ -253,13 +293,18 @@ export const getAllLeads = async ({
     });
 
     const enrichedLeads = await enrichLeadsBatch(rows);
+    const rowsWithDuplicates = await enrichLeadRowsWithDuplicates(
+      enrichedLeads as any[],
+      { campaign, baseWhere: identityScopeWhere },
+    );
 
     return {
       totalItems: count,
-      rows: enrichedLeads,
+      rows: rowsWithDuplicates,
       currentPage: pageNum,
       totalPages: count <= 0 ? 0 : Math.ceil(count / pageSize),
       pageSize,
+      duplicateState: resolvedDuplicateState,
     };
   } catch (error: any) {
     throw new Error(`Error fetching leads: ${error.message}`);
@@ -362,6 +407,7 @@ export const getLeadsByCampaign = async ({
   isAdmin = false, // Add isAdmin flag to determine if user should see all leads
   createdBy, // Add createdBy parameter to filter by specific creator (for admin)
   onlyExited = true,
+  duplicateState = "all",
 }: GetLeadsByCampaignParams & {
   conditions?: any[];
   startDate?: string;
@@ -371,8 +417,10 @@ export const getLeadsByCampaign = async ({
   isAdmin?: boolean;
   createdBy?: number; // Filter by specific creator (admin only)
   onlyExited?: boolean;
+  duplicateState?: DuplicateState;
 }): Promise<any> => {
   try {
+    const resolvedDuplicateState = parseDuplicateState(duplicateState);
     // Step 1: Build dynamic filter for JSON fields
     const dynamicFilter =
       conditions.length > 0 ? buildDynamicFilters(conditions) : {};
@@ -488,6 +536,30 @@ export const getLeadsByCampaign = async ({
       appendLeadSearchToWhere(whereCondition, search);
     }
 
+    const identityScopeWhere: Record<string, unknown> = {
+      campaignName,
+    };
+    if (!isAdmin && userId) {
+      identityScopeWhere.createdBy = userId;
+    } else if (isAdmin && createdBy) {
+      identityScopeWhere.createdBy = createdBy;
+    }
+
+    const duplicateIdFilter = await buildDuplicateIdWhereFilter({
+      duplicateState: resolvedDuplicateState,
+      campaign: campaignName,
+      baseWhere: identityScopeWhere,
+    });
+    if (duplicateIdFilter) {
+      const existingAnd = whereCondition[Op.and];
+      const andArray = Array.isArray(existingAnd)
+        ? existingAnd
+        : existingAnd != null
+          ? [existingAnd]
+          : [];
+      whereCondition[Op.and] = [...andArray, duplicateIdFilter];
+    }
+
     const { pageNum, pageSize, offset } = clampLeadListPagination(page, limit);
 
     const { count, rows } = await Lead.findAndCountAll({
@@ -498,13 +570,18 @@ export const getLeadsByCampaign = async ({
     });
 
     const enrichedLeads = await enrichLeadsBatch(rows);
+    const rowsWithDuplicates = await enrichLeadRowsWithDuplicates(
+      enrichedLeads as any[],
+      { campaign: campaignName, baseWhere: identityScopeWhere },
+    );
 
     return {
       totalItems: count,
-      rows: enrichedLeads,
+      rows: rowsWithDuplicates,
       currentPage: pageNum,
       totalPages: count <= 0 ? 0 : Math.ceil(count / pageSize),
       pageSize,
+      duplicateState: resolvedDuplicateState,
     };
   } catch (error: any) {
     throw new Error(
@@ -1057,6 +1134,7 @@ export interface GetAllLeadsParams {
   endDate?: string;
   assignmentState?: "all" | "assigned" | "unassigned";
   contactState?: "all" | "present" | "missing";
+  duplicateState?: DuplicateState;
   /** When true, only leads that were promoted from incoming_leads (staging → leads). */
   onlyPromotedFromIncoming?: boolean;
 }
@@ -1072,6 +1150,7 @@ export const getAllLeadsWithAssignee = async ({
   conditions = [], // ← added
   userId, // Add userId parameter to filter by creator
   isAdmin = false, // Add isAdmin flag
+  duplicateState = "all",
 }: {
   page?: number;
   limit?: number;
@@ -1083,8 +1162,10 @@ export const getAllLeadsWithAssignee = async ({
   conditions?: any[]; // ← added
   userId?: number;
   isAdmin?: boolean;
+  duplicateState?: DuplicateState;
 }) => {
   try {
+    const resolvedDuplicateState = parseDuplicateState(duplicateState);
     const whereConditions: any = {
       [Op.and]: [Sequelize.literal("JSON_LENGTH(assignees) > 0")],
     };
@@ -1113,6 +1194,23 @@ export const getAllLeadsWithAssignee = async ({
       appendLeadSearchToWhere(whereConditions, search);
     }
 
+    const identityScopeWhere: Record<string, unknown> = {};
+    if (campaign && campaign.trim() !== "") {
+      identityScopeWhere.campaignName = campaign.trim();
+    }
+    if (!isAdmin && userId) {
+      identityScopeWhere.createdBy = userId;
+    }
+
+    const duplicateIdFilter = await buildDuplicateIdWhereFilter({
+      duplicateState: resolvedDuplicateState,
+      campaign,
+      baseWhere: identityScopeWhere,
+    });
+    if (duplicateIdFilter) {
+      whereConditions[Op.and].push(duplicateIdFilter);
+    }
+
     const { pageNum, pageSize, offset } = clampLeadListPagination(page, limit);
     const { count, rows } = await Lead.findAndCountAll({
       where: whereConditions,
@@ -1122,11 +1220,14 @@ export const getAllLeadsWithAssignee = async ({
     });
 
     const enrichedLeads = await enrichLeadsBatch(rows);
-    return getPagingData(
-      { count, rows: enrichedLeads },
-      pageNum,
-      pageSize,
+    const rowsWithDuplicates = await enrichLeadRowsWithDuplicates(
+      enrichedLeads as any[],
+      { campaign, baseWhere: identityScopeWhere },
     );
+    return {
+      ...getPagingData({ count, rows: rowsWithDuplicates }, pageNum, pageSize),
+      duplicateState: resolvedDuplicateState,
+    };
   } catch (error: any) {
     throw new Error(`Error fetching leads with assignees: ${error.message}`);
   }
@@ -1370,14 +1471,17 @@ export const getUnassignedLeads = async ({
   isAdmin = false, // Add isAdmin flag
   isManager = false, // Add isManager flag
   managerBrandUserIds = [], // User IDs under brands managed by this manager
+  duplicateState = "all",
 }: GetUnassignedLeadsParams & {
   conditions?: any[];
   userId?: number;
   isAdmin?: boolean;
   isManager?: boolean;
   managerBrandUserIds?: number[];
+  duplicateState?: DuplicateState;
 }) => {
   try {
+    const resolvedDuplicateState = parseDuplicateState(duplicateState);
     const whereCondition: any = {
       [Op.and]: [
         Sequelize.literal("(assignees IS NULL OR JSON_LENGTH(assignees) = 0)"),
@@ -1409,6 +1513,23 @@ export const getUnassignedLeads = async ({
       appendLeadSearchToWhere(whereCondition, searchTerm);
     }
 
+    const identityScopeWhere: Record<string, unknown> = {};
+    if (campaign && campaign.trim() !== "") {
+      identityScopeWhere.campaignName = campaign.trim();
+    }
+    if (!isManager && !isAdmin && userId) {
+      identityScopeWhere.createdBy = userId;
+    }
+
+    const duplicateIdFilter = await buildDuplicateIdWhereFilter({
+      duplicateState: resolvedDuplicateState,
+      campaign,
+      baseWhere: identityScopeWhere,
+    });
+    if (duplicateIdFilter) {
+      whereCondition[Op.and].push(duplicateIdFilter);
+    }
+
     const { pageNum, pageSize, offset } = clampLeadListPagination(page, limit);
     const { count, rows } = await Lead.findAndCountAll({
       where: whereCondition,
@@ -1418,12 +1539,17 @@ export const getUnassignedLeads = async ({
     });
 
     const enrichedLeads = await enrichLeadsBatch(rows);
+    const rowsWithDuplicates = await enrichLeadRowsWithDuplicates(
+      enrichedLeads as any[],
+      { campaign, baseWhere: identityScopeWhere },
+    );
     return {
       totalItems: count,
-      rows: enrichedLeads,
+      rows: rowsWithDuplicates,
       currentPage: pageNum,
       totalPages: count <= 0 ? 0 : Math.ceil(count / pageSize),
       pageSize,
+      duplicateState: resolvedDuplicateState,
     };
   } catch (error: any) {
     throw new Error(`Error fetching unassigned leads: ${error.message}`);

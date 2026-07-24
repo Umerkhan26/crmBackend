@@ -7,6 +7,14 @@ import { getPagingData } from "../utils/paginate";
 import { PERMISSIONS } from "../constants/permissions";
 import { leadRowHasContactPhone, normalizeLeadDataInput } from "../utils/normalizeLeadData";
 import { resolveLeadListScope } from "../utils/leadListScope";
+import {
+  annotateLeadsWithDuplicates,
+  buildCampaignDuplicateIndexes,
+  loadIncomingIdentityRows,
+  loadLeadIdentityRows,
+  parseDuplicateState,
+} from "../utils/leadDuplicate";
+import { Op } from "sequelize";
 
 const canViewAllLeads = (req: Request): boolean => {
   return req.user?.permissions?.includes(PERMISSIONS.LEAD_VIEW_ALL) ?? false;
@@ -81,6 +89,8 @@ export const getAllLeads = async (
       }
     }
 
+    const duplicateState = parseDuplicateState(req.query.duplicateState);
+
     const leadsData = await LeadService.getAllLeads({
       page,
       limit,
@@ -91,6 +101,7 @@ export const getAllLeads = async (
       startDate,
       endDate,
       conditions, // ⭐ pass dynamic filters
+      duplicateState,
       userId, // Pass userId to filter by creator
       isAdmin, // Pass isAdmin flag
       isManager, // Pass isManager flag
@@ -149,6 +160,7 @@ export const getAdminMasterLeads = async (
       contactStateRaw === "present" || contactStateRaw === "missing"
         ? contactStateRaw
         : "all";
+    const duplicateState = parseDuplicateState(req.query.duplicateState);
 
     const filters: any = {};
     if (req.query.status) filters.status = req.query.status;
@@ -175,6 +187,7 @@ export const getAdminMasterLeads = async (
       conditions,
       assignmentState,
       contactState,
+      duplicateState,
       isAdmin,
       isManager,
       managerBrandUserIds,
@@ -212,6 +225,7 @@ export const getAdminMasterLeads = async (
         search,
         status: "awaiting_promotion",
         campaignName: campaign?.trim() || undefined,
+        duplicateState,
         ...stagingScope,
       });
     }
@@ -236,6 +250,11 @@ export const getAdminMasterLeads = async (
         createdAt: incoming.createdAt,
         updatedAt: incoming.updatedAt,
         incomingStatus: incoming.status,
+        isDuplicate: Boolean(incoming.isDuplicate),
+        duplicateCount: Number(incoming.duplicateCount || 0),
+        duplicateMatchOn: Array.isArray(incoming.duplicateMatchOn)
+          ? incoming.duplicateMatchOn
+          : [],
       };
     });
 
@@ -249,18 +268,62 @@ export const getAdminMasterLeads = async (
             ? incomingRows
             : [];
 
-    const mergedRows = mergeIncoming
+    let mergedRows = mergeIncoming
       ? [...incomingRowsForMerge, ...(leadsData.rows || [])]
       : leadsData.rows || [];
 
+    // Re-annotate using campaign leads + awaiting staging (same campaign only).
+    if (mergedRows.length > 0) {
+      const campaigns = [
+        ...new Set(
+          mergedRows
+            .map((r: any) => String(r.campaignName || "").trim())
+            .filter(Boolean),
+        ),
+      ];
+      const campaignWhere: Record<string, unknown> =
+        campaigns.length === 1
+          ? { campaignName: campaigns[0] }
+          : campaigns.length > 1
+            ? { campaignName: { [Op.in]: campaigns } }
+            : {};
+
+      const [leadIdentities, incomingIdentities] = await Promise.all([
+        loadLeadIdentityRows(campaignWhere),
+        loadIncomingIdentityRows({
+          ...campaignWhere,
+          status: { [Op.notIn]: ["promoted", "failed"] },
+        }),
+      ]);
+
+      const indexes = buildCampaignDuplicateIndexes([
+        ...leadIdentities,
+        ...incomingIdentities.map((r) => ({
+          id: `incoming-${r.id}`,
+          campaignName: r.campaignName,
+          payload: r.payload,
+        })),
+      ]);
+
+      mergedRows = annotateLeadsWithDuplicates(mergedRows as any[], indexes);
+
+      if (duplicateState === "duplicate") {
+        mergedRows = mergedRows.filter((r: any) => r.isDuplicate);
+      }
+    }
+
     const dbTotal = Number(leadsData.totalItems || 0);
     const incTotalAll = Number(incomingAwaitingPromotion?.totalItems || 0);
-    const mergedTotalItems = mergeIncoming
+    let mergedTotalItems = mergeIncoming
       ? dbTotal +
-        (contactState === "all"
+        (contactState === "all" && duplicateState === "all"
           ? incTotalAll
           : incomingRowsForMerge.length)
       : dbTotal;
+
+    if (duplicateState === "duplicate") {
+      mergedTotalItems = mergedRows.length;
+    }
 
     const pageSize = Math.max(1, Number(leadsData.pageSize || limit || 10));
     const mergedTotalPages =
@@ -274,6 +337,7 @@ export const getAdminMasterLeads = async (
       assignmentState,
       contactState,
       ...leadsData,
+      duplicateState,
       rows: mergedRows,
       totalItems: mergedTotalItems,
       totalPages: mergedTotalPages,
@@ -485,6 +549,8 @@ export const getLeadsByCampaign = async (
         ? parseInt(req.query.createdBy as string)
         : undefined;
 
+    const duplicateState = parseDuplicateState(req.query.duplicateState);
+
     // Service call - pass userId and isAdmin to filter leads
     const leads = await LeadService.getLeadsByCampaign({
       campaignName,
@@ -499,6 +565,7 @@ export const getLeadsByCampaign = async (
       isAdmin, // Pass isAdmin flag
       createdBy, // Add createdBy filter for admin users
       onlyExited,
+      duplicateState,
     });
 
     if (!leads || !leads.rows || leads.rows.length === 0) {
@@ -755,6 +822,7 @@ export const getAllLeadsWithAssignee = async (
         console.error("Error parsing conditions:", error);
       }
     }
+    const duplicateState = parseDuplicateState(req.query.duplicateState);
     const leads = await LeadService.getAllLeadsWithAssignee({
       page,
       limit,
@@ -766,6 +834,7 @@ export const getAllLeadsWithAssignee = async (
       conditions,
       userId, // Pass userId to filter by creator
       isAdmin, // Pass isAdmin flag
+      duplicateState,
     });
     if (!leads || !leads.data || leads.data.length === 0) {
       return res.status(200).json({
@@ -1051,6 +1120,8 @@ export const getUnassignedLeads = async (
       }
     }
 
+    const duplicateState = parseDuplicateState(req.query.duplicateState);
+
     // Call service
     const leads = await LeadService.getUnassignedLeads({
       page,
@@ -1065,6 +1136,7 @@ export const getUnassignedLeads = async (
       isAdmin, // Pass isAdmin flag
       isManager, // Pass isManager flag
       managerBrandUserIds, // Pass brand user IDs for manager
+      duplicateState,
     });
 
     // If no leads

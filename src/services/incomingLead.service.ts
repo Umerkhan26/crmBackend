@@ -4,6 +4,12 @@ import Lead from "../models/lead.model";
 import { getPagination, getPagingData } from "../utils/paginate";
 import { normalizeLeadDataInput } from "../utils/normalizeLeadData";
 import { normalizeLeadCodeSearchInput } from "../utils/leadCode";
+import {
+  enrichIncomingRowsWithDuplicates,
+  getIncomingDuplicateIdSet,
+  parseDuplicateState,
+  type DuplicateState,
+} from "../utils/leadDuplicate";
 
 export const createIncomingLead = async ({
   runId,
@@ -143,6 +149,7 @@ export const getIncomingLeads = async ({
   campaignName,
   createdBy,
   createdByIn,
+  duplicateState = "all",
 }: {
   page?: number;
   limit?: number;
@@ -161,8 +168,10 @@ export const getIncomingLeads = async ({
   campaignName?: string;
   createdBy?: number;
   createdByIn?: number[];
+  duplicateState?: DuplicateState;
 }) => {
   const { offset, limit: pageLimit } = getPagination({ page, limit });
+  const resolvedDuplicateState = parseDuplicateState(duplicateState);
 
   const andParts: any[] = [];
   if (status === "awaiting_promotion") {
@@ -209,6 +218,30 @@ export const getIncomingLeads = async ({
     andParts.push({ [Op.or]: orParts });
   }
 
+  const identityBaseWhere: Record<string, unknown> = {};
+  if (status === "awaiting_promotion") {
+    identityBaseWhere.status = { [Op.notIn]: ["promoted", "failed"] };
+  } else if (status !== "all") {
+    identityBaseWhere.status = status;
+  }
+  if (runId?.trim()) identityBaseWhere.runId = runId.trim();
+  if (campaignName?.trim()) identityBaseWhere.campaignName = campaignName.trim();
+  if (createdBy != null && Number.isFinite(Number(createdBy))) {
+    identityBaseWhere.createdBy = Number(createdBy);
+  } else if (Array.isArray(createdByIn) && createdByIn.length > 0) {
+    identityBaseWhere.createdBy = { [Op.in]: createdByIn };
+  }
+
+  if (resolvedDuplicateState === "duplicate") {
+    const dupIds = await getIncomingDuplicateIdSet({
+      campaignName,
+      baseWhere: identityBaseWhere,
+    });
+    andParts.push({
+      id: { [Op.in]: dupIds.size > 0 ? [...dupIds] : [-1] },
+    });
+  }
+
   const whereClause =
     andParts.length === 0
       ? {}
@@ -222,7 +255,20 @@ export const getIncomingLeads = async ({
     limit: pageLimit,
     order: [["createdAt", "DESC"]],
   });
-  return getPagingData(data, page, pageLimit);
+
+  const paging = getPagingData(data, page, pageLimit);
+  const enriched = await enrichIncomingRowsWithDuplicates(
+    (paging.data || []).map((row: any) =>
+      typeof row?.toJSON === "function" ? row.toJSON() : row,
+    ),
+    { campaignName, baseWhere: identityBaseWhere },
+  );
+
+  return {
+    ...paging,
+    data: enriched,
+    duplicateState: resolvedDuplicateState,
+  };
 };
 
 export const getIncomingLeadById = async (id: number) => {

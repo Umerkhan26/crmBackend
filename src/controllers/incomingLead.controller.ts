@@ -12,6 +12,7 @@ import {
   updateIncomingLead,
   validateIncomingLead,
 } from "../services/incomingLead.service";
+import { parseDuplicateState } from "../utils/leadDuplicate";
 
 export const createIncomingLeadController = async (req: Request, res: Response): Promise<any> => {
   try {
@@ -96,6 +97,7 @@ export const getIncomingLeadsController = async (req: Request, res: Response): P
     const search = (req.query.search as string) || "";
     const runId = (req.query.runId as string) || undefined;
     const campaignName = (req.query.campaignName as string) || undefined;
+    const duplicateState = parseDuplicateState(req.query.duplicateState);
     const result = await getIncomingLeads({
       page,
       limit,
@@ -103,6 +105,7 @@ export const getIncomingLeadsController = async (req: Request, res: Response): P
       status,
       runId,
       campaignName,
+      duplicateState,
     });
     return res.status(200).json({ success: true, message: "Incoming leads retrieved", ...result });
   } catch (error: any) {

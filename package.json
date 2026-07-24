@@ -4,6 +4,7 @@
   "main": "index.js",
   "scripts": {
     "start": "nodemon",
+    "check:duplicates": "ts-node src/scripts/check-lead-duplicates.ts",
     "sync:permissions": "npx ts-node src/scripts/sync-permissions.ts",
     "sync:auto-assignment": "npx ts-node src/scripts/sync-auto-assignment.ts",
     "cron:rebalance-rotate": "npx ts-node src/scripts/cron-rebalance-rotate.ts",
